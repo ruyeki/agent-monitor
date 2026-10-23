@@ -4,16 +4,22 @@
   "private": true,
   "type": "module",
   "description": "Agent Monitor: live view and workflow engine for Fable runs",
-  "engines": { "node": ">=22.14" },
+  "engines": {
+    "node": ">=22.14"
+  },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning bin/agent-monitor.js serve",
     "build": "npm --prefix web run build",
     "postinstall": "cd web && npm install",
     "test": "node --test \"test/**/*.test.js\"",
-    "integrate": "node scripts/integrate.js"
+    "integrate": "node scripts/integrate.js",
+    "e2e": "node --disable-warning=ExperimentalWarning test/e2e/editor.e2e.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
-    "zod": "^3.25.0"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
   }
 }
