@@ -78,3 +78,31 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .node-name { font-weight: 600; }
 .tick { color: var(--ok); font-size: 11px; }
 .here { color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.spacer { flex: 1; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.confirm { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 8px 0; background: var(--warn-bg); color: var(--warn); border-radius: 6px; }
+.legend { margin: 4px 0; font-size: 12px; }
+.editor-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.flow { height: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; --xy-edge-stroke-default: var(--muted); --xy-edge-label-color-default: var(--text); --xy-edge-label-background-color-default: var(--surface); --xy-background-color-default: var(--surface); --xy-attribution-background-color-default: var(--surface-2); }
+.flow .react-flow__edge-textbg { fill: var(--surface); }
+.flow .react-flow__edge-text { fill: var(--text); font-size: 16px; }
+.flow .react-flow__arrowhead path { fill: var(--muted); stroke: var(--muted); }
+.fnode { display: flex; flex-direction: column; gap: 2px; width: 170px; padding: 8px 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+.fnode.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.fnode.kind-gate { border-style: dashed; }
+.fnode.synthetic { width: auto; align-items: center; font-weight: 600; }
+.fnode { font-size: 16px; }
+.fnode-name { font-size: 16px; }
+.fnode-sub { font-size: 16px; }
+.fnode-badges { display: flex; gap: 4px; min-height: 16px; }
+.fnode-badges .badge { margin-left: 0; font-size: 16px; }
+.stage-list { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 8px 0; }
+.stage-list button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 14px 14px; }
+.field { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
+.field input, .field select, .field textarea, .action-row input, .action-row select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.check-row { display: block; margin: 8px 0; }
+.action-row { display: flex; gap: 4px; margin: 4px 0; }
+.action-row input { flex: 1; min-width: 0; }
+h4 { margin: 12px 0 4px; font-size: 13px; }

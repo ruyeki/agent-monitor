@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getRun, getRuns } from './api.js';
 import { useLive, useTheme } from './hooks.js';
 import { splitRuns } from './lib/format.js';
+import { WorkflowEditor } from './editor/WorkflowEditor.jsx';
 import { RunDetail } from './RunDetail.jsx';
 import { RunsTable } from './RunsTable.jsx';
 import { WaitingCards } from './WaitingCards.jsx';
@@ -19,6 +20,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [theme, cycleTheme] = useTheme();
+  const [tick, setTick] = useState(0);
+  const [wfSeen, setWfSeen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -41,6 +44,7 @@ export default function App() {
   const refreshAll = useCallback(() => {
     refresh();
     refreshDetail();
+    setTick((t) => t + 1);
   }, [refresh, refreshDetail]);
 
   const connection = useLive(refreshAll);
@@ -60,7 +64,10 @@ export default function App() {
         <h1>Agent Monitor</h1>
         <nav className="tabs" role="tablist" aria-label="Sections">
           {TABS.map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => {
+                setTab(id);
+                if (id === 'workflow') setWfSeen(true);
+              }}>
               {label}
             </button>
           ))}
@@ -73,12 +80,13 @@ export default function App() {
         </button>
       </header>
       <main>
-        {tab === 'workflow' ? (
-          <section>
+        {wfSeen && (
+          <section hidden={tab !== 'workflow'} aria-label="Workflow editor">
             <h2>Workflow</h2>
-            <p className="muted">The workflow editor is coming in the next phase.</p>
+            <WorkflowEditor tick={tick} />
           </section>
-        ) : (
+        )}
+        {tab === 'monitor' && (
           <>
             {loadError && (
               <p className="error" role="alert">
