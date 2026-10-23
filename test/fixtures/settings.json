@@ -1,0 +1,218 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/test/project/**)",
+      "Bash(ls -d */)",
+      "Bash(git log *)",
+      "mcp__example__tool"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\test\\project\\src"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|mcp__github__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/guardrails.js\"",
+            "timeout": 10,
+            "statusMessage": "Checking guardrails..."
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/test/.orca/agent-hooks/claude-hook.cmd || echo {}",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$HOME/.claude/statusline.js\""
+  },
+  "enabledPlugins": {
+    "alpha@market": true,
+    "beta@thedotmack": true,
+    "gamma@gamma": false
+  },
+  "extraKnownMarketplaces": {
+    "thedotmack": {
+      "source": {
+        "source": "github",
+        "repo": "example/beta"
+      }
+    },
+    "gamma": {
+      "source": {
+        "source": "github",
+        "repo": "example/gamma"
+      }
+    }
+  },
+  "effortLevel": "xhigh",
+  "modelSettings": {
+    "model-x": {
+      "effortLevel": "xhigh"
+    }
+  },
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "switchModelsOnFlag": false,
+  "agentPushNotifEnabled": true,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Dummy rule: no pushes to protected branches"
+    ],
+    "environment": [
+      "### Dummy",
+      "**Organization**: Example"
+    ]
+  },
+  "model": "opus"
+}
