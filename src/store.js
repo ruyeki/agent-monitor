@@ -241,8 +241,9 @@ export function openStore(dataDir) {
   const linkSession = (sessionId, runId) => q(`INSERT INTO session_links (session_id, run_id, last_active_at) VALUES (?, ?, ?)
     ON CONFLICT (session_id, run_id) DO UPDATE SET last_active_at = excluded.last_active_at`).run(sessionId, runId, now());
   const touchSession = (sessionId, runId) => q('UPDATE session_links SET last_active_at = ? WHERE session_id = ? AND run_id = ?').run(now(), sessionId, runId);
-  const sessionRun = (sessionId) => q(`SELECT r.* FROM session_links l JOIN runs r ON r.id = l.run_id
-    WHERE l.session_id = ? AND r.status NOT IN ('done', 'stopped') ORDER BY l.last_active_at DESC LIMIT 1`).get(sessionId) ?? null;
+  // The session's most recently active run. Main-session events want a live run; a new subagent also adopts a stopped one (so it is denied).
+  const sessionRun = (sessionId, { adoptStopped = false } = {}) => q(`SELECT r.* FROM session_links l JOIN runs r ON r.id = l.run_id
+    WHERE l.session_id = ? AND r.status NOT IN (${adoptStopped ? "'done'" : "'done', 'stopped'"}) ORDER BY l.last_active_at DESC, l.rowid DESC LIMIT 1`).get(sessionId) ?? null;
   const getAgent = (id) => q('SELECT * FROM agents WHERE agent_id = ?').get(id) ?? null;
   const createAgent = (a) => {
     q(`INSERT OR IGNORE INTO agents (agent_id, run_id, session_id, type, transcript_path, transcript_offset, started_at, last_activity_at)

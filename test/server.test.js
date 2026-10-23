@@ -253,7 +253,7 @@ test('the installed curl hook command fails open: exit 0, no output, under 1 s w
   const probe = await boot();
   const { port } = probe;
   await probe.close();
-  const cmd = `curl -s --connect-timeout 0.3 -m 1 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`;
+  const cmd = `curl -s --connect-timeout 0.1 -m 1 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`;
   const t0 = Date.now();
   const r = spawnSync('bash', ['-c', cmd], { input: '{"hook_event_name":"Stop"}', encoding: 'utf8' });
   assert.equal(r.status, 0);
@@ -264,7 +264,7 @@ test('the installed curl hook command fails open: exit 0, no output, under 1 s w
 test('the curl hook command talks to a live server and prints {}', async () => {
   const s = await boot();
   try {
-    const cmd = `curl -s --connect-timeout 0.3 -m 1 -H 'Content-Type: application/json' --data-binary @- ${s.url}/hook || true`;
+    const cmd = `curl -s --connect-timeout 0.1 -m 1 -H 'Content-Type: application/json' --data-binary @- ${s.url}/hook || true`;
     const child = spawn('bash', ['-c', cmd]); // async: the server runs in this process
     let out = '';
     child.stdout.on('data', (d) => { out += d; });

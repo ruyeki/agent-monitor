@@ -44,7 +44,7 @@ function parseArgs(argv) {
 }
 
 const hookCommand = (port) =>
-  `curl -s --connect-timeout 0.3 -m 1 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`;
+  `curl -s --connect-timeout 0.1 -m 1 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`;
 
 function ourEntry(event, port) {
   const entry = WITH_MATCHER.includes(event) ? { matcher: '*' } : {};

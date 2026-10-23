@@ -81,10 +81,11 @@ test('SubagentStart and unknown agent ids join the most recently active open run
   t.send('PreToolUse', { agent_id: 'sub2', agent_type: 'verifier', tool_name: 'Grep', tool_input: { pattern: 'foo' }, tool_use_id: 'z' });
   assert.deepEqual(t.agents('r2').map((a) => a.id), ['sub1', 'sub2']);
   assert.deepEqual(t.agents('r1'), []);
-  // an ended run is no longer joined: the next agent falls back to the older open run
+  // a stopped run still counts as the latest run: a new subagent joins it (and is denied), not the older open run
   t.store.stopRun('r2');
   t.send('SubagentStart', { agent_id: 'sub3', agent_type: 'x' });
-  assert.deepEqual(t.agents('r1').map((a) => a.id), ['sub3']);
+  assert.deepEqual(t.agents('r2').map((a) => a.id), ['sub1', 'sub2', 'sub3']);
+  assert.deepEqual(t.agents('r1'), []);
 });
 
 test('per-agent tracking: summaries, errors, permission waiting, notifications', () => {
@@ -309,4 +310,49 @@ test('subagent Bash or PowerShell aimed at the monitor port is denied; main and 
   assert.deepEqual(pre('curl http://127.0.0.1:8080/api'), {});
   assert.deepEqual(pre('curl http://example.com:4747/api'), {});
   assert.deepEqual(pre('curl http://127.0.0.1:4747/api', { tool_name: 'Read' }), {});
+});
+
+const denied = (out) => out.hookSpecificOutput?.permissionDecision === 'deny';
+
+test('a subagent started after the run was stopped joins it and is denied; agent-monitor tools and main are not', () => {
+  const t = setup();
+  t.startRun();
+  t.linkSession();
+  t.store.stopRun('r1');
+  const pre = (extra) => t.send('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: 'k', ...extra });
+  assert.deepEqual(t.send('SubagentStart', { agent_id: 'late', agent_type: 'worker' }), {});
+  assert.equal(t.store.getAgent('late').run_id, 'r1');
+  assert.ok(denied(pre({ agent_id: 'late' })));
+  assert.ok(denied(pre({ agent_id: 'late2' }))); // first seen on a PreToolUse
+  assert.equal(t.store.getAgent('late2').run_id, 'r1');
+  assert.deepEqual(pre({ agent_id: 'late', tool_name: 'mcp__agent-monitor__get_run' }), {});
+  assert.deepEqual(pre({}), {}); // main session is never denied
+});
+
+test('a later run in the same session takes over: its new subagents are not denied', () => {
+  const t = setup();
+  t.startRun();
+  t.linkSession();
+  t.store.stopRun('r1');
+  t.store.startRun({ title: 'R2' });
+  t.linkSession('r2');
+  t.send('SubagentStart', { agent_id: 'b1', agent_type: 'worker' });
+  assert.equal(t.store.getAgent('b1').run_id, 'r2');
+  assert.deepEqual(t.send('PreToolUse', { agent_id: 'b1', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: 'k' }), {});
+});
+
+test('a session whose latest run is done does not adopt new subagents', () => {
+  const t = setup();
+  t.startRun();
+  t.linkSession();
+  for (let i = 0; i < 30 && t.store.getRun('r1').status !== 'done'; i++) {
+    const r = t.store.getRun('r1');
+    if (r.status === 'waiting') t.store.respond('r1', { action: t.store.summary(r).actions[0].label, text: '' });
+    else t.store.completeStage('r1', { stage: r.stage, outcome: 'pass' });
+  }
+  assert.equal(t.store.getRun('r1').status, 'done');
+  t.send('SubagentStart', { agent_id: 'c1', agent_type: 'worker' });
+  assert.equal(t.store.getAgent('c1'), null);
+  assert.deepEqual(t.send('PreToolUse', { agent_id: 'c2', tool_name: 'Bash', tool_input: {}, tool_use_id: 'k' }), {});
+  assert.equal(t.store.getAgent('c2'), null);
 });

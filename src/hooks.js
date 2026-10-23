@@ -63,9 +63,10 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
       const known = store.getAgent(aid);
       if (known) return { run: store.getRun(known.run_id), agentId: aid };
     }
-    const run = store.sessionRun(sid);
+    // An unknown subagent joins the session's latest run that is not done, so a stopped run still denies it.
+    const run = store.sessionRun(sid, { adoptStopped: Boolean(aid) });
     if (!run) return null;
-    store.touchSession(sid, run.id);
+    if (run.status !== 'stopped') store.touchSession(sid, run.id);
     if (aid) {
       store.createAgent({ id: aid, runId: run.id, sessionId: sid, type: str(p.agent_type), transcriptPath: subagentPath(aid, p.transcript_path, p.agent_transcript_path) });
       return { run, agentId: aid };
