@@ -134,5 +134,30 @@ export function validateWorkflow(input) {
     const ok = wf.stages.some((g, gi) => g.kind === 'gate' && gi < i && gi > lastCheck);
     if (!ok) errors.push(`${label(s, i)} pushes, so it needs a gate before it and after every stage with a check.`);
   });
+
+  // A jump into the spine must not fall through to a pushing stage without passing a push gate
+  // (a gate after every check stage). Actions on a push gate itself may go anywhere.
+  const index = new Map(wf.stages.map((s, i) => [s.id, i]));
+  const isPushGate = (s, i) => s.kind === 'gate' && i > lastCheck;
+  const pushing = wf.stages.map((s, i) => (s.pushes ? i : -1)).filter((i) => i >= 0);
+  const unguarded = (t) => pushing.find((p) => p >= t && !wf.stages.some((g, gi) => isPushGate(g, gi) && gi >= t && gi < p));
+  const reach = (target, what) => {
+    const t = index.get(target);
+    if (t === undefined) return;
+    const p = unguarded(t);
+    if (p === undefined) return;
+    errors.push(p === t
+      ? `${what} goes to '${target}', which pushes without passing a gate after every check.`
+      : `${what} goes to '${target}', which reaches pushing stage '${wf.stages[p].id}' without passing a gate after every check.`);
+  };
+  wf.stages.forEach((s, i) => {
+    if (s.kind !== 'gate' || isPushGate(s, i)) return;
+    for (const a of s.actions) reach(a.goto, `Gate '${s.id}' action '${a.label}'`);
+  });
+  for (const key of ['afterFix', 'resumeAt']) {
+    const t = index.get(loop[key]);
+    const p = t === undefined ? undefined : unguarded(t);
+    if (p !== undefined) errors.push(`The fix loop ${key} '${loop[key]}' reaches pushing stage '${wf.stages[p].id}' without passing a gate after every check.`);
+  }
   return errors;
 }

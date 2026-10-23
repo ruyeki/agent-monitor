@@ -112,6 +112,20 @@ test('a pushing stage needs a gate after every check stage and before itself', (
   assert.ok(errorsFor((w) => { stage(w, 'frame').pushes = true; }).some((e) => /'frame' pushes/.test(e)));
 });
 
+test('no jump may reach a pushing stage without passing a push gate', () => {
+  const msgs = (fn) => errorsFor(fn).join(' | ');
+  assert.match(msgs((w) => { w.loop.afterFix = 'pr'; }), /afterFix 'pr' reaches pushing stage 'pr' without passing a gate after every check/);
+  assert.match(msgs((w) => { w.loop.resumeAt = 'pr'; }), /resumeAt 'pr' reaches pushing stage 'pr'/);
+  assert.match(msgs((w) => { stage(w, 'gate1').actions[0].goto = 'pr'; }), /Gate 'gate1' action 'Agree spec' goes to 'pr', which pushes without passing a gate after every check/);
+  assert.match(msgs((w) => {
+    w.stages.splice(w.stages.findIndex((x) => x.id === 'pr'), 0, { ...stage(w, 'report'), id: 'late' });
+    stage(w, 'gate1').actions[0].goto = 'late';
+  }), /goes to 'late', which reaches pushing stage 'pr'/);
+  // a target at or before the push gate is fine; actions on the push gate may go anywhere
+  assert.deepEqual(errorsFor((w) => { w.loop.afterFix = 'gate2'; stage(w, 'gate1').actions[0].goto = 'plan'; }), []);
+  assert.deepEqual(errorsFor((w) => { stage(w, 'gate2').actions[0].goto = 'pr'; }), []);
+});
+
 test('an empty workflow is invalid', () => {
   assert.ok(validateWorkflow({ stages: [] }).some((e) => /at least one stage/.test(e)));
   assert.ok(validateWorkflow(null).length > 0);
