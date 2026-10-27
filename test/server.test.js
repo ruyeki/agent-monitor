@@ -43,7 +43,7 @@ test('REST: run list, detail, respond, stop and 404s', async () => {
     assert.deepEqual([list[0].status, list[0].textField, list[0].actions], ['waiting', true, [{ label: 'Agree spec' }, { label: 'Stop run' }]]);
 
     const d = (await call(s, 'GET', '/api/runs/first-run')).body;
-    assert.deepEqual(Object.keys(d).sort(), ['activity', 'agents', 'durationMs', 'nodes', 'run', 'timeline', 'visits', 'workflow']);
+    assert.deepEqual(Object.keys(d).sort(), ['activity', 'agents', 'durationMs', 'nodes', 'run', 'timeline', 'tokens', 'visits', 'workflow']);
     assert.equal(d.workflow.nodes.length, 18);
     assert.deepEqual(d.visits.map((v) => [v.node, v.outcome]), [['frame', 'pass'], ['gate1', null]]);
     assert.deepEqual([d.nodes.frame.visits, d.nodes.verify.visits], [1, 0]);
@@ -328,4 +328,223 @@ test('CLI wait: unknown run exits 1 with a message; no arguments prints usage', 
     const usage = runCli([], {});
     assert.equal(await usage.exited, 2);
   } finally { await s.close(); }
+});
+
+// ---- usage indexer, token attribution and stats ----
+const tline = (id, o = {}) => JSON.stringify({ type: 'assistant', sessionId: o.session, ...(o.agent ? { agentId: o.agent } : {}), timestamp: o.ts ?? new Date().toISOString(),
+  message: { id, model: o.model ?? 'claude-opus-5', usage: { input_tokens: o.input ?? 0, output_tokens: o.output ?? 0, cache_creation_input_tokens: o.cw ?? 0, cache_read_input_tokens: o.cr ?? 0 } } }) + '\n';
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+// The server's own first scan may be in flight (started before the fixture files were written): finish it, then scan again.
+const rescan = async (s) => { await s.usage.scan(); await s.usage.scan(); };
+async function until(fn, ms = 8000) {
+  for (const end = Date.now() + ms; Date.now() < end;) { if (fn()) return true; await pause(50); }
+  return fn();
+}
+
+// A run with a main session and one subagent that reported on 'frame', plus transcript paths under a temp projectsDir.
+function setupUsageRun(s, projectsDir) {
+  const id = s.store.startRun({ title: 'Tokens run' }).run.id;
+  s.store.createAgent({ id: 'main:sess1', runId: id, sessionId: 'sess1', type: 'main' });
+  s.store.createAgent({ id: 'sub1', runId: id, sessionId: 'sess1', type: 'general-purpose' });
+  s.store.reportNode('sub1', 'frame');
+  const proj = path.join(projectsDir, '-proj');
+  fs.mkdirSync(path.join(proj, 'sess1', 'subagents'), { recursive: true });
+  return { id, main: path.join(proj, 'sess1.jsonl'), sub: path.join(proj, 'sess1', 'subagents', 'agent-sub1.jsonl') };
+}
+
+test('run detail carries indexer tokens per node, agent and run; an appended line shows after one scan', async () => {
+  const projectsDir = tmp();
+  const s = await boot({ projectsDir });
+  try {
+    const { id, main, sub } = setupUsageRun(s, projectsDir);
+    fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 10, output: 20, cw: 30, cr: 40 }));
+    fs.writeFileSync(sub, tline('s1', { session: 'sess1', agent: 'sub1', input: 1000, output: 2000 }));
+    await rescan(s);
+    let d = (await call(s, 'GET', `/api/runs/${id}`)).body;
+    assert.deepEqual([d.tokens.main.total, d.tokens.nodes.frame.total, d.tokens.total.total, d.tokens.unattributed.total], [100, 3000, 3100, 0]);
+    assert.deepEqual([d.nodes.frame.tokens.input, d.nodes.frame.tokens.output], [1000, 2000]);
+    assert.equal(d.nodes.verify.tokens.total, 0);
+    assert.equal(d.tokens.total.cost, (10 * 5 + 20 * 25 + 30 * 6.25 + 40 * 0.5 + 1000 * 5 + 2000 * 25) / 1e6);
+    const byId = Object.fromEntries(d.agents.map((a) => [a.id, a.tokens]));
+    assert.equal(byId['main:sess1'].total, 100);
+    assert.equal(byId.sub1.total, 3000);
+    assert.deepEqual(Object.keys(byId.sub1).sort(), ['cacheRead', 'cacheWrite', 'cost', 'input', 'output', 'total', 'unpriced']);
+
+    fs.appendFileSync(sub, tline('s2', { session: 'sess1', agent: 'sub1', input: 500 }));
+    await rescan(s);
+    d = (await call(s, 'GET', `/api/runs/${id}`)).body;
+    assert.equal(d.nodes.frame.tokens.input, 1500);
+    assert.equal(d.tokens.total.total, 3600);
+  } finally { await s.close(); }
+});
+
+test('the indexer runs on its own timer: an appended line appears, and SSE announces usage only when a scan adds messages', async () => {
+  const projectsDir = tmp();
+  const s = await boot({ projectsDir, usageIntervalMs: 200 });
+  const events = [];
+  const req = http.get({ host: '127.0.0.1', port: s.port, path: '/api/events' }, (res) => {
+    res.on('data', (c) => { for (const m of String(c).matchAll(/data: (.*)\n/g)) events.push(JSON.parse(m[1])); });
+    res.on('error', () => {});
+  });
+  req.on('error', () => {});
+  try {
+    const { id, main } = setupUsageRun(s, projectsDir);
+    await pause(500); // several scans over an empty tree: no usage event
+    assert.equal(events.filter((e) => e.type === 'usage').length, 0);
+    fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 5 }));
+    assert.ok(await until(() => events.some((e) => e.type === 'usage')), 'usage event after the first line');
+    fs.appendFileSync(main, tline('m2', { session: 'sess1', input: 7 }));
+    assert.ok(await until(() => s.usage.status().messages === 2));
+    assert.equal((await call(s, 'GET', `/api/runs/${id}`)).body.tokens.main.input, 12);
+    const n = events.filter((e) => e.type === 'usage').length;
+    await pause(600); // idle scans add nothing
+    assert.equal(events.filter((e) => e.type === 'usage').length, n);
+  } finally { req.destroy(); await s.close(); }
+});
+
+test('REST: usage stats, version stats and prices', async () => {
+  const projectsDir = tmp();
+  const s = await boot({ projectsDir });
+  try {
+    const { main } = setupUsageRun(s, projectsDir);
+    fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 1e6, output: 1e6 }) + tline('m2', { session: 'sess1', input: 100, model: 'mystery-1' }));
+    await rescan(s);
+    const u = (await call(s, 'GET', '/api/stats/usage')).body;
+    assert.deepEqual(Object.keys(u).sort(), ['daily', 'indexer', 'periods', 'unpricedModels']);
+    assert.equal(u.indexer.messages, 2);
+    assert.deepEqual(Object.keys(u.periods).sort(), ['avg30', 'month', 'today', 'week']);
+    assert.equal(u.periods.today.total, 2e6 + 100);
+    assert.equal(u.periods.today.cost, 30);
+    assert.equal(u.periods.today.unpriced, 100);
+    assert.equal(u.periods.avg30.days, 1);
+    assert.deepEqual(u.unpricedModels, ['mystery-1']);
+    assert.equal(u.daily.length, 2);
+    assert.equal((await call(s, 'GET', '/api/stats/usage?days=30')).body.daily.length, 2);
+
+    // a finished run shows up in the version stats
+    const id2 = s.store.startRun({ title: 'Finished' }).run.id;
+    for (let i = 0; i < 60 && s.store.getRun(id2).status !== 'done'; i++) {
+      const r = s.store.getRun(id2);
+      if (r.status === 'waiting') s.store.respond(id2, { action: s.store.summary(r).actions[0].label });
+      else s.store.completeStage(id2, { stage: s.store.summary(r).active[0].id, outcome: 'pass' });
+    }
+    const v = (await call(s, 'GET', '/api/stats/versions')).body;
+    assert.deepEqual([v.length, v[0].version, v[0].finishedRuns, v[0].avgTokens, v[0].nodes.length], [1, 1, 1, 0, 18]);
+    assert.deepEqual(Object.keys(v[0].nodes[0]).sort(), ['avgDurationMs', 'avgTokens', 'id', 'name', 'runs']);
+    const wv = (await call(s, 'GET', '/api/workflow/versions')).body;
+    assert.deepEqual(wv[0].stats, { finishedRuns: 1, avgTokens: 0, avgDurationMs: v[0].avgDurationMs });
+
+    // prices: read, replace, persist, reject bad bodies without changing anything
+    const prices = (await call(s, 'GET', '/api/prices')).body;
+    assert.ok(prices.some((p) => p.model === 'claude-opus-5' && p.input === 5));
+    const row = { model: 'mystery-1', input: 1, output: 2, cacheWrite: 3, cacheWrite1h: 4, cacheRead: 5, note: 'mine' };
+    const put = await call(s, 'PUT', '/api/prices', { prices: [...prices, row] });
+    assert.equal(put.status, 200);
+    assert.deepEqual(put.body.find((p) => p.model === 'mystery-1'), row);
+    assert.deepEqual((await call(s, 'GET', '/api/prices')).body, put.body);
+    const u2 = (await call(s, 'GET', '/api/stats/usage')).body;
+    assert.deepEqual(u2.unpricedModels, []);
+    assert.ok(Math.abs(u2.periods.today.cost - (30 + 100 / 1e6)) < 1e-9);
+    for (const bad of [{}, { prices: 'x' }, { prices: [{ ...row, input: -1 }] }, { prices: [{ ...row, model: '' }] }, { prices: [row, row] }, { prices: [{ ...row, output: 'a' }] }]) {
+      const r = await call(s, 'PUT', '/api/prices', bad);
+      assert.equal(r.status, 400, JSON.stringify(bad));
+      assert.equal(typeof r.body.error, 'string');
+    }
+    assert.deepEqual((await call(s, 'GET', '/api/prices')).body, put.body);
+  } finally { await s.close(); }
+});
+
+test('prices survive a restart (they live in usage.db)', async () => {
+  const dataDir = tmp();
+  const a = await boot({ dataDir });
+  await call(a, 'PUT', '/api/prices', { prices: [{ model: 'only-one', input: 1, output: 1, cacheWrite: 1, cacheWrite1h: 1, cacheRead: 1 }] });
+  await a.close();
+  const b = await boot({ dataDir });
+  try {
+    assert.deepEqual((await call(b, 'GET', '/api/prices')).body.map((p) => p.model), ['only-one']);
+  } finally { await b.close(); }
+});
+
+test('security: the stats and price routes share the Host, Origin and Content-Type checks', async () => {
+  const s = await boot();
+  try {
+    for (const p of ['/api/stats/usage', '/api/stats/versions', '/api/prices']) {
+      assert.equal((await raw(s, { p, headers: { Host: 'evil.example:80' } })).status, 403, p);
+      assert.equal((await raw(s, { p, headers: { Origin: 'http://evil.example' } })).status, 403, p);
+      assert.equal((await raw(s, { p })).status, 200, p);
+    }
+    const put = (headers, body = '{"prices":[]}') => raw(s, { method: 'PUT', p: '/api/prices', headers: { ...headers, 'Content-Length': Buffer.byteLength(body) }, body });
+    assert.equal((await put({ 'Content-Type': 'text/plain' })).status, 415);
+    assert.equal((await put({ 'Content-Type': 'application/json', Origin: 'http://evil.example' })).status, 403);
+    assert.equal((await put({ 'Content-Type': 'application/json', Host: 'evil.example:80' })).status, 403);
+    assert.equal((await put({ 'Content-Type': 'application/json' })).status, 200);
+  } finally { await s.close(); }
+});
+
+test('main rows each show their own session; agents the attribution misses show zero tokens', async () => {
+  const projectsDir = tmp();
+  const s = await boot({ projectsDir });
+  try {
+    const { id, main } = setupUsageRun(s, projectsDir);
+    s.store.createAgent({ id: 'main:sess2', runId: id, sessionId: 'sess2', type: 'main' });
+    s.store.createAgent({ id: 'late', runId: id, sessionId: 'sess1', type: 'general-purpose' });
+    fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 10 }));
+    fs.writeFileSync(path.join(path.dirname(main), 'sess2.jsonl'), tline('m2', { session: 'sess2', input: 200 }));
+    await rescan(s);
+    const d = (await call(s, 'GET', `/api/runs/${id}`)).body;
+    const t = Object.fromEntries(d.agents.map((a) => [a.id, a.tokens]));
+    assert.deepEqual([t['main:sess1'].total, t['main:sess2'].total, d.tokens.main.total], [10, 200, 210]);
+    assert.deepEqual([t.late.total, t.late.unpriced, t.late.cost], [0, 0, 0]);
+  } finally { await s.close(); }
+});
+
+test('attribution is memoised across requests; new indexed messages for an active run still show up', async () => {
+  const projectsDir = tmp();
+  const s = await boot({ projectsDir, usageIntervalMs: 3600000 });
+  try {
+    const { id, main, sub } = setupUsageRun(s, projectsDir);
+    fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 10 }));
+    fs.writeFileSync(sub, tline('s1', { session: 'sess1', agent: 'sub1', input: 1000 }));
+    await rescan(s);
+    const real = s.usage.totals;
+    let n = 0;
+    s.usage.totals = (q) => { n++; return real(q); };
+    const get = async () => (await call(s, 'GET', `/api/runs/${id}`)).body.tokens.total.total;
+    assert.equal(await get(), 1010);
+    const first = n;
+    assert.ok(first > 0);
+    for (let i = 0; i < 4; i++) {
+      assert.equal(await get(), 1010);
+      await call(s, 'GET', '/api/stats/versions');
+      await call(s, 'GET', '/api/workflow/versions');
+    }
+    assert.equal(n, first, 'repeat requests do not recompute');
+    fs.appendFileSync(sub, tline('s2', { session: 'sess1', agent: 'sub1', input: 500 }));
+    await rescan(s);
+    assert.equal(await get(), 1510);
+    assert.ok(n > first);
+  } finally { await s.close(); }
+});
+
+test('PUT /api/prices: a null body is a 400, a good save announces usage over SSE', async () => {
+  const s = await boot();
+  const events = [];
+  const req = http.get({ host: '127.0.0.1', port: s.port, path: '/api/events' }, (res) => {
+    res.on('data', (c) => { for (const m of String(c).matchAll(/data: (.*)\n/g)) events.push(JSON.parse(m[1])); });
+    res.on('error', () => {});
+  });
+  req.on('error', () => {});
+  try {
+    await until(() => s.usage.status().lastScanAt);
+    await pause(100);
+    const before = events.filter((e) => e.type === 'usage').length;
+    const bad = await call(s, 'PUT', '/api/prices', null);
+    assert.equal(bad.status, 400);
+    assert.equal(typeof bad.body.error, 'string');
+    await pause(100);
+    assert.equal(events.filter((e) => e.type === 'usage').length, before, 'a refused save announces nothing');
+    const ok = await call(s, 'PUT', '/api/prices', { prices: (await call(s, 'GET', '/api/prices')).body });
+    assert.equal(ok.status, 200);
+    assert.ok(await until(() => events.filter((e) => e.type === 'usage').length === before + 1));
+  } finally { req.destroy(); await s.close(); }
 });

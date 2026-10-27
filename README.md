@@ -65,3 +65,25 @@ npm run e2e
 ```
 
 Drives the Workflow editor in headless Chrome against a temporary server (`playwright-core`, not part of `npm test`). Needs Chrome; set `CHROME_PATH` if it is not at the default Windows location. Screenshots go to a temp folder.
+
+## Token usage
+
+The server runs a usage indexer: every 5 s it reads the Claude Code transcripts under `~/.claude/projects` (read-only) into `usage.db` in the data directory. It keeps numbers, ids, model and timestamps, never message content. A message id repeats once per content block, so the indexer keeps the largest count per id. The first scan (the backfill) runs in the background and does not delay the server. When a scan adds messages, the server sends an SSE `{type:"usage"}` event.
+
+Costs are estimates: the price table (seeded from the claude-api skill, 2026-10-06; editable) is applied to the tokens, models with no price row add 0 and are listed as unpriced.
+
+### How tokens are attributed
+
+Each run's tokens come from the indexer, never from the old per-agent counters. `src/attribution.js` splits them like this:
+
+1. **Main session.** Messages from the run's main session(s) (the `main:<session>` agents) between the run's start and its end (or now) count as the run's `main` figure. They are never put on a node.
+2. **Lead.** An agent whose type contains "lead", or that called `complete_stage` on two or more different nodes, is a lead. Each of its messages goes to the node visits whose time window [entered, left) contains the message time. When several visits overlap (parallel branches) the message is split evenly, with the remainder going to the first visit. A message in no window is unattributed.
+3. **Any other subagent.** All its tokens go to one node: the single node it reported with `complete_stage`; otherwise, of the nodes that were active when it started, the first (in workflow order) whose runner keyword (verifier "verif", white-hat "white", reviewer "review", lead "lead"), id or name appears in its description or type; otherwise the only active worker node; otherwise the first active node; otherwise unattributed.
+4. Messages from agents that are not part of the run are ignored. Total = nodes + main + unattributed.
+
+### Endpoints
+
+- `GET /api/runs/:id` also returns `nodes[id].tokens`, `tokens: {nodes, main, unattributed, total}` and `agents[i].tokens`. Each is `{input, output, cacheWrite, cacheRead, total, cost, unpriced}`.
+- `GET /api/stats/usage?days=30|90` (default 90): `{indexer, periods: {today, week, month, avg30}, daily, unpricedModels}`. Weeks start on Monday, local time. `avg30` averages the latest 30 local days that have data and adds `days`.
+- `GET /api/stats/versions`: per workflow version (newest first), finished runs, average tokens and duration, and the same per node. `GET /api/workflow/versions` adds a short `stats` to each version.
+- `GET /api/prices`, `PUT /api/prices {prices: [...]}`: read or replace the price table (USD per million tokens; 400 on bad rows).

@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { openStore } from './store.js';
 import { createHooks } from './hooks.js';
 import { createMcpHandler } from './mcp.js';
+import { openUsage } from './usage.js';
+import { usageStats, versionStats, runAttribution } from './stats.js';
+import { toTokens, emptyAcc } from './attribution.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
 const MIME = {
@@ -48,8 +51,10 @@ const parseJson = (raw) => {
 export async function startServer({
   port = 4747, dataDir = path.join(os.homedir(), '.claude', 'agent-monitor'),
   projectsDir = path.join(os.homedir(), '.claude', 'projects'), webDir = fileURLToPath(new URL('../web/dist', import.meta.url)),
+  usageIntervalMs = 5000,
 } = {}) {
   const store = openStore(dataDir);
+  const usage = await openUsage({ dataDir, projectsDir });
   let hooks;
   const streams = new Set();
   let hostPorts = [];
@@ -64,7 +69,7 @@ export async function startServer({
     if (method === 'GET' && url.pathname === '/api/runs') return send(res, 200, store.listRuns());
     if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)$/))) {
       const d = store.detail(decodeURIComponent(g[1]));
-      return d ? send(res, 200, d) : send(res, 404, { error: 'No such run.' });
+      return d ? send(res, 200, withTokens(d)) : send(res, 404, { error: 'No such run.' });
     }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/respond$/))) {
       const b = await body();
@@ -89,7 +94,13 @@ export async function startServer({
       const r = store.publish();
       return send(res, r.errors ? 400 : 200, r);
     }
-    if (method === 'GET' && url.pathname === '/api/workflow/versions') return send(res, 200, store.versions());
+    if (method === 'GET' && url.pathname === '/api/workflow/versions') {
+      const stats = new Map(versionStats(store, usage).map((v) => [v.version, v]));
+      return send(res, 200, store.versions().map((v) => {
+        const { finishedRuns, avgTokens, avgDurationMs } = stats.get(v.version);
+        return { ...v, stats: { finishedRuns, avgTokens, avgDurationMs } };
+      }));
+    }
     if (method === 'GET' && (g = m(/^\/api\/workflow\/versions\/(\d+)$/))) {
       const wf = store.version(Number(g[1]));
       return wf ? send(res, 200, { version: Number(g[1]), workflow: wf }) : send(res, 404, { error: 'No such version.' });
@@ -98,9 +109,30 @@ export async function startServer({
       const d = store.loadVersion(Number(g[1]));
       return d ? send(res, 200, d) : send(res, 404, { error: 'No such version.' });
     }
+    if (method === 'GET' && url.pathname === '/api/stats/usage') {
+      const days = url.searchParams.get('days') === '30' ? 30 : 90;
+      return send(res, 200, usageStats({ usage, prices: usage.prices(), days }));
+    }
+    if (method === 'GET' && url.pathname === '/api/stats/versions') return send(res, 200, versionStats(store, usage));
+    if (method === 'GET' && url.pathname === '/api/prices') return send(res, 200, usage.prices());
+    if (method === 'PUT' && url.pathname === '/api/prices') {
+      const r = usage.setPrices((await body())?.prices);
+      if (!r.error) store.bus.emit('change', { type: 'usage' }); // cost figures change with the prices
+      return send(res, r.error ? 400 : 200, r);
+    }
     if (method === 'GET' && url.pathname === '/api/events') return handleEvents(req, res);
     return send(res, 404, { error: 'Not found.' });
   };
+
+  // Adds indexer-based token numbers to a run detail: per node, per agent and run-wide.
+  function withTokens(d) {
+    const att = runAttribution(store, usage, d.run.id);
+    for (const [id, t] of Object.entries(att.nodes)) (d.nodes[id] ??= { visits: 0, durationMs: 0 }).tokens = t;
+    const none = toTokens(emptyAcc());
+    d.agents = d.agents.map((a) => ({ ...a, tokens: (a.id.startsWith('main:') ? att.mainBySession[a.id.slice(5)] : att.agents[a.id]?.tokens) ?? none }));
+    d.tokens = { nodes: att.nodes, main: att.main, unattributed: att.unattributed, total: att.total };
+    return d;
+  }
 
   // Long poll: answer as soon as the run is no longer waiting on Ryan.
   async function handleWait(req, res, id, url) {
@@ -189,12 +221,14 @@ export async function startServer({
   hostPorts = [`127.0.0.1:${actual}`, `localhost:${actual}`];
   hooks = createHooks(store, { projectsDir, port: actual });
   mcp = createMcpHandler(store, hostPorts);
+  // The first scan (backfill) runs in the background; listen() has already resolved.
+  usage.start({ intervalMs: usageIntervalMs, onScan: (r) => { if (r.newMessages > 0) store.bus.emit('change', { type: 'usage' }); } });
 
   return {
-    port: actual, url: `http://127.0.0.1:${actual}`, store,
+    port: actual, url: `http://127.0.0.1:${actual}`, store, usage,
     close: () => new Promise((resolve) => {
       for (const s of streams) s.end();
-      server.close(() => { store.close(); resolve(); });
+      server.close(() => { usage.close().then(() => { store.close(); resolve(); }); });
       server.closeAllConnections();
     }),
   };

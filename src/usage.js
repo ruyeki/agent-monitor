@@ -77,7 +77,7 @@ export async function openUsage({ dataDir, projectsDir }) {
   const countMessages = db.prepare('SELECT COUNT(*) AS n FROM usage_messages');
   const countFiles = db.prepare('SELECT COUNT(*) AS n FROM usage_files');
 
-  const state = { scanning: null, lastScanAt: null, lastScanMs: null, backfillMs: null, timer: null, closed: false };
+  const state = { generation: 0, scanning: null, lastScanAt: null, lastScanMs: null, backfillMs: null, timer: null, closed: false };
   const firstScanIsBackfill = countFiles.get().n === 0;
 
   // Recursive walk for regular *.jsonl files inside root. Symlinks are never followed.
@@ -121,6 +121,7 @@ export async function openUsage({ dataDir, projectsDir }) {
         const data = parts.length ? Buffer.concat([...parts, fresh]) : Buffer.from(fresh);
         const end = data.lastIndexOf(NL) + 1;
         db.exec('BEGIN');
+        let wrote = false;
         try {
           for (let s = 0; s < end;) {
             const nl = data.indexOf(NL, s);
@@ -128,11 +129,12 @@ export async function openUsage({ dataDir, projectsDir }) {
             s = nl + 1;
             if (line.indexOf(MARKER) < 0) continue;
             const r = parseLine(line, info);
-            if (r) upsert.run(r.id, r.ts, r.day, r.session, r.agent, r.project, r.model, r.input, r.output, r.cw, r.cw1h, r.cr);
+            if (r) { upsert.run(r.id, r.ts, r.day, r.session, r.agent, r.project, r.model, r.input, r.output, r.cw, r.cw1h, r.cr); wrote = true; }
           }
           consumed += end;
           putFile.run(file, st.size, consumed, st.mtimeMs);
           db.exec('COMMIT');
+          if (wrote) state.generation++;
         } catch (e) { db.exec('ROLLBACK'); throw e; }
         const rest = data.subarray(end);
         parts = rest.length ? [rest] : [];
@@ -171,16 +173,31 @@ export async function openUsage({ dataDir, projectsDir }) {
   const isDay = (s) => typeof s === 'string' && /^\d{4}-\d\d-\d\d$/.test(s);
 
   // from/to: 'YYYY-MM-DD' filters by local day (inclusive), anything else is an ISO timestamp bound on ts.
-  function messages({ agentIds, sessionIds, from, to } = {}) {
+  // agentNull keeps main-session rows (agent_id IS NULL).
+  function filter({ agentIds, sessionIds, agentNull, from, to }) {
     const where = [];
     const args = [];
     const list = (col, v) => { if (Array.isArray(v)) { where.push(v.length ? `${col} IN (${v.map(() => '?').join(',')})` : '0'); args.push(...v); } };
     list('agent_id', agentIds);
     list('session_id', sessionIds);
+    if (agentNull) where.push('agent_id IS NULL');
     if (from) { where.push(isDay(from) ? 'day >= ?' : 'ts >= ?'); args.push(from); }
     if (to) { where.push(isDay(to) ? 'day <= ?' : 'ts <= ?'); args.push(to); }
-    const sql = `SELECT * FROM usage_messages${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ts, id`;
-    return db.prepare(sql).all(...args).map(toMessage);
+    return { sql: where.length ? ` WHERE ${where.join(' AND ')}` : '', args };
+  }
+
+  function messages(q = {}) {
+    const { sql, args } = filter(q);
+    return db.prepare(`SELECT * FROM usage_messages${sql} ORDER BY ts, id`).all(...args).map(toMessage);
+  }
+
+  // Token sums per (agent, session, model), so attribution never loads individual messages for non-lead agents.
+  function totals(q = {}) {
+    const { sql, args } = filter(q);
+    return db.prepare(`SELECT agent_id, session_id, model, SUM(input) AS input, SUM(output) AS output, SUM(cache_write) AS cache_write,
+      SUM(cache_write_1h) AS cache_write_1h, SUM(cache_read) AS cache_read FROM usage_messages${sql} GROUP BY agent_id, session_id, model`).all(...args)
+      .map((r) => ({ agentId: r.agent_id, sessionId: r.session_id, model: r.model, input: r.input, output: r.output,
+        cacheWrite: r.cache_write, cacheWrite1h: r.cache_write_1h, cacheRead: r.cache_read }));
   }
 
   function daily({ from, to } = {}) {
@@ -212,11 +229,12 @@ export async function openUsage({ dataDir, projectsDir }) {
     return prices();
   }
 
-  function start({ intervalMs = 5000 } = {}) {
+  function start({ intervalMs = 5000, onScan } = {}) {
     if (state.timer || state.closed) return;
-    state.timer = setInterval(() => { scan().catch(() => {}); }, intervalMs);
+    const run = () => scan().then((r) => { if (!state.closed) onScan?.(r); }).catch(() => {});
+    state.timer = setInterval(run, intervalMs);
     state.timer.unref?.();
-    scan().catch(() => {});
+    run();
   }
 
   function stop() {
@@ -232,7 +250,7 @@ export async function openUsage({ dataDir, projectsDir }) {
   }
 
   const status = () => ({ files: countFiles.get().n, messages: countMessages.get().n, scanning: !!state.scanning,
-    lastScanAt: state.lastScanAt, lastScanMs: state.lastScanMs, backfillMs: state.backfillMs });
+    lastScanAt: state.lastScanAt, lastScanMs: state.lastScanMs, backfillMs: state.backfillMs, generation: state.generation });
 
-  return { scan, start, stop, close, status, messages, daily, prices, setPrices };
+  return { scan, start, stop, close, status, messages, totals, daily, prices, setPrices };
 }

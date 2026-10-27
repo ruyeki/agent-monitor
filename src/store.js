@@ -324,6 +324,20 @@ export function openStore(dataDir) {
     emit('activity', runId);
   }
   const activityCount = (runId) => q('SELECT COUNT(*) AS n FROM activity WHERE run_id = ?').get(runId).n;
+  // Everything token attribution needs for one run (pure input for attributeRun), or null.
+  function attributionInput(id) {
+    const r = getRun(id);
+    if (!r) return null;
+    const rows = q('SELECT * FROM agents WHERE run_id = ? ORDER BY started_at, rowid').all(id);
+    const list = (json) => (json ? parse(json) : []);
+    return {
+      run: { createdAt: r.created_at, endedAt: r.ended_at }, workflow: version(r.workflow_version),
+      visits: q('SELECT node_id AS node, entered_at AS enteredAt, left_at AS leftAt FROM node_visits WHERE run_id = ? ORDER BY id').all(id),
+      agents: rows.map((a) => ({ id: a.agent_id, type: a.type, description: a.description, startNodes: list(a.start_nodes), reportedNodes: list(a.reported_nodes) })),
+      mainSessions: rows.filter((a) => a.type === 'main' && a.session_id).map((a) => a.session_id),
+    };
+  }
+  const finishedRuns = () => q("SELECT id, workflow_version AS version, created_at AS createdAt, ended_at AS endedAt FROM runs WHERE status = 'done' ORDER BY created_at").all();
   const close = () => db.close();
 
   // ---- one-time migration from the v1 spine (user_version 0 -> 2) ----
@@ -373,7 +387,7 @@ export function openStore(dataDir) {
 
   return {
     bus, close, version, published, draft, saveDraft, resetDraft, loadVersion, publish, versions,
-    getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail,
+    getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, activityCount,
   };
 }

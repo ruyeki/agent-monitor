@@ -238,3 +238,28 @@ test('prices are seeded once, validated, and edits survive a reopen', async () =
   assert.equal(third.prices().length, 0, 'seeds are not re-applied after the first open');
   await third.close();
 });
+
+test('totals sum per (agent, session, model) with the same filters as messages; generation bumps on every write', async () => {
+  const { usage, projectsDir } = await setup({ copy: false });
+  const file = path.join(projectsDir, 'p', 's9.jsonl');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const at = (ts) => ({ timestamp: ts });
+  fs.writeFileSync(file, [line('a', 5, at('2026-10-03T01:00:00.000Z')), line('b', 7, at('2026-10-03T02:00:00.000Z')), line('c', 1, { agentId: 'ag1', ...at('2026-10-03T03:00:00.000Z') })].join(''));
+  assert.equal(usage.status().generation, 0);
+  await usage.scan();
+  const g1 = usage.status().generation;
+  assert.ok(g1 > 0);
+  await usage.scan();
+  assert.equal(usage.status().generation, g1, 'a scan that writes nothing leaves the generation alone');
+  const all = usage.totals();
+  assert.equal(all.length, 2);
+  assert.deepEqual(usage.totals({ agentNull: true }), [{ agentId: null, sessionId: 's9', model: 'claude-opus-5', input: 2, output: 12, cacheWrite: 0, cacheWrite1h: 0, cacheRead: 4 }]);
+  assert.equal(usage.totals({ agentIds: ['ag1'] })[0].output, 1);
+  assert.equal(usage.totals({ agentNull: true, from: '2026-10-03T01:30:00.000Z' })[0].output, 7);
+  assert.equal(usage.totals({ agentNull: true, to: '2026-10-03T01:30:00.000Z' })[0].output, 5);
+  assert.deepEqual(usage.totals({ agentIds: [] }), []);
+  fs.appendFileSync(file, line('d', 2, at('2026-10-03T04:00:00.000Z')));
+  await usage.scan();
+  assert.ok(usage.status().generation > g1);
+  await usage.close();
+});

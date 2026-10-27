@@ -12,6 +12,8 @@ const hook = (payload) => req(S.port, 'POST', '/hook', { body: payload });
 const detail = async (id) => (await S.api('GET', `/api/runs/${id}`)).json;
 const agents = async (id) => (await detail(id)).agents;
 const agentOf = async (id, aid) => (await agents(id)).find((a) => a.id === aid);
+// The hooks' own (v1) running counts in the agents table; the REST agent.tokens now comes from the usage indexer.
+const v1Tokens = (aid) => { const a = S.srv.store.getAgent(aid); return a && { input: a.input_tokens, output: a.output_tokens, cacheCreation: a.cache_creation_tokens, cacheRead: a.cache_read_tokens }; };
 let n = 0;
 const sid = () => `sess-${++n}-${Math.random().toString(16).slice(2, 8)}`;
 const newRun = async (title) => runIdOf((await M.call('start_run', { title })).text);
@@ -286,23 +288,22 @@ test('AC9 subagent tokens: dedupe by message.id, incremental reads, partial last
   await sleep(600);
   let a = await agentOf(id, aid);
   assert.ok(a, 'agent exists');
-  assert.ok([0, 10].includes(a.tokens.input), 'partial line must not be counted; input=' + a.tokens.input);
-  assert.ok(a.tokens.input === 0 || (a.tokens.output === 20 && a.tokens.cacheCreation === 5 && a.tokens.cacheRead === 7), 'm1 counted once');
+  let t = v1Tokens(aid);
+  assert.ok([0, 10].includes(t.input), 'partial line must not be counted; input=' + t.input);
+  assert.ok(t.input === 0 || (t.output === 20 && t.cacheCreation === 5 && t.cacheRead === 7), 'm1 counted once');
   // finish the partial line, add m3 (twice) and a synthetic message
   fs.appendFileSync(file, m2line.slice(40) + asst('msg_3', m3, undefined, 'a') + asst('msg_3', m3, undefined, 'b') + asst('msg_syn', U(0, 0, 0, 0), '<synthetic>'));
   await hook({ hook_event_name: 'SubagentStop', session_id: session, transcript_path: main, agent_id: aid, agent_type: 'sonnet-engineer', last_assistant_message: 'done' });
-  const ok = await until(async () => { const x = await agentOf(id, aid); return x.status === 'finished' && x.tokens.input >= 1110; }, 5000);
+  const ok = await until(async () => { const x = await agentOf(id, aid); return x.status === 'finished' && v1Tokens(aid).input >= 1110; }, 5000);
   a = await agentOf(id, aid);
-  assert.ok(ok, 'final read happened: ' + JSON.stringify(a.tokens));
-  assert.deepEqual(a.tokens, { input: 1110, output: 2220, cacheCreation: 555, cacheRead: 777 });
+  assert.ok(ok, 'final read happened: ' + JSON.stringify(v1Tokens(aid)));
+  assert.deepEqual(v1Tokens(aid), { input: 1110, output: 2220, cacheCreation: 555, cacheRead: 777 });
   assert.equal(a.model, 'claude-sonnet-5-5', 'model is never <synthetic>');
   assert.equal(a.description, 'Implement the thing');
   // a repeated SubagentStop does not double count
   await hook({ hook_event_name: 'SubagentStop', session_id: session, transcript_path: main, agent_id: aid, last_assistant_message: 'done again' });
   await sleep(500);
-  const b = await agentOf(id, aid);
-  assert.equal(b.tokens.input, a.tokens.input);
-  assert.equal(b.tokens.output, a.tokens.output);
+  assert.deepEqual(v1Tokens(aid), { input: 1110, output: 2220, cacheCreation: 555, cacheRead: 777 });
 });
 
 test('AC9 explicit agent_transcript_path is used and agent- prefix is not doubled', async () => {
@@ -315,9 +316,8 @@ test('AC9 explicit agent_transcript_path is used and agent- prefix is not double
   await linkViaStartRun(session, id);
   await hook({ hook_event_name: 'SubagentStart', session_id: session, transcript_path: main, agent_id: 'agent-zz9', agent_type: 'x' });
   await hook({ hook_event_name: 'SubagentStop', session_id: session, transcript_path: main, agent_id: 'agent-zz9', agent_transcript_path: custom, last_assistant_message: 'ok' });
-  assert.ok(await until(async () => (await agentOf(id, 'agent-zz9')).tokens.input === 3, 5000));
-  const a = await agentOf(id, 'agent-zz9');
-  assert.deepEqual(a.tokens, { input: 3, output: 4, cacheCreation: 5, cacheRead: 6 });
+  assert.ok(await until(async () => v1Tokens('agent-zz9').input === 3, 5000));
+  assert.deepEqual(v1Tokens('agent-zz9'), { input: 3, output: 4, cacheCreation: 5, cacheRead: 6 });
 });
 
 test('AC9 transcript paths outside projectsDir or not .jsonl are never read', async () => {
@@ -348,7 +348,7 @@ test('AC9 agent fields have the documented shape', async () => {
   await hook({ hook_event_name: 'SubagentStart', session_id: session, agent_id: 'shapeM1', agent_type: 'opus-engineer' });
   const a = await until(() => agentOf(id, 'shapeM1'));
   for (const k of ['id', 'type', 'model', 'description', 'status', 'lastTool', 'lastSummary', 'lastActivityAt', 'toolCalls', 'errors', 'lastError', 'waitingPermission', 'tokens', 'startedAt', 'finishedAt']) assert.ok(k in a, k);
-  assert.deepEqual(Object.keys(a.tokens).sort(), ['cacheCreation', 'cacheRead', 'input', 'output']);
+  assert.deepEqual(Object.keys(a.tokens).sort(), ['cacheRead', 'cacheWrite', 'cost', 'input', 'output', 'total', 'unpriced']);
   assert.equal(a.toolCalls, 0);
   assert.equal(a.errors, 0);
   assert.equal(a.waitingPermission, false);
@@ -367,8 +367,7 @@ test('AC9 main session tokens start at the transcript size when linked (earlier 
   await sleep(5200); // token reads are throttled to one per 5 s per agent
   await hook({ hook_event_name: 'PostToolUse', session_id: session, transcript_path: main, tool_name: 'Bash', tool_input: { command: 'x' }, tool_response: {} });
   await hook({ hook_event_name: 'Stop', session_id: session, transcript_path: main });
-  const ok = await until(async () => (await agentOf(id, `main:${session}`))?.tokens.input >= 11, 6000);
-  const a = await agentOf(id, `main:${session}`);
-  assert.ok(ok, 'main tokens were read: ' + JSON.stringify(a?.tokens));
-  assert.deepEqual(a.tokens, { input: 11, output: 22, cacheCreation: 33, cacheRead: 44 });
+  const ok = await until(async () => v1Tokens(`main:${session}`)?.input >= 11, 6000);
+  assert.ok(ok, 'main tokens were read: ' + JSON.stringify(v1Tokens(`main:${session}`)));
+  assert.deepEqual(v1Tokens(`main:${session}`), { input: 11, output: 22, cacheCreation: 33, cacheRead: 44 });
 });
