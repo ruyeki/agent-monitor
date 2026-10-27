@@ -57,6 +57,30 @@ test('other agent-monitor tools link by tool_input.run; a missing run is ignored
   assert.equal(t.store.sessionRun('s1').id, 'r1');
 });
 
+test('agents keep the nodes active when they appeared and the stages they report with complete_stage', () => {
+  const t = setup();
+  t.startRun();
+  t.linkSession();
+  t.store.completeStage('r1', { stage: 'frame', outcome: 'pass' });
+  t.store.respond('r1', { action: 'Agree spec' });
+  t.store.completeStage('r1', { stage: 'plan', outcome: 'done' });
+  t.send('SubagentStart', { agent_id: 'w1', agent_type: 'sonnet-engineer' });
+  assert.deepEqual(JSON.parse(t.store.getAgent('w1').start_nodes), ['implement', 'prep']);
+  const report = (extra) => t.send('PostToolUse', { tool_name: 'mcp__agent-monitor__complete_stage', tool_response: 'x', tool_use_id: 'c', ...extra });
+  report({ agent_id: 'w1', tool_input: { run: 'r1', stage: 'implement', outcome: 'pass' } });
+  report({ agent_id: 'w1', tool_input: { run: 'r1', stage: 'implement', outcome: 'pass' } });
+  report({ agent_id: 'w1', tool_input: { run: 'r1', stage: 'prep', outcome: 'pass' } });
+  report({ agent_id: 'w1', tool_name: 'mcp__agent-monitor__get_run', tool_input: { run: 'r1', stage: 'verify' } });
+  report({ tool_input: { run: 'r1', stage: 'verify', outcome: 'pass' } });
+  assert.deepEqual(JSON.parse(t.store.getAgent('w1').reported_nodes), ['implement', 'prep']);
+  assert.deepEqual(JSON.parse(t.store.getAgent('main:s1').reported_nodes), [], 'the main session has no agent_id: nothing recorded');
+  report({ agent_id: 'lead2', tool_input: { run: 'r1', stage: 'verify', outcome: 'pass' } });
+  assert.deepEqual(JSON.parse(t.store.getAgent('lead2').reported_nodes), ['verify'], 'an agent first seen on complete_stage');
+  report({ agent_id: 'lead2', tool_response: 'ERROR: nope', tool_input: { run: 'r1', stage: 'review', outcome: 'pass' } });
+  report({ agent_id: 'lead2', tool_response: { isError: true, content: [] }, tool_input: { run: 'r1', stage: 'whitehat', outcome: 'pass' } });
+  assert.deepEqual(JSON.parse(t.store.getAgent('lead2').reported_nodes), ['verify'], 'failed complete_stage calls are not recorded');
+});
+
 test('an agent-monitor call with agent_id links that agent, not the session', () => {
   const t = setup();
   t.startRun();

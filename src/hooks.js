@@ -92,6 +92,11 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     if (known) {
       if (tool !== `${MCP_PREFIX}start_run` && store.getRun(known.run_id)?.status !== 'stopped') store.updateAgent(aid, { run_id: runId });
     } else store.createAgent({ id: aid, runId, sessionId: p.session_id, type: str(p.agent_type), transcriptPath: subagentPath(aid, p.transcript_path, p.agent_transcript_path) });
+    // The stages an agent reports on (token attribution).
+    const stage = str(p.tool_input?.stage);
+    const resp = JSON.stringify(p.tool_response ?? '');
+    const failed = p.tool_response?.isError === true || resp.includes('ERROR:');
+    if (tool === `${MCP_PREFIX}complete_stage` && stage && !failed) store.reportNode(aid, stage.slice(0, 80));
   }
 
   function handle(p) {

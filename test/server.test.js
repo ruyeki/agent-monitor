@@ -39,12 +39,15 @@ test('REST: run list, detail, respond, stop and 404s', async () => {
     advance(s.store, 'first-run', 'gate1');
     const list = (await call(s, 'GET', '/api/runs')).body;
     assert.equal(list.length, 1);
-    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'ask', 'branch', 'createdAt', 'endedAt', 'id', 'maxRounds', 'note', 'repo', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
+    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'active', 'ask', 'branch', 'createdAt', 'endedAt', 'id', 'maxRounds', 'note', 'repo', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
     assert.deepEqual([list[0].status, list[0].textField, list[0].actions], ['waiting', true, [{ label: 'Agree spec' }, { label: 'Stop run' }]]);
 
     const d = (await call(s, 'GET', '/api/runs/first-run')).body;
-    assert.deepEqual(Object.keys(d).sort(), ['activity', 'agents', 'run', 'timeline', 'workflow']);
-    assert.equal(d.workflow.stages.length, 11);
+    assert.deepEqual(Object.keys(d).sort(), ['activity', 'agents', 'durationMs', 'nodes', 'run', 'timeline', 'visits', 'workflow']);
+    assert.equal(d.workflow.nodes.length, 18);
+    assert.deepEqual(d.visits.map((v) => [v.node, v.outcome]), [['frame', 'pass'], ['gate1', null]]);
+    assert.deepEqual([d.nodes.frame.visits, d.nodes.verify.visits], [1, 0]);
+    assert.equal(typeof d.durationMs, 'number');
     assert.ok(d.timeline.length >= 2);
 
     const bad = await call(s, 'POST', '/api/runs/first-run/respond', { action: 'Maybe' });
@@ -72,28 +75,29 @@ test('REST: workflow draft, publish, versions, load, reset', async () => {
     assert.equal(w.draft.baseVersion, 1);
 
     const broken = seedWorkflow();
-    broken.stages = broken.stages.filter((x) => x.id !== 'verify');
+    broken.nodes = broken.nodes.filter((x) => x.id !== 'verify');
     const saved = await call(s, 'PUT', '/api/workflow/draft', { workflow: broken });
     assert.equal(saved.status, 200);
     assert.ok(saved.body.errors.length > 0);
     const pub = await call(s, 'POST', '/api/workflow/publish', {});
     assert.equal(pub.status, 400);
     assert.ok(pub.body.errors.length > 0);
+    assert.ok(pub.body.errors.some((e) => e.edge === 'join>verify:*' && /goes to 'verify', which is not a node/.test(e.message)));
     assert.equal((await call(s, 'PUT', '/api/workflow/draft', { workflow: 5 })).status, 400);
 
     const fixed = seedWorkflow();
-    fixed.stages[2].name = 'Plan it';
+    fixed.nodes[2].name = 'Plan it';
     await call(s, 'PUT', '/api/workflow/draft', { workflow: fixed });
     assert.deepEqual((await call(s, 'POST', '/api/workflow/publish', {})).body, { version: 2 });
     const versions = (await call(s, 'GET', '/api/workflow/versions')).body;
-    assert.deepEqual(versions.map((v) => v.version), [2, 1]);
-    assert.equal((await call(s, 'GET', '/api/workflow/versions/1')).body.workflow.stages[2].name, 'Plan');
+    assert.deepEqual(versions.map((v) => [v.version, v.nodes]), [[2, 18], [1, 18]]);
+    assert.equal((await call(s, 'GET', '/api/workflow/versions/1')).body.workflow.nodes[2].name, 'Plan');
     assert.equal((await call(s, 'GET', '/api/workflow/versions/9')).status, 404);
     const loaded = (await call(s, 'POST', '/api/workflow/versions/1/load', {})).body;
-    assert.equal(loaded.workflow.stages[2].name, 'Plan');
+    assert.equal(loaded.workflow.nodes[2].name, 'Plan');
     assert.equal((await call(s, 'POST', '/api/workflow/versions/9/load', {})).status, 404);
     const reset = (await call(s, 'DELETE', '/api/workflow/draft', {})).body;
-    assert.equal(reset.workflow.stages[2].name, 'Plan it');
+    assert.equal(reset.workflow.nodes[2].name, 'Plan it');
   } finally { await s.close(); }
 });
 
@@ -208,7 +212,7 @@ test('MCP: tools through the SDK client', async () => {
 
     const wrong = await text('complete_stage', { run: 'mcp-run', stage: 'verify', outcome: 'pass' });
     assert.equal(wrong.isError, true);
-    assert.match(wrong.text, /^ERROR: Run is at stage 'frame', not 'verify'/);
+    assert.equal(wrong.text, "ERROR: Stage 'verify' is not active. Active: frame.");
 
     const gate = await text('complete_stage', { run: 'mcp-run', stage: 'frame', outcome: 'pass', note: 'spec ready' });
     assert.match(gate.text, /^RUN mcp-run · stage gate1 \(Gate 1: solution\) · round 0\/5 · status waiting\nWAITING ON RYAN: What's your solution\?\nACTIONS: Agree spec \| Stop run \(text allowed\)\nRun in the background: node ".*agent-monitor\.js" wait mcp-run/);
@@ -225,6 +229,13 @@ test('MCP: tools through the SDK client', async () => {
     assert.match((await text('get_workflow')).text, /^WORKFLOW v1\n1\. frame \(Frame\)/);
     assert.match((await text('get_workflow', { run: 'mcp-run' })).text, /^WORKFLOW v1/);
     assert.equal((await text('start_run', { title: '' })).isError, true);
+    const both = await text('complete_stage', { run: 'mcp-run', stage: 'plan', outcome: 'done' });
+    assert.match(both.text, /^RUN mcp-run · stage implement \(Implement\) \+ prep \(Verifier prep\) · round 0\/5 · status active\nPARALLEL: run these together, then report each with complete_stage\.\nNEXT: implement \(Implement\) — runner worker, model sonnet\nINSTRUCTIONS: .+\nNEXT: prep \(Verifier prep\) — runner verifier, model sonnet\nINSTRUCTIONS: .+$/);
+    assert.match((await text('get_run', { run: 'mcp-run' })).text, /stage implement \(Implement\) \+ prep/);
+    const one = await text('complete_stage', { run: 'mcp-run', stage: 'prep', outcome: 'done' });
+    assert.match(one.text, /^RUN mcp-run · stage implement \(Implement\) · round 0\/5 · status active\nNEXT: implement/);
+    const bad = await text('complete_stage', { run: 'mcp-run', stage: 'implement', outcome: 'stuck' });
+    assert.equal(bad.text, "ERROR: No edge from 'implement' for outcome 'stuck'. Valid outcomes: pass, done.");
     assert.ok((await call(s, 'GET', '/api/runs/mcp-run')).body.timeline.some((e) => e.note === 'halfway'));
   } finally { await client.close(); await s.close(); }
 });

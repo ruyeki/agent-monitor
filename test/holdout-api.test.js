@@ -15,7 +15,7 @@ test('AC6 first boot: published v1 equals seed, draft equals v1, no errors', asy
   const r = await S.api('GET', '/api/workflow');
   assert.equal(r.status, 200);
   assert.equal(r.json.published.version, 1);
-  assert.deepEqual(r.json.published.workflow.stages.map((s) => s.id), seed().stages.map((s) => s.id));
+  assert.deepEqual(r.json.published.workflow.nodes.map((s) => s.id), seed().nodes.map((s) => s.id));
   assert.deepEqual(r.json.draft.workflow, r.json.published.workflow);
   assert.equal(r.json.draft.baseVersion, 1);
   assert.deepEqual(r.json.draft.errors, []);
@@ -23,12 +23,12 @@ test('AC6 first boot: published v1 equals seed, draft equals v1, no errors', asy
 });
 
 test('AC6 PUT draft saves an invalid draft and reports its errors; publish then refuses with 400 errors', async () => {
-  const bad = seed(); bad.stages.find((s) => s.id === 'plan').runner = 'robot';
+  const bad = seed(); bad.nodes.find((s) => s.id === 'plan').runner = 'robot';
   const put = await S.api('PUT', '/api/workflow/draft', { body: { workflow: bad } });
   assert.equal(put.status, 200);
   assert.ok(put.json.errors.length >= 1);
   const got = await S.api('GET', '/api/workflow');
-  assert.equal(got.json.draft.workflow.stages.find((s) => s.id === 'plan').runner, 'robot');
+  assert.equal(got.json.draft.workflow.nodes.find((s) => s.id === 'plan').runner, 'robot');
   assert.ok(got.json.draft.errors.length >= 1);
   const pub = await S.api('POST', '/api/workflow/publish');
   assert.equal(pub.status, 400);
@@ -48,7 +48,7 @@ test('AC6 DELETE draft resets it to the latest published', async () => {
 
 test('AC6 publish a valid draft makes v2; versions list; load a version back into the draft', async () => {
   const v2 = seed();
-  v2.stages.find((s) => s.id === 'plan').instructions = 'Plan it, v2 text.';
+  v2.nodes.find((s) => s.id === 'plan').instructions = 'Plan it, v2 text.';
   v2.loop.maxRounds = 3;
   assert.equal((await S.api('PUT', '/api/workflow/draft', { body: { workflow: v2 } })).status, 200);
   const pub = await S.api('POST', '/api/workflow/publish');
@@ -59,7 +59,7 @@ test('AC6 publish a valid draft makes v2; versions list; load a version back int
   assert.equal(cur.json.published.workflow.loop.maxRounds, 3);
   const list = await S.api('GET', '/api/workflow/versions');
   assert.deepEqual(list.json.map((v) => v.version).sort(), [1, 2]);
-  assert.ok(list.json.every((v) => v.publishedAt && v.stages === seed().stages.length));
+  assert.ok(list.json.every((v) => v.publishedAt && v.nodes === seed().nodes.length));
   const one = await S.api('GET', '/api/workflow/versions/1');
   assert.equal(one.json.version, 1);
   assert.equal(one.json.workflow.loop.maxRounds, 5);
@@ -84,16 +84,18 @@ test('AC5 in-flight run keeps its pinned version after a publish; new runs get t
   const before = (await S.api('GET', `/api/runs/${idA}`)).json;
   const pinned = before.run.workflowVersion;
   const marker = seed();
-  marker.stages.find((s) => s.id === 'implement').instructions = 'MARKER-NEWEST-VERSION';
-  marker.stages.push({ id: 'extra', name: 'Extra', kind: 'step', runner: 'main', model: 'inherit', instructions: 'x', check: null, pushes: false });
+  marker.nodes.find((s) => s.id === 'implement').instructions = 'MARKER-NEWEST-VERSION';
+  marker.nodes.push({ id: 'extra', name: 'Extra', type: 'step', runner: 'main', model: 'inherit', instructions: 'x', pushes: false });
   // keep push guard valid: extra after pr is fine
+  marker.edges.find((e) => e.from === 'pr').to = 'extra';
+  marker.edges.push({ id: 'extra>done:done', from: 'extra', to: 'done', on: 'done' });
   await S.api('PUT', '/api/workflow/draft', { body: { workflow: marker } });
   const pub = await S.api('POST', '/api/workflow/publish');
   assert.equal(pub.status, 200);
   const afterRun = (await S.api('GET', `/api/runs/${idA}`)).json;
   assert.equal(afterRun.run.workflowVersion, pinned);
   assert.ok(!JSON.stringify(afterRun.workflow).includes('MARKER-NEWEST-VERSION'));
-  assert.ok(!afterRun.workflow.stages.some((s) => s.id === 'extra'));
+  assert.ok(!afterRun.workflow.nodes.some((s) => s.id === 'extra'));
   const gw = await M.call('get_workflow', { run: idA });
   assert.ok(!gw.text.includes('extra'));
   const gwNew = await M.call('get_workflow', {});
@@ -116,7 +118,7 @@ test('REST run summary, detail, respond, stop, wait', async () => {
   const list = await S.api('GET', '/api/runs');
   assert.equal(list.status, 200);
   const sum = list.json.find((r) => r.id === id);
-  for (const k of ['id', 'title', 'task', 'repo', 'branch', 'workflowVersion', 'stage', 'stageName', 'round', 'maxRounds', 'status', 'verdict', 'ask', 'actions', 'textField', 'note', 'createdAt', 'updatedAt', 'endedAt']) assert.ok(k in sum, 'summary has ' + k);
+  for (const k of ['id', 'title', 'task', 'active', 'repo', 'branch', 'workflowVersion', 'stage', 'stageName', 'round', 'maxRounds', 'status', 'verdict', 'ask', 'actions', 'textField', 'note', 'createdAt', 'updatedAt', 'endedAt']) assert.ok(k in sum, 'summary has ' + k);
   assert.equal(sum.stage, 'frame');
   assert.equal(sum.title, 'REST flow');
   assert.equal(sum.maxRounds, 5);

@@ -68,7 +68,8 @@ test('AC7 wrong stage and bad outcome and unknown run are isError with ERROR:', 
   let r = await M.call('complete_stage', { run: id, stage: 'verify', outcome: 'pass' });
   assert.equal(r.isError, true);
   assert.match(r.text, /^ERROR: /);
-  assert.match(r.text, /'frame'/);
+  assert.match(r.text, /'verify'/);
+  assert.match(r.text, /Active: frame/);
   r = await M.call('complete_stage', { run: id, stage: 'frame', outcome: 'bogus' });
   assert.equal(r.isError, true);
   r = await M.call('complete_stage', { run: 'no-such-run', stage: 'frame', outcome: 'pass' });
@@ -100,7 +101,7 @@ test('AC7 fail loop through MCP: fix rounds then decision then Resume, with roun
   const id = runIdOf((await M.call('start_run', { title: 'Loop flow' })).text);
   const go = async (stage, outcome, note) => M.call('complete_stage', { run: id, stage, outcome, note });
   await go('frame', 'pass'); await M.call('respond', { run: id, action: 'Agree spec', text: 's' });
-  await go('plan', 'pass'); await go('implement', 'pass');
+  await go('plan', 'pass'); await go('implement', 'pass'); await go('prep', 'pass');
   let r = await go('verify', 'fail', 'tests red');
   assert.match(lines(r.text)[0], /stage fix .* round 1\/5 · status active/);
   assert.match(r.text, /runner worker, model sonnet/);
@@ -121,6 +122,7 @@ test('AC7 regression goes to decision with the note as the ask', async () => {
   await M.call('respond', { run: id, action: 'Agree spec' });
   await M.call('complete_stage', { run: id, stage: 'plan', outcome: 'pass' });
   await M.call('complete_stage', { run: id, stage: 'implement', outcome: 'pass' });
+  await M.call('complete_stage', { run: id, stage: 'prep', outcome: 'pass' });
   const r = await M.call('complete_stage', { run: id, stage: 'verify', outcome: 'regression', note: 'broke login' });
   assert.ok(r.text.includes('WAITING ON RYAN: broke login'), r.text);
 });
@@ -129,7 +131,7 @@ test('AC7 full walk to done: only the RUN line with status done', async () => {
   const id = runIdOf((await M.call('start_run', { title: 'Full walk' })).text);
   const c = (stage, outcome = 'pass') => M.call('complete_stage', { run: id, stage, outcome });
   await c('frame'); await M.call('respond', { run: id, action: 'Agree spec' });
-  for (const s of ['plan', 'implement', 'verify', 'review', 'whitehat', 'commit', 'report']) await c(s);
+  for (const s of ['plan', 'implement', 'prep', 'verify', 'review', 'whitehat', 'commit', 'report']) await c(s);
   let r = await M.call('respond', { run: id, action: 'Accept', text: '' });
   assert.match(lines(r.text)[0], /stage pr .* status active/);
   r = await c('pr');
@@ -177,7 +179,30 @@ test('AC7 list_runs puts active/waiting runs first with short lines', async () =
 test('AC7 get_workflow without run returns the published workflow text naming stages', async () => {
   const r = await M.call('get_workflow', {});
   assert.equal(r.isError, false);
-  for (const id of ['frame', 'gate1', 'plan', 'implement', 'verify', 'review', 'whitehat', 'commit', 'report', 'gate2', 'pr']) assert.ok(r.text.includes(id), id);
+  for (const id of ['frame', 'gate1', 'plan', 'split', 'implement', 'prep', 'join', 'verify', 'fix', 'review', 'whitehat', 'commit', 'report', 'gate2', 'pr', 'decision', 'done', 'stopped']) assert.ok(r.text.includes(id), id);
+  for (const l of ['verify -fail-> fix (fix round)', 'gate2 -Accept-> pr', 'split -*-> prep']) assert.ok(lines(r.text).includes(l), l);
+  assert.ok(lines(r.text).indexOf('Edges:') > lines(r.text).findIndex((l) => l.startsWith('18. ')), 'nodes, then edges');
+});
+
+test('AC6 two active nodes: both listed with runner, model and instructions, and a PARALLEL line', async () => {
+  const id = runIdOf((await M.call('start_run', { title: 'Parallel flow' })).text);
+  await M.call('complete_stage', { run: id, stage: 'frame', outcome: 'pass' });
+  await M.call('respond', { run: id, action: 'Agree spec' });
+  const r = await M.call('complete_stage', { run: id, stage: 'plan', outcome: 'done' });
+  const l = lines(r.text);
+  assert.equal(l[0], `RUN ${id} · stage implement (Implement) + prep (Verifier prep) · round 0/5 · status active`);
+  assert.ok(l.includes('PARALLEL: run these together, then report each with complete_stage.'), r.text);
+  assert.deepEqual(l.filter((x) => x.startsWith('NEXT:')), ['NEXT: implement (Implement) — runner worker, model sonnet', 'NEXT: prep (Verifier prep) — runner verifier, model sonnet']);
+  assert.equal(l.filter((x) => x.startsWith('INSTRUCTIONS: ')).length, 2);
+  assert.match((await M.call('get_run', { run: id })).text, /PARALLEL:/);
+  const half = await M.call('complete_stage', { run: id, stage: 'prep', outcome: 'pass' });
+  assert.ok(!half.text.includes('PARALLEL'), half.text);
+  assert.match(lines(half.text)[0], /stage implement \(Implement\) · round/);
+  const err = await M.call('complete_stage', { run: id, stage: 'implement', outcome: 'regression' });
+  assert.equal(err.isError, true);
+  assert.match(err.text, /Valid outcomes: pass, done/);
+  const joined = await M.call('complete_stage', { run: id, stage: 'implement', outcome: 'pass' });
+  assert.match(lines(joined.text)[0], /stage verify \(Verify\)/);
 });
 
 test('AC7 stateless: a second independent client works and sees the same runs', async () => {

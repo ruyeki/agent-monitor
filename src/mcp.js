@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { describeStage } from './engine.js';
+import { describeNode } from './engine.js';
 
 const BIN = fileURLToPath(new URL('../bin/agent-monitor.js', import.meta.url));
 
@@ -11,15 +11,20 @@ const BIN = fileURLToPath(new URL('../bin/agent-monitor.js', import.meta.url));
 export function describeRun(store, runId) {
   const r = store.getRun(runId);
   const s = store.summary(r);
-  const lines = [`RUN ${s.id} · stage ${s.stage} (${s.stageName}) · round ${s.round}/${s.maxRounds} · status ${s.status}`];
+  const here = s.active.length ? s.active : [{ id: s.stage, name: s.stageName }];
+  const lines = [`RUN ${s.id} · stage ${here.map((a) => `${a.id} (${a.name})`).join(' + ')} · round ${s.round}/${s.maxRounds} · status ${s.status}`];
   if (s.status === 'waiting') {
     lines.push(`WAITING ON RYAN: ${s.ask}`);
     lines.push(`ACTIONS: ${s.actions.map((a) => a.label).join(' | ')}${s.textField ? ' (text allowed)' : ''}`);
     lines.push(`Run in the background: node "${BIN}" wait ${s.id}`);
   } else if (s.status === 'active') {
-    const d = describeStage(store.version(s.workflowVersion), s.stage, r);
-    lines.push(`NEXT: ${d.id} (${d.name}) — runner ${d.runner}, model ${d.model}`);
-    lines.push(`INSTRUCTIONS: ${d.instructions}`);
+    const wf = store.version(s.workflowVersion);
+    if (s.active.length > 1) lines.push('PARALLEL: run these together, then report each with complete_stage.');
+    for (const a of s.active) {
+      const d = describeNode(wf, a.id);
+      lines.push(`NEXT: ${d.id} (${d.name}) — runner ${d.runner}, model ${d.model}`);
+      lines.push(`INSTRUCTIONS: ${d.instructions}`);
+    }
   }
   return lines.join('\n');
 }
@@ -28,10 +33,13 @@ const ok = (t) => ({ content: [{ type: 'text', text: t }] });
 const fail = (t) => ({ isError: true, content: [{ type: 'text', text: `ERROR: ${t}` }] });
 const outcome = (store, res) => (res.error ? fail(res.error) : ok(describeRun(store, res.run.id)));
 
+// Nodes, then edges as `from -on-> to`.
 function workflowText(wf, version) {
-  const rows = wf.stages.map((s, i) => `${i + 1}. ${s.id} (${s.name}) — ${s.kind}${s.kind === 'step' ? `, runner ${s.runner}, model ${s.model}` : `, asks "${s.ask}"`}${s.check ? `, check (on fail: ${s.check.onFail})` : ''}${s.pushes ? ', pushes' : ''}`);
-  const { loop } = wf;
-  return [`WORKFLOW v${version}`, ...rows, `Fix loop: up to ${loop.maxRounds} rounds, then back to ${loop.afterFix}; resume at ${loop.resumeAt} after a decision.`].join('\n');
+  const nodes = wf.nodes.map((n, i) => `${i + 1}. ${n.id} (${n.name}) — ${n.type}`
+    + `${n.type === 'step' || n.type === 'check' ? `, runner ${n.runner}, model ${n.model}` : ''}`
+    + `${n.type === 'gate' ? `, asks "${n.ask}", actions ${n.actions.map((a) => a.label).join(' | ')}` : ''}${n.pushes ? ', pushes' : ''}`);
+  const edges = wf.edges.map((e) => `${e.from} -${e.on}-> ${e.to}${e.fixRound ? ' (fix round)' : ''}`);
+  return [`WORKFLOW v${version}`, ...nodes, 'Edges:', ...edges, `Fix rounds: up to ${wf.loop.maxRounds}, then the decision '${wf.loop.decision}'.`].join('\n');
 }
 
 function buildServer(store) {

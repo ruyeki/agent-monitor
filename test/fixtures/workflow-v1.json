@@ -1,0 +1,155 @@
+{
+  "stages": [
+    {
+      "id": "frame",
+      "name": "Frame",
+      "kind": "step",
+      "runner": "main",
+      "model": "inherit",
+      "instructions": "Investigate the task read-only and show Ryan the problem card. Do not agree a spec here: Gate 1 asks for his solution. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": false
+    },
+    {
+      "id": "gate1",
+      "name": "Gate 1: solution",
+      "kind": "gate",
+      "runner": "main",
+      "model": "inherit",
+      "instructions": "",
+      "check": null,
+      "pushes": false,
+      "ask": "What's your solution?",
+      "actions": [
+        {
+          "label": "Agree spec",
+          "goto": "next"
+        },
+        {
+          "label": "Stop run",
+          "goto": "stop"
+        }
+      ],
+      "textField": true
+    },
+    {
+      "id": "plan",
+      "name": "Plan",
+      "kind": "step",
+      "runner": "lead",
+      "model": "opus",
+      "instructions": "After Gate 1, write the agreed spec into the task and spawn the lead with RUN: <id> in its brief. Write one fact sheet with the files, contracts and gotchas. Plan the work in small pieces. Agents read the fact sheet instead of exploring again. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": false
+    },
+    {
+      "id": "implement",
+      "name": "Implement",
+      "kind": "step",
+      "runner": "worker",
+      "model": "sonnet",
+      "instructions": "Run the worker and the verifier prep in parallel, in the foreground. The worker builds exactly the spec in its scope and never commits. The verifier writes the baseline and holdout tests. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": false
+    },
+    {
+      "id": "verify",
+      "name": "Verify",
+      "kind": "step",
+      "runner": "verifier",
+      "model": "sonnet",
+      "instructions": "Run the targeted tests, not the full suite. Report pass, or fail with the failing behaviour. Report a regression as regression. Never edit product code. When it is done, call complete_stage with the outcome.",
+      "check": {
+        "onFail": "fix"
+      },
+      "pushes": false
+    },
+    {
+      "id": "review",
+      "name": "Review",
+      "kind": "step",
+      "runner": "lead",
+      "model": "inherit",
+      "instructions": "Read the diff against the spec. Run the ponytail debloat pass and keep behaviour the same. Report any real problem as a finding. Never remove validation, error handling, security checks or tests. When it is done, call complete_stage with the outcome.",
+      "check": {
+        "onFail": "fix"
+      },
+      "pushes": false
+    },
+    {
+      "id": "whitehat",
+      "name": "White-hat",
+      "kind": "step",
+      "runner": "white-hat",
+      "model": "sonnet",
+      "instructions": "Attack the diff: injection, path traversal, missing access checks, resource abuse, secrets in logs. Report only findings with a proven attack path. Skip it for copy, CSS or docs changes. When it is done, call complete_stage with the outcome.",
+      "check": {
+        "onFail": "fix"
+      },
+      "pushes": false
+    },
+    {
+      "id": "commit",
+      "name": "Commit",
+      "kind": "step",
+      "runner": "lead",
+      "model": "inherit",
+      "instructions": "Move the verifier tests into the repo test folder. Commit locally with a message that explains why. Never push and never commit secrets. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": false
+    },
+    {
+      "id": "report",
+      "name": "Report",
+      "kind": "step",
+      "runner": "lead",
+      "model": "inherit",
+      "instructions": "Check each acceptance criterion against evidence. Write the six-part report: what was done, how it works, code changes, verification, review rounds, open concerns. Never claim a test passed unless it ran. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": false
+    },
+    {
+      "id": "gate2",
+      "name": "Gate 2: accept",
+      "kind": "gate",
+      "runner": "main",
+      "model": "inherit",
+      "instructions": "",
+      "check": null,
+      "pushes": false,
+      "ask": "Accept, push and open the PR?",
+      "actions": [
+        {
+          "label": "Accept",
+          "goto": "next"
+        },
+        {
+          "label": "Request changes",
+          "goto": "plan"
+        },
+        {
+          "label": "Stop run",
+          "goto": "stop"
+        }
+      ],
+      "textField": true
+    },
+    {
+      "id": "pr",
+      "name": "Open PR",
+      "kind": "step",
+      "runner": "main",
+      "model": "inherit",
+      "instructions": "Push the branch, and only that branch. Open a draft PR with a clear title, the summary, the verification results and the open concerns. Put the PR link in the note. When it is done, call complete_stage with the outcome.",
+      "check": null,
+      "pushes": true
+    }
+  ],
+  "loop": {
+    "maxRounds": 5,
+    "fixRunner": "worker",
+    "fixModel": "sonnet",
+    "afterFix": "verify",
+    "resumeAt": "plan"
+  }
+}
