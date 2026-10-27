@@ -1,0 +1,1 @@
+{"type":"assistant","sessionId":"s1","agentId":"a1","timestamp":"2026-10-01T12:10:00.000Z","message":{"id":"msg_S1","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"SECRET-SUBAGENT-TEXT"}],"usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":0,"cache_read_input_tokens":500}}}
