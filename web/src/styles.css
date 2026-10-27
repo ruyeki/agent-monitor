@@ -36,7 +36,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.danger { color: var(--danger); border-color: var(--danger); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.app-head { display: flex; align-items: center; gap: 20px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.app-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .tabs { display: flex; gap: 4px; flex: 1; }
 .tabs a { color: var(--text); text-decoration: none; padding: 5px 12px; border-radius: 6px; }
 .tabs a.active { background: var(--accent); color: var(--accent-text); }
@@ -116,3 +116,45 @@ h4 { margin: 12px 0 4px; font-size: 13px; }
 .run-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; flex: 1; min-height: 0; }
 .agent-list li { margin: 8px 0; }
 .run-side .card { margin: 8px 0; }
+
+/* Stats page. Chart series: categorical slots 1-8 of the dataviz palette, stepped for the dark surface. */
+:root {
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948; --series-other: #8a93a3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #7b8494;
+  }
+}
+:root[data-theme='dark'] {
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; --series-other: #7b8494;
+}
+.period-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.period-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.period-card h3 { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.period-card p { margin: 2px 0; }
+.period-card .big { font-size: 28px; font-weight: 700; line-height: 1.1; }
+.breakdown { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 8px 0; }
+.breakdown dt { color: var(--muted); }
+.breakdown dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.chart-head h2 { margin-right: auto; }
+.toggle { display: inline-flex; }
+.toggle button { border-radius: 0; margin-left: -1px; }
+.toggle button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.toggle button:last-child { border-radius: 0 6px 6px 0; }
+.toggle button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; margin: 4px 0; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.chart-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+.chart-wrap .grid { stroke: var(--border); stroke-width: 1; }
+.chart-wrap .axis { fill: var(--muted); font-size: 11px; }
+.chart-wrap [data-hit]:hover, .chart-wrap [data-hit]:focus { fill: var(--text); fill-opacity: 0.07; outline: none; }
+.tooltip { position: absolute; top: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; pointer-events: none; font-size: 12px; z-index: 2; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.node-row td { background: var(--surface-2); }
+.stats-page input[type='number'] { width: 90px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; color: var(--text); font: inherit; }

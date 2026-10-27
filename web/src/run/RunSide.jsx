@@ -1,11 +1,8 @@
 import { Ago, Idle } from '../Ago.jsx';
-import { formatDuration, formatTokens } from '../lib/format.js';
+import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
 import { StatusBadge } from '../RunsTable.jsx';
 import { StopButton } from '../StopButton.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
-
-const sumTokens = (agents) =>
-  agents.reduce((n, a) => n + (a.tokens?.input || 0) + (a.tokens?.output || 0) + (a.tokens?.cacheCreation || 0) + (a.tokens?.cacheRead || 0), 0);
 
 function ActiveAgents({ agents }) {
   const running = agents.filter((a) => a.status === 'running');
@@ -32,12 +29,32 @@ function ActiveAgents({ agents }) {
   );
 }
 
+// Run token figures: the total's breakdown, the main session apart from the stages, and the estimate.
+function RunTokens({ tokens }) {
+  const t = tokens.total || {};
+  return (
+    <div className="run-tokens">
+      <p className="muted">
+        Input {formatTokens(t.input)} · Output {formatTokens(t.output)} · Cache write {formatTokens(t.cacheWrite)} · Cache read {formatTokens(t.cacheRead)}
+      </p>
+      <p>
+        Main session (not on any stage): <strong>{formatTokens(tokens.main?.total)}</strong>
+      </p>
+      {tokens.unattributed?.total > 0 && (
+        <p>
+          Unattributed: <strong>{formatTokens(tokens.unattributed.total)}</strong>
+        </p>
+      )}
+      <p className="muted">≈ {formatCost(t.cost)} API-equivalent (estimate)</p>
+    </div>
+  );
+}
+
 // Side panel of the run view: what is happening now, the timeline and the totals.
 export function RunSide({ detail, onChanged }) {
   const { run, timeline = [], agents = [], activity = [] } = detail;
   const last = activity[0];
-  const total = detail.tokens?.total ?? sumTokens(agents);
-  return (
+    return (
     <aside className="run-side" aria-label="Run details">
       <section aria-label="Status">
         <h3>Status</h3>
@@ -69,8 +86,9 @@ export function RunSide({ detail, onChanged }) {
       <section aria-label="Totals">
         <h3>Totals</h3>
         <p>
-          Tokens: <strong>{formatTokens(total)}</strong> · Duration: <strong>{formatDuration(detail.durationMs)}</strong>
+          Tokens: <strong>{formatTokens(detail.tokens.total.total)}</strong> · Duration: <strong>{formatDuration(detail.durationMs)}</strong>
         </p>
+        <RunTokens tokens={detail.tokens} />
       </section>
       <section aria-label="Timeline">
         <h3>Timeline</h3>

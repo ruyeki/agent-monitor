@@ -35,3 +35,10 @@ export function formatDuration(ms) {
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
+
+// 12.345 -> "$12.35"; 0.004 -> "<$0.01"; 0 -> "$0.00"
+export function formatCost(n) {
+  const v = Number(n) || 0;
+  if (v > 0 && v < 0.01) return '<$0.01';
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}

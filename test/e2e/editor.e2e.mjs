@@ -109,6 +109,40 @@ await check('run view: side panel shows the ask, totals and timeline; responding
   ok(await until(async () => (await fnode('gate1').getAttribute('class')).includes('visited'), 3000), 'gate1 was not marked visited');
 });
 
+// ---- Stats
+await check('stats: nav has Stats; the page shows period cards, the chart, versions and prices', async () => {
+  await page.goto(`${base}/#/`);
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+  ok((await nav.getByRole('link').allInnerTexts()).join() === 'Monitor,Workflow,Stats', 'nav is not Monitor,Workflow,Stats');
+  await nav.getByRole('link', { name: 'Stats' }).click();
+  await page.waitForURL(/#\/stats$/);
+  await page.getByRole('region', { name: 'Usage statistics' }).waitFor({ timeout: 8000 });
+  const cards = page.getByRole('article');
+  await cards.first().waitFor({ timeout: 8000 });
+  ok(await cards.count() === 4, 'expected four period cards');
+  ok(/API-equivalent \(estimate\)/.test(await cards.first().innerText()), 'no estimate label on the card');
+  await page.getByRole('button', { name: '30 days' }).click();
+  ok(await page.getByRole('button', { name: '30 days' }).getAttribute('aria-pressed') === 'true', '30 days toggle not pressed');
+  await page.getByRole('img', { name: /Stacked bars of daily tokens/ }).waitFor({ timeout: 3000 });
+  await page.getByRole('region', { name: 'Workflow versions' }).waitFor({ timeout: 3000 });
+  await page.getByRole('region', { name: 'Prices' }).waitFor({ timeout: 3000 });
+  ok(/claude-api skill, 2026-10-06; estimates only/.test(await page.getByRole('region', { name: 'Prices' }).innerText()), 'no price source note');
+  await page.screenshot({ path: path.join(SHOTS, '06-stats.png') });
+});
+
+await check('stats: no horizontal page scroll at 390 px wide', async () => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  try {
+    for (const hash of ['#/stats', '#/']) {
+      await page.goto(`${base}/${hash}`);
+      await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 3000 });
+      await page.waitForTimeout(500);
+      const w = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.querySelector('main').scrollWidth, document.querySelector('main').clientWidth]);
+      ok(w[0] <= w[1] && w[2] <= w[3], `${hash} scrolls sideways: ${w.join(' / ')}`);
+    }
+  } finally { await page.setViewportSize({ width: 1500, height: 950 }); }
+});
+
 // ---- Editor
 const connectNodes = async (from, to) => {
   const a = await node(from).locator('.react-flow__handle.source').boundingBox();

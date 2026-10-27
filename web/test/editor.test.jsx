@@ -15,7 +15,7 @@ beforeEach(() => {
   fetchMock = vi.fn((url, opts = {}) => {
     const m = opts.method ?? 'GET';
     if (url === '/api/workflow' && m === 'GET') return res(state);
-    if (url === '/api/workflow/versions') return res([{ version: 3, publishedAt: '2026-10-20T10:00:00Z', nodes: 5 }]);
+    if (url === '/api/workflow/versions') return res([{ version: 3, publishedAt: '2026-10-20T10:00:00Z', nodes: 5, stats: { finishedRuns: 4, avgTokens: 2_500_000, avgDurationMs: 125_000 } }, { version: 2, publishedAt: '2026-10-10T10:00:00Z', nodes: 4, stats: { finishedRuns: 0, avgTokens: 0, avgDurationMs: 0 } }]);
     if (url === '/api/workflow/draft' && m === 'PUT') {
       puts.push(JSON.parse(opts.body).workflow);
       return res({ workflow: puts.at(-1), errors: [] });
@@ -150,5 +150,16 @@ describe('WorkflowEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Versions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Load v3 into draft' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u, o]) => u === '/api/workflow/versions/3/load' && o?.method === 'POST')).toBe(true));
+  });
+
+  it('Versions shows finished runs, average tokens and duration per version', async () => {
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'Versions' }));
+    const rows = screen.getAllByRole('row');
+    const v3 = rows.find((r) => r.textContent.startsWith('v3')).textContent;
+    expect(v3).toContain('2.5M');
+    expect(v3).toContain('2m 5s');
+    const v2 = rows.find((r) => r.textContent.startsWith('v2')).textContent;
+    expect(v2).toMatch(/v2.*4.*0--/);
   });
 });

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 
-// '#/' monitor, '#/workflow' editor, '#/runs/<id>' run view. Anything else falls back to the monitor.
+// '#/' monitor, '#/workflow' editor, '#/runs/<id>' run view, '#/stats' usage. Anything else falls back to the monitor.
 export function parseRoute(hash) {
   const path = (hash || '').replace(/^#/, '');
   if (path === '/workflow') return { name: 'workflow' };
+  if (path === '/stats') return { name: 'stats' };
   const m = /^\/runs\/([^/]+)$/.exec(path);
   if (m) {
     try {

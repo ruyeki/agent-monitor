@@ -4,6 +4,7 @@ import { useLive, useTheme } from './hooks.js';
 import { splitRuns } from './lib/format.js';
 import { runHref, useRoute } from './lib/route.js';
 import { WorkflowEditor } from './editor/WorkflowEditor.jsx';
+import { StatsPage } from './stats/StatsPage.jsx';
 import { RunsTable } from './RunsTable.jsx';
 import { RunView } from './run/RunView.jsx';
 import { WaitingCards } from './WaitingCards.jsx';
@@ -12,6 +13,7 @@ const LIVE_LABEL = { live: 'Live', connecting: 'Connecting', reconnecting: 'Reco
 const NAV = [
   ['monitor', '#/', 'Monitor'],
   ['workflow', '#/workflow', 'Workflow'],
+  ['stats', '#/stats', 'Stats'],
 ];
 
 const openRun = (id) => {
@@ -84,8 +86,9 @@ export default function App() {
           Theme: {theme}
         </button>
       </header>
-      <main className={route.name === 'monitor' ? '' : 'full'}>
+      <main className={route.name === 'monitor' || route.name === 'stats' ? '' : 'full'}>
         {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
+        {route.name === 'stats' && <StatsPage tick={tick} />}
         {route.name === 'run' && <RunView key={route.id} id={route.id} tick={tick} />}
         {route.name === 'monitor' && <Monitor runs={runs} loadError={loadError} onChanged={refreshAll} />}
       </main>

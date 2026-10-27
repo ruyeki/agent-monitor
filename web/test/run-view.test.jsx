@@ -7,6 +7,8 @@ const now = Date.parse('2026-10-27T12:00:00Z');
 const iso = (ms) => new Date(ms).toISOString();
 const res = (body, ok = true) => Promise.resolve({ ok, status: ok ? 200 : 404, json: () => Promise.resolve(body) });
 
+const tk = (input, output = 0, cacheWrite = 0, cacheRead = 0, cost = 0) => ({ input, output, cacheWrite, cacheRead, total: input + output + cacheWrite + cacheRead, cost });
+
 const detail = (over = {}) => ({
   run: {
     id: 'my-run', title: 'My run', stage: 'verify', stageName: 'VERIFY', round: 1, maxRounds: 5, status: 'active', ask: null, actions: [], textField: false,
@@ -15,13 +17,14 @@ const detail = (over = {}) => ({
   workflow: sample(),
   timeline: [{ at: iso(now - 5000), kind: 'stage', stage: 'plan', round: 0, note: 'hello' }],
   agents: [
-    { id: 'a1', type: 'worker', description: 'build it', model: 'sonnet', status: 'running', lastTool: 'Bash', lastSummary: 'npm test', lastActivityAt: iso(now - 7000), tokens: { input: 1000, output: 200, cacheCreation: 10, cacheRead: 40 } },
-    { id: 'a2', type: 'lead', model: 'opus', status: 'finished', tokens: { input: 5000, output: 0, cacheCreation: 0, cacheRead: 0 } },
+    { id: 'a1', type: 'worker', description: 'build it', model: 'sonnet', status: 'running', lastTool: 'Bash', lastSummary: 'npm test', lastActivityAt: iso(now - 7000), tokens: tk(1000, 200, 10, 40) },
+    { id: 'a2', type: 'lead', model: 'opus', status: 'finished', tokens: tk(5000) },
   ],
   activity: [{ at: iso(now - 1000), agentId: 'a1', event: 'tool', tool: 'Bash', summary: 'npm test' }],
   visits: [],
   nodes: { plan: { visits: 2, durationMs: 5000 }, verify: { visits: 1, durationMs: 1000 } },
   durationMs: 65_000,
+  tokens: { nodes: tk(6250), main: tk(0), unattributed: tk(0), total: tk(6250) },
   ...over,
 });
 
@@ -80,15 +83,28 @@ describe('RunView', () => {
     expect(agents.queryByText('lead')).toBeNull();
     expect(within(screen.getByRole('region', { name: 'Last activity' })).getByText('npm test')).toBeTruthy();
     const totals = screen.getByRole('region', { name: 'Totals' }).textContent;
-    expect(totals).toContain('Tokens: 6.3k'); // sum of agent tokens: 1250 + 5000
+    expect(totals).toContain('Tokens: 6.3k'); // the run total from detail.tokens
     expect(totals).toContain('Duration: 1m 5s');
     expect(within(screen.getByRole('region', { name: 'Timeline' })).getByText('hello')).toBeTruthy();
   });
 
-  it('uses detail.tokens.total when present', async () => {
-    current = detail({ tokens: { total: 2_500_000 } });
-    render(<RunView id="my-run" />);
+  it('run tokens: total with breakdown, main session shown separately, unattributed only when > 0, estimate label', async () => {
+    const t = (input, output, cacheWrite, cacheRead, cost = 0) => ({ input, output, cacheWrite, cacheRead, total: input + output + cacheWrite + cacheRead, cost });
+    current = detail({
+      tokens: { nodes: t(1_000_000, 500_000, 0, 0), main: t(100_000, 0, 0, 0), unattributed: t(0, 0, 0, 0), total: t(1_100_000, 1_400_000, 0, 0, 12.5) },
+    });
+    const { unmount } = render(<RunView id="my-run" />);
     await waitFor(() => expect(screen.getByRole('region', { name: 'Totals' }).textContent).toContain('2.5M'));
+    const totals = screen.getByRole('region', { name: 'Totals' }).textContent;
+    expect(totals).toContain('Input 1.1M');
+    expect(totals).toContain('Output 1.4M');
+    expect(totals).toContain('Main session (not on any stage): 100k');
+    expect(totals).not.toContain('Unattributed');
+    expect(totals).toContain('≈ $12.50 API-equivalent (estimate)');
+    unmount();
+    current = detail({ tokens: { nodes: t(1, 0, 0, 0), main: t(0, 0, 0, 0), unattributed: t(3000, 0, 0, 0), total: t(3001, 0, 0, 0) } });
+    render(<RunView id="my-run" />);
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Totals' }).textContent).toContain('Unattributed: 3.0k'));
   });
 
   it('waiting run: shows the ask with its action buttons and responds', async () => {

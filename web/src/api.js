@@ -31,3 +31,7 @@ export const discardDraft = () => send('DELETE', '/api/workflow/draft');
 export const publishDraft = () => post('/api/workflow/publish', {});
 export const getVersions = () => request('/api/workflow/versions');
 export const loadVersion = (v) => post(`/api/workflow/versions/${encodeURIComponent(v)}/load`, {});
+export const getUsageStats = (days) => request(`/api/stats/usage?days=${days}`);
+export const getVersionStats = () => request('/api/stats/versions');
+export const getPrices = () => request('/api/prices');
+export const putPrices = (prices) => send('PUT', '/api/prices', { prices });

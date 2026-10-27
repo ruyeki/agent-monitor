@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDuration, formatTokens } from '../lib/format.js';
 
 const STATUS_TEXT = { saved: 'Draft — saved', unsaved: 'Draft — unsaved', saving: 'Draft — saving…', error: 'Draft — save failed' };
 
@@ -29,6 +30,9 @@ export function TopBar({ published, status, versions, onPublish, onDiscard, onLo
                 <th>Version</th>
                 <th>Published</th>
                 <th>Nodes</th>
+                <th>Finished runs</th>
+                <th>Avg tokens</th>
+                <th>Avg duration</th>
                 <th />
               </tr>
             </thead>
@@ -38,6 +42,9 @@ export function TopBar({ published, status, versions, onPublish, onDiscard, onLo
                   <td>v{v.version}</td>
                   <td>{new Date(v.publishedAt).toLocaleString()}</td>
                   <td>{v.nodes}</td>
+                  <td>{v.stats?.finishedRuns ?? 0}</td>
+                  <td>{v.stats?.finishedRuns ? formatTokens(v.stats.avgTokens) : '-'}</td>
+                  <td>{v.stats?.finishedRuns ? formatDuration(v.stats.avgDurationMs) : '-'}</td>
                   <td>
                     <button type="button" aria-label={`Load v${v.version} into draft`} onClick={() => onLoadVersion(v.version)}>
                       Load into draft
