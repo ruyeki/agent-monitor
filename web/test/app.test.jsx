@@ -1,8 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { Idle } from '../src/Ago.jsx';
-import { RunDetail } from '../src/RunDetail.jsx';
 import { RunsTable } from '../src/RunsTable.jsx';
 import { WaitingCard } from '../src/WaitingCards.jsx';
 
@@ -73,73 +72,6 @@ describe('RunsTable', () => {
     fireEvent.click(row);
     fireEvent.keyDown(row, { key: 'Enter' });
     expect(onSelect).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('RunDetail', () => {
-  const workflow = {
-    loop: { fixRunner: 'worker' },
-    stages: [
-      { id: 'frame', name: 'Frame', kind: 'step', runner: 'main' },
-      { id: 'plan', name: 'Plan', kind: 'step', runner: 'lead' },
-      { id: 'build', name: 'Build', kind: 'step', runner: 'worker' },
-    ],
-  };
-  const detail = (over = {}) => ({
-    run: { ...run, status: 'active', stage: 'plan' },
-    workflow,
-    timeline: [{ at: iso(now - 5000), kind: 'stage', stage: 'frame', round: 0, note: 'hello\nworld' }],
-    agents: [
-      {
-        id: 'a1',
-        type: 'worker',
-        model: 'sonnet',
-        status: 'running',
-        lastTool: 'Bash',
-        lastSummary: 'npm test',
-        lastActivityAt: iso(now - 7000),
-        toolCalls: 4,
-        errors: 1,
-        waitingPermission: true,
-        tokens: { input: 1200, output: 300, cacheCreation: 10, cacheRead: 40 },
-      },
-    ],
-    activity: [{ at: iso(now - 1000), agentId: 'a1', event: 'tool', tool: 'Bash', summary: 'npm test' }],
-    ...over,
-  });
-
-  it('map highlights the current stage and marks visited ones', () => {
-    const { container } = render(<RunDetail detail={detail()} />);
-    expect(container.querySelector('.node.current').getAttribute('data-stage')).toBe('plan');
-    expect(container.querySelector('[data-stage="frame"]').className).toContain('visited');
-    expect(container.querySelector('[data-stage="build"]').className).not.toContain('visited');
-  });
-
-  it('renders agent live fields', () => {
-    render(<RunDetail detail={detail()} />);
-    expect(screen.getByText('7s')).toBeTruthy();
-    expect(screen.getByText('waiting for permission')).toBeTruthy();
-    expect(screen.getByText('1.2k / 300 / 50')).toBeTruthy();
-  });
-
-  it('stop: cancel does nothing, confirm posts stop', async () => {
-    const onChanged = vi.fn();
-    render(<RunDetail detail={detail()} onChanged={onChanged} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-    expect(screen.getByText('Stop run my-run?')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-    fireEvent.click(within(screen.getByRole('group')).getByRole('button', { name: 'Confirm' }));
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/runs/my-run/stop');
-    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-  });
-
-  it('Stop is disabled for ended runs', () => {
-    render(<RunDetail detail={detail({ run: { ...run, status: 'done', stage: 'done' } })} />);
-    expect(screen.getByRole('button', { name: 'Stop' }).disabled).toBe(true);
   });
 });
 

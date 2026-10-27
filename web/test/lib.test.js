@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { formatTokens, splitRuns } from '../src/lib/format.js';
-import { buildMap } from '../src/lib/map.js';
+import { formatDuration, formatTokens, splitRuns } from '../src/lib/format.js';
+import { parseRoute, runHref } from '../src/lib/route.js';
 import { idleTime, relativeTime } from '../src/lib/time.js';
 
 describe('time helpers', () => {
@@ -31,32 +31,24 @@ describe('format', () => {
   });
 });
 
-describe('buildMap', () => {
-  const wf = {
-    loop: { fixRunner: 'worker' },
-    stages: [
-      { id: 'frame', name: 'Frame', kind: 'step', runner: 'main' },
-      { id: 'gate1', name: 'Gate', kind: 'gate' },
-      { id: 'impl', name: 'Implement', kind: 'step', runner: 'worker' },
-      { id: 'verify', name: 'Verify', kind: 'step', runner: 'verifier', check: { onFail: 'fix' } },
-    ],
-  };
-  const timeline = [
-    { kind: 'stage', stage: 'frame' },
-    { kind: 'stage', stage: 'gate1' },
-    { kind: 'stage', stage: 'impl' },
-    { kind: 'log', stage: 'verify' },
-  ];
-  it('orders columns, derives lanes, marks current and visited', () => {
-    const m = buildMap(wf, { stage: 'impl', status: 'active', round: 1, maxRounds: 5 }, timeline);
-    expect(m.columns.map((c) => c.id)).toEqual(['frame', 'gate1', 'impl', 'verify', 'done']);
-    expect(m.lanes).toEqual(['main', 'you', 'worker', 'verifier']);
-    expect(m.columns.filter((c) => c.current).map((c) => c.id)).toEqual(['impl']);
-    expect(m.columns.filter((c) => c.visited).map((c) => c.id)).toEqual(['frame', 'gate1']);
-    expect(m.side.map((s) => s.id)).toEqual(['fix', 'decision']);
+describe('formatDuration', () => {
+  it('formats spans and missing values', () => {
+    expect(formatDuration(65_000)).toBe('1m 5s');
+    expect(formatDuration(4000)).toBe('4s');
+    expect(formatDuration(3 * 3600_000 + 120_000)).toBe('3h 2m');
+    expect(formatDuration(null)).toBe('-');
   });
-  it('highlights fix as a side node and done at the end', () => {
-    expect(buildMap(wf, { stage: 'fix', status: 'active' }, []).side[0].current).toBe(true);
-    expect(buildMap(wf, { stage: 'done', status: 'done' }, []).columns.at(-1).current).toBe(true);
+});
+
+describe('parseRoute', () => {
+  it('maps hashes to routes and falls back to the monitor', () => {
+    expect(parseRoute('')).toEqual({ name: 'monitor' });
+    expect(parseRoute('#/')).toEqual({ name: 'monitor' });
+    expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
+    expect(parseRoute('#/runs/my-run')).toEqual({ name: 'run', id: 'my-run' });
+    expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
+    expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });
+    expect(parseRoute('#/nope')).toEqual({ name: 'monitor' });
+    expect(runHref('a b')).toBe('#/runs/a%20b');
   });
 });

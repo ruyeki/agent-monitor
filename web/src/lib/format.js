@@ -24,3 +24,14 @@ export function splitRuns(runs) {
   }
   return { waiting, live, finished };
 }
+
+// 65000 -> "1m 5s"; null -> "-"
+export function formatDuration(ms) {
+  if (ms == null || Number.isNaN(Number(ms))) return '-';
+  const sec = Math.max(0, Math.floor(Number(ms) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m ${sec % 60}s`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+}

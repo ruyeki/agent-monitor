@@ -6,19 +6,21 @@ import { sample } from './fixtures.js';
 const res = (body, ok = true) => Promise.resolve({ ok, status: ok ? 200 : 400, json: () => Promise.resolve(body) });
 let fetchMock;
 let puts;
+let publishResult;
 
 beforeEach(() => {
   puts = [];
+  publishResult = () => res({ version: 4 });
   const state = { published: { version: 3, workflow: sample(), publishedAt: '2026-10-20T10:00:00Z' }, draft: { workflow: sample(), errors: [] } };
   fetchMock = vi.fn((url, opts = {}) => {
     const m = opts.method ?? 'GET';
     if (url === '/api/workflow' && m === 'GET') return res(state);
-    if (url === '/api/workflow/versions') return res([{ version: 3, publishedAt: '2026-10-20T10:00:00Z', stages: 6 }]);
+    if (url === '/api/workflow/versions') return res([{ version: 3, publishedAt: '2026-10-20T10:00:00Z', nodes: 5 }]);
     if (url === '/api/workflow/draft' && m === 'PUT') {
       puts.push(JSON.parse(opts.body).workflow);
       return res({ workflow: puts.at(-1), errors: [] });
     }
-    if (url === '/api/workflow/draft' && m === 'DELETE') return res({ workflow: sample(), errors: [] });
+    if (url === '/api/workflow/publish') return publishResult();
     return res({});
   });
   globalThis.fetch = fetchMock;
@@ -29,127 +31,124 @@ const open = async () => {
   render(<WorkflowEditor />);
   await screen.findByText('Published v3');
 };
-const list = () => within(screen.getByRole('navigation', { name: 'Stages' }));
-const pick = (name) => fireEvent.click(list().getByRole('button', { name: new RegExp(name) }));
+const outline = () => within(screen.getByRole('navigation', { name: 'Outline' }));
+const pickNode = (name) => fireEvent.click(outline().getByRole('button', { name }));
+const status = () => screen.getByRole('status').textContent;
 
 describe('WorkflowEditor', () => {
-  it('shows the legend and marks an edit unsaved, then saved after the PUT', async () => {
+  it('shows Published vN and Draft saved, then unsaved after an edit and saved after the PUT', async () => {
     await open();
-    expect(screen.getByText(/Any step: regression, env or stuck/)).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe('Draft — saved');
-    pick('PLAN');
+    expect(status()).toBe('Draft — saved');
+    pickNode('PLAN');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Planning' } });
-    expect(screen.getByRole('status').textContent).toBe('Draft — unsaved changes');
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Draft — saved'));
-    expect(puts.at(-1).stages[0].name).toBe('Planning');
+    expect(status()).toBe('Draft — unsaved');
+    await waitFor(() => expect(status()).toBe('Draft — saved'));
+    expect(puts.at(-1).nodes[0].name).toBe('Planning');
   });
 
-  it('shows a save error with its message', async () => {
+  it('shows the palette items and adds a node when one is pressed', async () => {
     await open();
-    const base = fetchMock.getMockImplementation();
-    fetchMock.mockImplementation((url, opts) => (opts?.method === 'PUT' ? res({ error: 'disk full' }, false) : base(url, opts)));
-    pick('PLAN');
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
-    expect((await screen.findByText(/disk full/)).textContent).toMatch(/Could not save/);
+    const palette = within(screen.getByRole('complementary', { name: 'Node palette' }));
+    expect(palette.getAllByRole('button').map((b) => b.textContent)).toEqual(['Step', 'Check', 'Gate', 'Split', 'Join', 'End']);
+    fireEvent.click(palette.getByRole('button', { name: 'Gate' }));
+    await waitFor(() => expect(puts.at(-1)?.nodes.at(-1).type).toBe('gate'));
+    expect(screen.getByLabelText('Ask')).toBeTruthy(); // the new node is selected
   });
 
-  it('Move left reorders the stage', async () => {
+  it('adds a node where a palette item is dropped on the canvas', async () => {
     await open();
-    pick('REVIEW');
-    fireEvent.click(screen.getByRole('button', { name: 'Move left' }));
-    const names = list().getAllByRole('button').map((b) => b.textContent);
-    expect(names.slice(0, 4)).toEqual(['1. PLAN', '2. REVIEW', '3. VERIFY', '4. White-hat']);
-    await waitFor(() => expect(puts.at(-1).stages.map((s) => s.id).slice(0, 3)).toEqual(['plan', 'review', 'verify']));
+    const dt = { getData: (t) => (t === 'application/x-agent-monitor-node' ? 'split' : ''), types: ['application/x-agent-monitor-node'] };
+    fireEvent.drop(screen.getByRole('group', { name: 'Workflow canvas' }), { dataTransfer: dt, clientX: 300, clientY: 200 });
+    await waitFor(() => expect(puts.at(-1)?.nodes.at(-1)).toMatchObject({ type: 'split', id: 'split-2' }));
   });
 
-  it('adds a step after the selection with a unique id and deletes it after an in-page confirm', async () => {
+  it('edits every node field and the gate actions keep their edges', async () => {
     await open();
-    pick('PLAN');
-    fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
-    expect(screen.getByLabelText('Id').value).toBe('step-2');
-    expect(list().getAllByRole('button')[1].textContent).toBe('2. New step');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete stage' }));
-    expect(screen.getByRole('alertdialog').textContent).toMatch(/Delete stage step-2/);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    expect(list().queryByText('2. New step')).toBeNull();
+    pickNode('GATE2');
+    for (const label of ['Id', 'Name', 'Type', 'Runner', 'Model', 'Instructions', 'Ask']) expect(screen.getByLabelText(label)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Action 1 label'), { target: { value: 'Approve' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove action 2' }));
+    await waitFor(() => expect(status()).toBe('Draft — saved'));
+    const saved = puts.at(-1);
+    expect(saved.nodes.find((n) => n.id === 'gate2').actions).toEqual([{ label: 'Approve' }]);
+    expect(saved.edges.filter((e) => e.from === 'gate2').map((e) => e.on)).toEqual(['Approve']);
   });
 
-  it('lists server errors when Publish returns 400', async () => {
+  it('renames a node id everywhere and rejects a taken id', async () => {
     await open();
-    const base = fetchMock.getMockImplementation();
-    fetchMock.mockImplementation((url, opts) => (url === '/api/workflow/publish' ? res({ errors: ['Stage plan needs a name.'] }, false) : base(url, opts)));
+    pickNode('PLAN');
+    const id = screen.getByLabelText('Id');
+    fireEvent.change(id, { target: { value: 'verify' } });
+    fireEvent.blur(id);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/already uses/);
+    fireEvent.change(id, { target: { value: 'frame' } });
+    fireEvent.blur(id);
+    await waitFor(() => expect(puts.at(-1)?.nodes[0].id).toBe('frame'));
+    expect(puts.at(-1).edges.some((e) => e.from === 'frame')).toBe(true);
+  });
+
+  it('an edge offers the valid on choices for its source and a fix round checkbox', async () => {
+    await open();
+    fireEvent.click(outline().getByRole('button', { name: 'gate2 -Accept-> pr' }));
+    const on = screen.getByLabelText('On');
+    expect([...on.options].map((o) => o.value)).toEqual(['Accept', 'Stop run']);
+    fireEvent.change(on, { target: { value: 'Stop run' } });
+    await waitFor(() => expect(puts.at(-1).edges.find((e) => e.id === 'gate2>pr:Accept').on).toBe('Stop run'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete edge' }));
+    await waitFor(() => expect(puts.at(-1).edges.some((e) => e.id === 'gate2>pr:Accept')).toBe(false));
+  });
+
+  it('nothing selected shows loop settings; the Delete key removes the selected node', async () => {
+    await open();
+    expect(screen.getByLabelText('Max rounds (1-10)').value).toBe('5');
+    expect(screen.getByLabelText('Decision gate').value).toBe('gate2');
+    fireEvent.change(screen.getByLabelText('Max rounds (1-10)'), { target: { value: '7' } });
+    await waitFor(() => expect(puts.at(-1).loop.maxRounds).toBe(7));
+    pickNode('PR');
+    fireEvent.keyDown(window, { key: 'Delete' });
+    await waitFor(() => expect(puts.at(-1).nodes.map((n) => n.id)).not.toContain('pr'));
+    expect(puts.at(-1).edges.some((e) => e.from === 'pr' || e.to === 'pr')).toBe(false);
+  });
+
+  it('Delete in a text field does not delete the node', async () => {
+    await open();
+    pickNode('PR');
+    fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Backspace' });
+    expect(puts.length).toBe(0);
+  });
+
+  it('Delete on a focused button does not delete the node', async () => {
+    await open();
+    pickNode('PR');
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Delete/ }), { key: 'Delete' });
+    expect(puts.length).toBe(0);
+  });
+
+  it('Publish refused: lists the errors, and pressing one selects its node', async () => {
+    await open();
+    publishResult = () => res({ errors: [{ message: "Node 'pr' pushes without a gate.", node: 'pr' }, { message: 'Edge is odd.', edge: 'plan>verify:done' }] }, false);
     fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
-    expect(await screen.findByText('Stage plan needs a name.')).toBeTruthy();
+    const list = await screen.findByRole('alert', { name: 'Publish errors' });
+    fireEvent.click(within(list).getByRole('button', { name: /pushes without a gate/ }));
+    expect(screen.getByLabelText('Id').value).toBe('pr');
+    fireEvent.click(within(list).getByRole('button', { name: 'Edge is odd.' }));
+    expect(screen.getByLabelText('On').value).toBe('done');
   });
 
-  it('Discard needs an in-page confirm, then DELETEs the draft', async () => {
+  it('Auto-layout saves new positions; Discard asks first', async () => {
     await open();
-    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
-    expect(fetchMock.mock.calls.some(([, o]) => o?.method === 'DELETE')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([u, o]) => u === '/api/workflow/draft' && o?.method === 'DELETE')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-layout' }));
+    await waitFor(() => expect(puts.length).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByRole('alertdialog').textContent).toMatch(/Discard the draft/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(fetchMock.mock.calls.some(([u, o]) => u === '/api/workflow/draft' && o?.method === 'DELETE')).toBe(false);
   });
 
-  it('edits loop settings when nothing is selected', async () => {
+  it('Versions lists versions and loads one into the draft', async () => {
     await open();
-    fireEvent.change(screen.getByLabelText('Max rounds'), { target: { value: '3' } });
-    await waitFor(() => expect(puts.at(-1).loop.maxRounds).toBe(3));
-  });
-  it('renames a stage only on blur or Enter, and only to a valid unused id', async () => {
-    await open();
-    pick('PLAN');
-    const id = () => screen.getByLabelText('Id');
-    for (const bad of ['', 'review', 'Bad Id', 'fix', 'next']) {
-      fireEvent.change(id(), { target: { value: bad } });
-      fireEvent.blur(id());
-      expect(screen.getByRole('alert').textContent).toBeTruthy();
-      expect(list().getAllByRole('button')[0].textContent).toBe('1. PLAN');
-    }
-    expect(fetchMock.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(false);
-    fireEvent.change(id(), { target: { value: 'plan2' } });
-    expect(screen.getByRole('status').textContent).toBe('Draft — saved'); // typing alone changes nothing
-    fireEvent.keyDown(id(), { key: 'Enter' });
-    await waitFor(() => expect(puts.at(-1).stages[0].id).toBe('plan2'));
-    expect(screen.getByLabelText('Id').value).toBe('plan2');
-  });
-
-  it('saves an emptied Max rounds as null, not an empty string', async () => {
-    await open();
-    fireEvent.change(screen.getByLabelText('Max rounds'), { target: { value: '' } });
-    await waitFor(() => expect(puts.at(-1).loop.maxRounds).toBeNull());
-  });
-
-  it('ignores the response of a save that Discard has outdated', async () => {
-    await open();
-    const base = fetchMock.getMockImplementation();
-    let rejectPut;
-    fetchMock.mockImplementation((url, opts) =>
-      opts?.method === 'PUT' ? new Promise((_r, rej) => { rejectPut = () => rej(new Error('stale boom')); }) : base(url, opts));
-    pick('PLAN');
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
-    await waitFor(() => expect(rejectPut).toBeTypeOf('function'));
-    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Draft — saved'));
-    rejectPut();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByText(/stale boom/)).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('Draft — saved');
-  });
-
-  it('drops a refetch that started before a local edit', async () => {
-    const view = render(<WorkflowEditor tick={0} />);
-    await screen.findByText('Published v3');
-    const base = fetchMock.getMockImplementation();
-    let release;
-    fetchMock.mockImplementation((url, opts) =>
-      url === '/api/workflow' && !opts?.method ? new Promise((r) => { release = () => r(base(url, opts)); }) : base(url, opts));
-    view.rerender(<WorkflowEditor tick={1} />); // SSE tick: GET starts now
-    await waitFor(() => expect(release).toBeTypeOf('function'));
-    pick('PLAN');
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mine' } });
-    release();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(list().getAllByRole('button')[0].textContent).toBe('1. Mine');
+    fireEvent.click(screen.getByRole('button', { name: 'Versions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load v3 into draft' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u, o]) => u === '/api/workflow/versions/3/load' && o?.method === 'POST')).toBe(true));
   });
 });
