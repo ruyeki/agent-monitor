@@ -99,7 +99,7 @@ If he asks for changes instead, send them to the lead with `SendMessage`; his de
 
 ## Agent Monitor
 
-Load the tools once with ToolSearch: `select:mcp__agent-monitor__start_run,mcp__agent-monitor__complete_stage,mcp__agent-monitor__respond,mcp__agent-monitor__log,mcp__agent-monitor__get_run,mcp__agent-monitor__list_runs,mcp__agent-monitor__get_workflow`. Every result starts with `RUN <id> ...`, then `NEXT` (stage, runner, model, instructions) or `WAITING ON RYAN` with the actions and the wait command. Do what it says. If Agent Monitor is unreachable, carry on without it and tell Ryan once.
+Load the tools once with ToolSearch: `select:mcp__agent-monitor__start_run,mcp__agent-monitor__complete_stage,mcp__agent-monitor__respond,mcp__agent-monitor__log,mcp__agent-monitor__get_run,mcp__agent-monitor__list_runs,mcp__agent-monitor__get_workflow`. Every result starts with `RUN <id> ...`, then `NEXT` (stage, runner, model, instructions) or `WAITING ON RYAN` with the actions and the wait command. When several stages are active it adds a `PARALLEL:` line and one `NEXT` pair each: run them together, in the foreground, and report each with `complete_stage`. Do what it says. If Agent Monitor is unreachable, carry on without it and tell Ryan once.
 
 ## Standing rules (Persist-AI)
 

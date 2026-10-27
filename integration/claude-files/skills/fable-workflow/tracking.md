@@ -16,7 +16,7 @@ One run per task. The run id is `t<task id>` (for example `t980`), or `adhoc-<sl
 - The main session calls `start_run` (title = task name, slug, task, repo) when /next starts framing, then `complete_stage(run, frame, pass)`. The run is then at `gate1`.
 - After each stage, call `complete_stage(run, <stage>, <outcome>, note)` and do what it returns. Agent Monitor knows the stage order. Don't keep your own list.
 - Outcomes: `pass`, `done`, `fail`, `finding`, `regression`, `env`, `stuck`. Report what happened. Agent Monitor counts the fix rounds and turns the round limit, a regression, an env problem or a stuck loop into a decision for Ryan.
-- Every result starts `RUN <id> ...`. Then it gives either `NEXT` (stage, runner, model, instructions) or `WAITING ON RYAN`, with the actions and a `wait` command.
+- Every result starts `RUN <id> ...`. Then it gives either `NEXT` (stage, runner, model, instructions) or, when several stages are active, a `PARALLEL:` line plus one `NEXT` pair each (run them together, in the foreground, and report each with `complete_stage`), or `WAITING ON RYAN`, with the actions and a `wait` command.
 - At every gate or decision, run the `wait` command with Bash `run_in_background`. It exits with one JSON line: `{"run","action","text","stage","status"}`. Act on it. If Ryan answers in chat instead, call `respond(run, action, text)`.
 - Use `log(run, note)` for a side note that is not a stage change. `get_run` and `list_runs` are for checking where things are.
 - Only the main session calls `respond`. The lead calls `complete_stage` for the stages it runs (plan to report) and returns to the main session when the run waits.

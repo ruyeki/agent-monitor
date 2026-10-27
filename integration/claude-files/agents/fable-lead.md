@@ -29,7 +29,7 @@ Ryan pays for every token. Every wake-up re-reads your whole context, so the way
 
 ## 2. Implement and prepare, in parallel
 
-In one message, spawn the worker(s) and the verifier in prep mode, all in the foreground. Call `complete_stage(run, plan, pass)` first; it returns `implement`.
+Call `complete_stage(run, plan, pass)` first; it returns `implement` and `prep`. In one message, spawn the worker(s) and the verifier in prep mode, all in the foreground, then report each with `complete_stage(run, implement, done)` and `complete_stage(run, prep, done)`. A result can list several active stages (a `PARALLEL:` line plus one NEXT pair each): run them together, in the foreground, and report each with `complete_stage`.
 
 Worker brief:
 

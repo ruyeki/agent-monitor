@@ -29,3 +29,8 @@ Base: the files in `~/.claude` on 2026-10-23. Everything else in them is unchang
 - Stops: the lead reports the outcome with the question as the note, then returns `STATUS: ESCALATION`.
 - Reports end with `RUN: <id>` instead of `RADAR VERSION`.
 - Role descriptions, cost discipline, briefs, report formats and standing rules are unchanged.
+
+## Agent Monitor v2 (graph workflows)
+- A result can list several active stages: a `PARALLEL:` line plus one `NEXT` pair each. The lead runs them together, in the foreground, and reports each with `complete_stage`.
+- agents/fable-lead.md, section 2: `complete_stage(plan, pass)` now returns `implement` and `prep`. Spawn the worker(s) and the verifier prep in one message, then report `complete_stage(run, implement, done)` and `complete_stage(run, prep, done)`.
+- skills/fable-workflow/SKILL.md and tracking.md: the result description mentions the parallel form.
