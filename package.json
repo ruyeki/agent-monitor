@@ -13,7 +13,7 @@
     "postinstall": "cd web && npm install",
     "test": "node --test \"test/**/*.test.js\"",
     "integrate": "node scripts/integrate.js",
-    "e2e": "node --disable-warning=ExperimentalWarning test/e2e/editor.e2e.mjs"
+    "e2e": "node --disable-warning=ExperimentalWarning test/e2e/editor.e2e.mjs && node --disable-warning=ExperimentalWarning test/e2e/graph.e2e.mjs && node --disable-warning=ExperimentalWarning test/e2e/stats.e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

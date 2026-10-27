@@ -30,7 +30,7 @@ npm test
 npm --prefix web test -- --run
 ```
 
-The first runs the backend tests (temp folders, localhost only). The second runs the web tests.
+The first runs the backend tests (temp folders, localhost only). The second runs the web tests. Files named `holdout-*` and `security-*` are the verifier's acceptance tests and the white-hat exploit tests, kept as regression tests.
 
 ## Hook it up to Claude Code
 
@@ -64,7 +64,7 @@ npm run build
 npm run e2e
 ```
 
-Drives the Workflow editor in headless Chrome against a temporary server (`playwright-core`, not part of `npm test`). Needs Chrome; set `CHROME_PATH` if it is not at the default Windows location. Screenshots go to a temp folder.
+Drives the Workflow editor, the run view and the Stats page (`editor`, `graph` and `stats` scripts, chained by `npm run e2e`) in headless Chrome against a temporary server (`playwright-core`, not part of `npm test`). Needs Chrome; set `CHROME_PATH` if it is not at the default Windows location. Screenshots go to a temp folder.
 
 ## Token usage
 
