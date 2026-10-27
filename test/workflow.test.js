@@ -354,3 +354,19 @@ test('AC5 errors are one sentence each, as {message, node?, edge?}; garbage neve
     assert.ok(out.length >= 1);
   }
 });
+
+test('AC5 push rule also follows the engine hidden edge: a fixRound edge past maxRounds goes to loop.decision', () => {
+  const gate = (id, labels) => n(id, 'gate', { ask: `${id}?`, actions: labels.map((label) => ({ label })) });
+  const wf = graph(
+    [n('a'), n('b'), n('c', 'check'), gate('gate2', ['Accept', 'Stop run']), n('pr', 'step', { runner: 'main', pushes: true }),
+      gate('decision', ['Resume', 'Stop run']), n('done', 'end'), n('stopped', 'end')],
+    [e('a', 'b', 'done', { fixRound: true }), e('b', 'c', 'done', { fixRound: true }),
+      e('c', 'gate2', 'pass'), e('c', 'decision', 'fail'),
+      e('gate2', 'pr', 'Accept'), e('gate2', 'stopped', 'Stop run'),
+      e('decision', 'pr', 'Resume'), e('decision', 'stopped', 'Stop run'), e('pr', 'done')],
+  );
+  assert.ok(has(validateWorkflow(wf), /'pr' pushes/, { node: 'pr' }));
+  wf.edges.forEach((x) => { x.fixRound = false; });
+  assert.ok(!has(validateWorkflow(wf), /pushes/), 'without fix-round edges the decision gate is not reachable before a check');
+  assert.deepEqual(validateWorkflow(seed()), [], 'the seed stays valid');
+});

@@ -341,6 +341,8 @@ export function validateWorkflow(input) {
     while (todo.length) {
       const [id, p] = todo.pop();
       for (const e of out.get(id)) visit(e.to, p);
+      // Past maxRounds the engine sends a fixRound edge to loop.decision instead of its drawn target.
+      if (byId.has(wf.loop?.decision) && out.get(id).some((e) => e.fixRound)) visit(wf.loop.decision, p);
     }
     for (const id of bad) err(`Node '${id}' pushes, but a path reaches it without a gate after its last check.`, { node: id });
   }
