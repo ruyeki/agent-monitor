@@ -24,6 +24,10 @@ describe('format', () => {
     expect(formatTokens(1234)).toBe('1.2k');
     expect(formatTokens(250_000)).toBe('250k');
     expect(formatTokens(2_500_000)).toBe('2.5M');
+    expect(formatTokens(999_600)).toBe('1.0M');
+    expect(formatTokens(999_960_000)).toBe('1.0B');
+    expect(formatTokens(1_314_800_000)).toBe('1.3B');
+    expect(formatTokens(4_904_300_000)).toBe('4.9B');
   });
   it('splitRuns', () => {
     const s = splitRuns([{ status: 'waiting' }, { status: 'active' }, { status: 'done' }, { status: 'stopped' }]);

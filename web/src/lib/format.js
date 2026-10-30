@@ -1,8 +1,10 @@
+// 1234 -> "1.2k"; 2_500_000 -> "2.5M"; 1_314_800_000 -> "1.3B". The cut-offs sit where rounding would print "1000k" or "1000.0M".
 export function formatTokens(n) {
   const v = Number(n) || 0;
   if (v < 1000) return String(v);
-  if (v < 1_000_000) return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)}k`;
-  return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v < 999_500) return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)}k`;
+  if (v < 999_950_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  return `${(v / 1_000_000_000).toFixed(1)}B`;
 }
 
 export function roundsLabel(run) {
