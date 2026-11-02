@@ -8,7 +8,7 @@ const CARDS = [
 ];
 
 // Total tokens are the headline; the dollar figure is a secondary, labelled estimate.
-export function PeriodCards({ periods }) {
+export function PeriodCards({ periods, codex }) {
   return (
     <div className="period-cards">
       {CARDS.map(([key, label]) => {
@@ -29,6 +29,12 @@ export function PeriodCards({ periods }) {
               <dd>{formatTokens(t.cacheRead)}</dd>
             </dl>
             <p className="muted">≈ {formatCost(t.cost)} API-equivalent (estimate)</p>
+            {codex?.[key] && (
+              <p className="codex-line" aria-label={`Codex ${label}`}>
+                Codex: <strong>{formatTokens(codex[key].total)}</strong> tokens
+                {codex[key].cost > 0 && <span className="muted"> · ≈ {formatCost(codex[key].cost)}</span>}
+              </p>
+            )}
           </article>
         );
       })}

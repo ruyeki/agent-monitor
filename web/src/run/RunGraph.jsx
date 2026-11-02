@@ -12,8 +12,9 @@ export function RunGraph({ detail }) {
   const stats = detail.nodes ?? NO_STATS;
   const graph = useMemo(() => {
     const active = new Set((run.active ?? [{ id: run.stage }]).map((a) => a.id));
-    return toFlow(workflow, { runInfo: { active, nodes: stats } });
-  }, [workflow, run.active, run.stage, stats]);
+    const codex = new Set((detail.visits ?? []).filter((v) => v.provider === 'codex').map((v) => v.node));
+    return toFlow(workflow, { runInfo: { active, nodes: stats, codex } });
+  }, [workflow, run.active, run.stage, stats, detail.visits]);
   return (
     <div className="canvas run-graph" role="group" aria-label="Run graph">
       <ReactFlow

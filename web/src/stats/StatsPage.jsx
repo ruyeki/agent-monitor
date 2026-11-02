@@ -44,13 +44,13 @@ export function StatsPage({ tick = 0 }) {
       {!usage && !usageError && <p className="muted">Loading usage…</p>}
       {usage && (
         <>
-          <PeriodCards periods={usage.periods} />
+          <PeriodCards periods={usage.periods} codex={usage.codex} />
           {usage.unpricedModels?.length > 0 && (
             <p className="muted" role="note">
               No price for {usage.unpricedModels.join(', ')}: their cost counts as $0.
             </p>
           )}
-          <DailyChart daily={usage.daily} days={days} onDays={setDays} />
+          <DailyChart daily={(usage.daily ?? []).filter((r) => r.provider !== 'codex')} days={days} onDays={setDays} />
           <p className="muted" aria-label="Indexer status">
             {st
               ? `Indexer: ${st.messages} messages from ${st.files} files · ${st.scanning ? 'scanning now' : st.lastScanAt ? `last scan ${new Date(st.lastScanAt).toLocaleTimeString()}` : 'not scanned yet'}`

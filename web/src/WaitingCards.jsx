@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { respond } from './api.js';
 import { Ago } from './Ago.jsx';
+import { CodexTag } from './RunsTable.jsx';
 
 export function WaitingCard({ run, onDone }) {
   const [text, setText] = useState('');
@@ -24,7 +25,7 @@ export function WaitingCard({ run, onDone }) {
   return (
     <article className="card waiting-card" aria-label={`Waiting on you: ${run.title}`}>
       <header className="card-head">
-        <h3>{run.title}</h3>
+        <h3>{run.title}<CodexTag run={run} /></h3>
         <span className="muted">
           {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
         </span>

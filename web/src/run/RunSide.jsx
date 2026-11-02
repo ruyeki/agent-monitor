@@ -14,7 +14,7 @@ function ActiveAgents({ agents }) {
           <strong>{a.type}</strong>
           {a.description && <span className="muted"> {a.description}</span>}
           <div className="muted">
-            {a.model || 'model unknown'} · idle <Idle since={a.lastActivityAt} />
+            {a.provider === 'codex' && <span className="badge codex">Codex</span>} {a.model || 'model unknown'} · idle <Idle since={a.lastActivityAt} />
             {a.waitingPermission && <span className="badge status-waiting">waiting for permission</span>}
           </div>
           {a.lastTool && (
@@ -50,6 +50,30 @@ function RunTokens({ tokens }) {
   );
 }
 
+const when = (iso) => new Date(iso).toLocaleString();
+
+// Codex hand-off: when Claude's usage ran out, and what Codex has used since (tokens only; $ only when a price row gave a cost).
+function CodexInfo({ run, codex }) {
+  const t = codex || {};
+  return (
+    <section aria-label="Codex">
+      <h3>Codex</h3>
+      <p>
+        {run.limitAt ? `Claude usage ran out ${when(run.limitAt)}` : 'Handed over to Codex'}
+        {run.resetsAt ? `, resets ${when(run.resetsAt)}` : ''}
+      </p>
+      <p>
+        Codex tokens: <strong>{formatTokens(t.total)}</strong>
+        {t.cost > 0 && <span className="muted"> · ≈ {formatCost(t.cost)} (estimate)</span>}
+      </p>
+      <p className="muted">
+        Input {formatTokens(t.input)} · Output {formatTokens(t.output)} · Cache read {formatTokens(t.cacheRead)}
+        {t.unpriced > 0 && ' · no price for this model'}
+      </p>
+    </section>
+  );
+}
+
 // Side panel of the run view: what is happening now, the timeline and the totals.
 export function RunSide({ detail, onChanged }) {
   const { run, timeline = [], agents = [], activity = [] } = detail;
@@ -67,6 +91,7 @@ export function RunSide({ detail, onChanged }) {
         </p>
       </section>
       {run.status === 'waiting' && <WaitingCard run={run} onDone={onChanged} />}
+      {run.provider === 'codex' && <CodexInfo run={run} codex={detail.tokens?.codex} />}
       <section aria-label="Active agents">
         <h3>Active agents</h3>
         <ActiveAgents agents={agents} />

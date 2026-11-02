@@ -1,6 +1,8 @@
 import { roundsLabel } from './lib/format.js';
 import { Ago } from './Ago.jsx';
 
+export const CodexTag = ({ run }) => (run?.provider === 'codex' ? <span className="badge codex">Codex</span> : null);
+
 export function StatusBadge({ status }) {
   return <span className={`badge status-${status}`}>{status}</span>;
 }
@@ -38,6 +40,7 @@ export function RunsTable({ runs, onSelect, caption }) {
             <td>
               <strong>{r.title}</strong> <span className="muted mono">{r.id}</span>
               {r.status === 'waiting' && <StatusBadge status="waiting" />}
+              <CodexTag run={r} />
             </td>
             <td>{stageLabel(r)}</td>
             <td>{roundsLabel(r)}</td>

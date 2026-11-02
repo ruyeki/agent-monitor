@@ -1,7 +1,7 @@
 import { MarkerType } from '@xyflow/react';
 
 // Workflow graph -> React Flow props. `selected` = {kind, id} and `errors` = {nodes:Set, edges:Set} for the editor,
-// `runInfo` = {active:Set, nodes:{[id]:{visits, tokens}}} for the run view.
+// `runInfo` = {active:Set, nodes:{[id]:{visits, tokens}}, codex?:Set of node ids a Codex visit ran} for the run view.
 export function toFlow(wf, { selected, errors, runInfo } = {}) {
   const nodes = (wf.nodes ?? []).map((n) => ({
     id: n.id,
@@ -12,7 +12,7 @@ export function toFlow(wf, { selected, errors, runInfo } = {}) {
       node: n,
       error: !!errors?.nodes.has(n.id),
       run: runInfo
-        ? { active: runInfo.active.has(n.id), visits: runInfo.nodes[n.id]?.visits ?? 0, tokens: runInfo.nodes[n.id]?.tokens?.total }
+        ? { active: runInfo.active.has(n.id), visits: runInfo.nodes[n.id]?.visits ?? 0, tokens: runInfo.nodes[n.id]?.tokens?.total, codex: !!runInfo.codex?.has(n.id) }
         : null,
     },
   }));

@@ -158,3 +158,5 @@ h4 { margin: 12px 0 4px; font-size: 13px; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 .node-row td { background: var(--surface-2); }
 .stats-page input[type='number'] { width: 90px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; color: var(--text); font: inherit; }
+.badge.codex { background: var(--accent); color: var(--accent-text); }
+.codex-line { margin: 4px 0 0; }

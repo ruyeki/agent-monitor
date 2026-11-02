@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getRun } from '../api.js';
-import { StatusBadge } from '../RunsTable.jsx';
+import { CodexTag, StatusBadge } from '../RunsTable.jsx';
 import { RunGraph } from './RunGraph.jsx';
 import { RunSide } from './RunSide.jsx';
 
@@ -37,6 +37,7 @@ export function RunView({ id, tick = 0 }) {
         <a href="#/">Back to monitor</a>
         <h2>{run.title}</h2>
         <span className="muted mono">{run.id}</span> <StatusBadge status={run.status} />
+        <CodexTag run={run} />
         {run.repo && (
           <span className="muted">
             {' '}

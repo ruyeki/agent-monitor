@@ -24,6 +24,7 @@ export function FlowNode({ data, selected }) {
         {n.pushes && <span className="badge">pushes</span>}
         {run?.active && <span className="badge here">active</span>}
         {run?.visits > 0 && <span className="badge visits">{run.visits} {run.visits === 1 ? 'visit' : 'visits'}</span>}
+        {run?.codex && <span className="badge codex">Codex</span>}
         {run?.tokens != null && <span className="badge">{formatTokens(run.tokens)} tokens</span>}
       </span>
       {n.type !== 'end' && <Handle type="source" position={Position.Right} isConnectable={!run} />}
