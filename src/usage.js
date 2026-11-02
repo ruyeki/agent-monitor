@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS usage_files (path TEXT PRIMARY KEY, size INTEGER NOT 
 CREATE TABLE IF NOT EXISTS usage_messages (
   id TEXT PRIMARY KEY, ts TEXT NOT NULL, day TEXT NOT NULL, session_id TEXT, agent_id TEXT, project TEXT, model TEXT,
   input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0,
-  cache_write_1h INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0);
+  cache_write_1h INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0,
+  provider TEXT NOT NULL DEFAULT 'claude');
 CREATE INDEX IF NOT EXISTS usage_messages_day ON usage_messages (day);
 CREATE INDEX IF NOT EXISTS usage_messages_agent ON usage_messages (agent_id);
 CREATE INDEX IF NOT EXISTS usage_messages_session ON usage_messages (session_id);
@@ -29,11 +30,31 @@ CREATE TABLE IF NOT EXISTS prices (
 
 const CHUNK = 512 * 1024;
 const MARKER = Buffer.from('"usage"');
+const LIMIT_MARKER = Buffer.from('"isApiErrorMessage":true');
 const NL = 0x0a;
+// A limit hit older than this is history (a backfill), never a reason to hand a run over.
+export const LIMIT_FRESH_MS = 600_000;
+const MAX_HITS = 1000;
 const pad = (n) => String(n).padStart(2, '0');
 const localDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const num = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
 const yieldLoop = () => new Promise((r) => setImmediate(r));
+
+// A rate-limit API error entry (main or subagent transcript) -> {sessionId, agentId, ts, resetsAt}, else null.
+// It is a synthetic message, so parseLine drops it; this runs before that skip.
+function parseHit(buf, file) {
+  let o;
+  try { o = JSON.parse(buf.toString('utf8')); } catch { return null; }
+  if (o?.error !== 'rate_limit' || o.isApiErrorMessage !== true) return null;
+  const d = new Date(o.timestamp);
+  if (typeof o.timestamp !== 'string' || Number.isNaN(d.getTime())) return null;
+  const secs = o.quotaLimits?.resetsAt ?? o.apiErrorParams?.rate_limit_info?.resetsAt;
+  const reset = typeof secs === 'number' && Number.isFinite(secs) ? new Date(secs * 1000) : null;
+  return {
+    sessionId: typeof o.sessionId === 'string' ? o.sessionId : file.session, agentId: typeof o.agentId === 'string' ? o.agentId : null,
+    ts: d.toISOString(), resetsAt: reset && !Number.isNaN(reset.getTime()) ? reset.toISOString() : null,
+  };
+}
 
 // Parses one transcript line into a message row, or null when it is not a usable assistant message.
 function parseLine(buf, file) {
@@ -65,6 +86,12 @@ export async function openUsage({ dataDir, projectsDir }) {
     for (const p of SEED_PRICES) ins.run(p.model, p.input, p.output, p.cacheWrite, p.cacheWrite1h, p.cacheRead, p.note);
     db.exec('PRAGMA user_version = 1; COMMIT');
   }
+  if (db.prepare('PRAGMA user_version').get().user_version < 2) {
+    if (!db.prepare('PRAGMA table_info(usage_messages)').all().some((c) => c.name === 'provider')) {
+      db.exec("ALTER TABLE usage_messages ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'");
+    }
+    db.exec('PRAGMA user_version = 2');
+  }
 
   const getFile = db.prepare('SELECT size, offset FROM usage_files WHERE path = ?');
   const putFile = db.prepare(`INSERT INTO usage_files (path, size, offset, mtime_ms) VALUES (?,?,?,?)
@@ -77,7 +104,10 @@ export async function openUsage({ dataDir, projectsDir }) {
   const countMessages = db.prepare('SELECT COUNT(*) AS n FROM usage_messages');
   const countFiles = db.prepare('SELECT COUNT(*) AS n FROM usage_files');
 
-  const state = { generation: 0, scanning: null, lastScanAt: null, lastScanMs: null, backfillMs: null, timer: null, closed: false };
+  const insertCodex = db.prepare(`INSERT INTO usage_messages (id, ts, day, session_id, agent_id, project, model, input, output, cache_write, cache_write_1h, cache_read, provider)
+    VALUES (?,?,?,?,NULL,?,?,?,?,0,0,?,'codex')`);
+  const countCodex = db.prepare("SELECT COUNT(*) AS n FROM usage_messages WHERE provider = 'codex' AND session_id = ?");
+  const state = { generation: 0, hits: [], scanning: null, lastScanAt: null, lastScanMs: null, backfillMs: null, timer: null, closed: false };
   const firstScanIsBackfill = countFiles.get().n === 0;
 
   // Recursive walk for regular *.jsonl files inside root. Symlinks are never followed.
@@ -122,11 +152,16 @@ export async function openUsage({ dataDir, projectsDir }) {
         const end = data.lastIndexOf(NL) + 1;
         db.exec('BEGIN');
         let wrote = false;
+        const hits = [];
         try {
           for (let s = 0; s < end;) {
             const nl = data.indexOf(NL, s);
             const line = data.subarray(s, nl);
             s = nl + 1;
+            if (line.indexOf(LIMIT_MARKER) >= 0) {
+              const hit = parseHit(line, info);
+              if (hit) hits.push(hit);
+            }
             if (line.indexOf(MARKER) < 0) continue;
             const r = parseLine(line, info);
             if (r) { upsert.run(r.id, r.ts, r.day, r.session, r.agent, r.project, r.model, r.input, r.output, r.cw, r.cw1h, r.cr); wrote = true; }
@@ -135,6 +170,8 @@ export async function openUsage({ dataDir, projectsDir }) {
           putFile.run(file, st.size, consumed, st.mtimeMs);
           db.exec('COMMIT');
           if (wrote) state.generation++;
+          state.hits.push(...hits);
+          if (state.hits.length > MAX_HITS) state.hits.splice(0, state.hits.length - MAX_HITS);
         } catch (e) { db.exec('ROLLBACK'); throw e; }
         const rest = data.subarray(end);
         parts = rest.length ? [rest] : [];
@@ -175,7 +212,7 @@ export async function openUsage({ dataDir, projectsDir }) {
   // from/to: 'YYYY-MM-DD' filters by local day (inclusive), anything else is an ISO timestamp bound on ts.
   // agentNull keeps main-session rows (agent_id IS NULL).
   function filter({ agentIds, sessionIds, agentNull, from, to }) {
-    const where = [];
+    const where = ["provider = 'claude'"]; // Codex rows never reach attribution
     const args = [];
     const list = (col, v) => { if (Array.isArray(v)) { where.push(v.length ? `${col} IN (${v.map(() => '?').join(',')})` : '0'); args.push(...v); } };
     list('agent_id', agentIds);
@@ -205,10 +242,10 @@ export async function openUsage({ dataDir, projectsDir }) {
     const args = [];
     if (from) { where.push('day >= ?'); args.push(from); }
     if (to) { where.push('day <= ?'); args.push(to); }
-    return db.prepare(`SELECT day, model, SUM(input) AS input, SUM(output) AS output, SUM(cache_write) AS cache_write,
+    return db.prepare(`SELECT day, provider, model, SUM(input) AS input, SUM(output) AS output, SUM(cache_write) AS cache_write,
       SUM(cache_write_1h) AS cache_write_1h, SUM(cache_read) AS cache_read, COUNT(*) AS messages FROM usage_messages
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY day, model ORDER BY day, model`).all(...args)
-      .map((r) => ({ day: r.day, model: r.model, input: r.input, output: r.output, cacheWrite: r.cache_write,
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY day, provider, model ORDER BY day, provider, model`).all(...args)
+      .map((r) => ({ day: r.day, provider: r.provider, model: r.model, input: r.input, output: r.output, cacheWrite: r.cache_write,
         cacheWrite1h: r.cache_write_1h, cacheRead: r.cache_read, messages: r.messages }));
   }
 
@@ -229,9 +266,30 @@ export async function openUsage({ dataDir, projectsDir }) {
     return prices();
   }
 
-  function start({ intervalMs = 5000, onScan } = {}) {
+  // One Codex turn (turn.completed usage), stored apart from Claude's rows. Cached input is billed apart, so it is split out.
+  function addCodexTurn({ runId, threadId, model, usage: u = {}, at = new Date() }) {
+    const d = new Date(at);
+    const when = Number.isNaN(d.getTime()) ? new Date() : d;
+    const cached = num(u.cached_input_tokens);
+    const seq = countCodex.get(threadId).n;
+    insertCodex.run(`codex:${threadId}:${seq}`, when.toISOString(), localDay(when), threadId, runId, model ?? null,
+      Math.max(0, num(u.input_tokens) - cached), num(u.output_tokens), cached);
+    state.generation++;
+  }
+
+  const codexTotals = (runId) => db.prepare(`SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cache_read
+    FROM usage_messages WHERE provider = 'codex' AND project = ? GROUP BY model ORDER BY model`).all(runId)
+    .map((r) => ({ model: r.model, input: r.input, output: r.output, cacheWrite: 0, cacheWrite1h: 0, cacheRead: r.cache_read }));
+
+  // After each scan, onLimit gets the limit hits of the last LIMIT_FRESH_MS; older ones (a backfill) are dropped.
+  function start({ intervalMs = 5000, onScan, onLimit } = {}) {
     if (state.timer || state.closed) return;
-    const run = () => scan().then((r) => { if (!state.closed) onScan?.(r); }).catch(() => {});
+    const run = () => scan().then((r) => {
+      if (state.closed) return;
+      const hits = state.hits.splice(0);
+      onScan?.(r);
+      for (const h of hits) if (Date.now() - Date.parse(h.ts) <= LIMIT_FRESH_MS) { try { onLimit?.(h); } catch { /* best effort */ } }
+    }).catch(() => {});
     state.timer = setInterval(run, intervalMs);
     state.timer.unref?.();
     run();
@@ -252,5 +310,5 @@ export async function openUsage({ dataDir, projectsDir }) {
   const status = () => ({ files: countFiles.get().n, messages: countMessages.get().n, scanning: !!state.scanning,
     lastScanAt: state.lastScanAt, lastScanMs: state.lastScanMs, backfillMs: state.backfillMs, generation: state.generation });
 
-  return { scan, start, stop, close, status, messages, totals, daily, prices, setPrices };
+  return { scan, start, stop, close, status, messages, totals, daily, prices, setPrices, addCodexTurn, codexTotals };
 }

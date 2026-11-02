@@ -8,7 +8,8 @@ import { openStore } from './store.js';
 import { createHooks } from './hooks.js';
 import { createMcpHandler } from './mcp.js';
 import { openUsage } from './usage.js';
-import { usageStats, versionStats, runAttribution } from './stats.js';
+import { usageStats, versionStats, runAttribution, sum } from './stats.js';
+import { createCodex } from './codex.js';
 import { toTokens, emptyAcc } from './attribution.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
@@ -51,7 +52,7 @@ const parseJson = (raw) => {
 export async function startServer({
   port = 4747, dataDir = path.join(os.homedir(), '.claude', 'agent-monitor'),
   projectsDir = path.join(os.homedir(), '.claude', 'projects'), webDir = fileURLToPath(new URL('../web/dist', import.meta.url)),
-  usageIntervalMs = 5000,
+  usageIntervalMs = 5000, codex = null,
 } = {}) {
   const store = openStore(dataDir);
   const usage = await openUsage({ dataDir, projectsDir });
@@ -59,6 +60,18 @@ export async function startServer({
   const streams = new Set();
   let hostPorts = [];
   let mcp;
+  // Codex hand-off. Only a caller that passes the codex option can spawn anything; otherwise a limit hit is only recorded.
+  const launcher = createCodex({
+    store, usage, enabled: Boolean(codex), command: codex?.command, args: codex?.args, root: codex?.root, spawn: codex?.spawn,
+    killTree: codex?.killTree, env: codex?.env, onChange: () => store.bus.emit('change', { type: 'usage' }),
+  });
+  // Ryan answered a gate: a Codex run continues on its thread, a stopped one loses its child.
+  const afterRespond = (runId) => {
+    const r = store.getRun(runId);
+    if (r?.provider !== 'codex') return;
+    if (r.status === 'active') launcher.resume(runId).catch(() => {});
+    else if (r.status === 'stopped') launcher.stop(runId);
+  };
 
   const handleApi = async (req, res, url) => {
     const m = (re) => re.exec(url.pathname);
@@ -74,10 +87,12 @@ export async function startServer({
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/respond$/))) {
       const b = await body();
       const r = store.respond(decodeURIComponent(g[1]), { action: b.action, text: typeof b.text === 'string' ? b.text : '' });
+      if (r.run) afterRespond(r.run.id);
       return send(res, r.notFound ? 404 : r.error ? 400 : 200, r.error ? { error: r.error } : r.run);
     }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/stop$/))) {
       const r = store.stopRun(decodeURIComponent(g[1]));
+      if (r.run) launcher.stop(r.run.id);
       return send(res, r.notFound ? 404 : r.error ? 400 : 200, r.error ? { error: r.error } : r.run);
     }
     if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)\/wait$/))) return handleWait(req, res, decodeURIComponent(g[1]), url);
@@ -130,7 +145,7 @@ export async function startServer({
     for (const [id, t] of Object.entries(att.nodes)) (d.nodes[id] ??= { visits: 0, durationMs: 0 }).tokens = t;
     const none = toTokens(emptyAcc());
     d.agents = d.agents.map((a) => ({ ...a, tokens: (a.id.startsWith('main:') ? att.mainBySession[a.id.slice(5)] : att.agents[a.id]?.tokens) ?? none }));
-    d.tokens = { nodes: att.nodes, main: att.main, unattributed: att.unattributed, total: att.total };
+    d.tokens = { nodes: att.nodes, main: att.main, unattributed: att.unattributed, total: att.total, codex: sum(usage.codexTotals(d.run.id), usage.prices()) };
     return d;
   }
 
@@ -194,10 +209,10 @@ export async function startServer({
       return refuse(415, 'Content-Type must be application/json.');
     }
 
-    if (url.pathname === '/hook') {
+    if (url.pathname === '/hook' || url.pathname === '/hook/codex') {
       if (req.method !== 'POST') return send(res, 405, { error: 'POST only.' });
       let out = {};
-      try { out = hooks.handle(JSON.parse(await readBody(req))); } catch { /* fail open */ }
+      try { out = hooks.handle(JSON.parse(await readBody(req)), url.pathname === '/hook' ? 'claude' : 'codex'); } catch { /* fail open */ }
       return send(res, 200, out);
     }
     if (url.pathname === '/mcp') {
@@ -219,14 +234,20 @@ export async function startServer({
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   const actual = server.address().port;
   hostPorts = [`127.0.0.1:${actual}`, `localhost:${actual}`];
-  hooks = createHooks(store, { projectsDir, port: actual });
-  mcp = createMcpHandler(store, hostPorts);
+  hooks = createHooks(store, { projectsDir, port: actual, onLimit: (info) => launcher.trigger(info.runId, info).catch(() => {}) });
+  mcp = createMcpHandler(store, hostPorts, { afterRespond });
+  // A transcript hit names a session or subagent; its run is the agent's run, else the session's live run.
+  const onTranscriptLimit = (h) => {
+    const runId = (h.agentId && store.getAgent(h.agentId)?.run_id) || store.sessionRun(h.sessionId)?.id;
+    if (runId) launcher.trigger(runId, { at: h.ts, resetsAt: h.resetsAt, source: 'transcript' }).catch(() => {});
+  };
   // The first scan (backfill) runs in the background; listen() has already resolved.
-  usage.start({ intervalMs: usageIntervalMs, onScan: (r) => { if (r.newMessages > 0) store.bus.emit('change', { type: 'usage' }); } });
+  usage.start({ intervalMs: usageIntervalMs, onLimit: onTranscriptLimit, onScan: (r) => { if (r.newMessages > 0) store.bus.emit('change', { type: 'usage' }); } });
 
   return {
     port: actual, url: `http://127.0.0.1:${actual}`, store, usage,
     close: () => new Promise((resolve) => {
+      launcher.close();
       for (const s of streams) s.end();
       server.close(() => { usage.close().then(() => { store.close(); resolve(); }); });
       server.closeAllConnections();

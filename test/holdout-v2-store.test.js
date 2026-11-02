@@ -39,11 +39,11 @@ test('fresh store: user_version 2, new columns and the node_visits table exist',
   s.close();
   const DB = await sqlite();
   const db = new DB(path.join(dir, 'agent-monitor.db'));
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
   const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
   assert.ok(cols('runs').includes('active_json') && cols('runs').includes('joins_json'));
   assert.ok(cols('agents').includes('start_nodes') && cols('agents').includes('reported_nodes'));
-  assert.deepEqual(cols('node_visits').sort(), ['entered_at', 'id', 'left_at', 'node_id', 'outcome', 'run_id'].sort());
+  assert.deepEqual(cols('node_visits').sort(), ['entered_at', 'id', 'left_at', 'node_id', 'outcome', 'provider', 'run_id'].sort());
   db.close();
 });
 

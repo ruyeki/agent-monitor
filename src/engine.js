@@ -93,6 +93,14 @@ export function completeStage(wf, state, { stage, outcome, note }) {
   });
 }
 
+// Sends the run to its decision gate with `note` as the question. A workflow without one gets `noGate` and no move.
+export function escalate(wf, state, note) {
+  if (ENDED.includes(state.status)) return fail(`Run is already ${state.status}.`);
+  const gate = wf.nodes.find((n) => n.id === wf.loop?.decision && n.type === 'gate');
+  if (!gate) return { ok: true, state, entered: [], left: [], noGate: true };
+  return move(wf, state, (s, enter) => enter(gate.id, null, note));
+}
+
 export function respond(wf, state, { action, text }) {
   if (state.status !== 'waiting') return fail(`Run is not waiting on Ryan (status ${state.status}).`);
   const gate = wf.nodes.find((n) => n.type === 'gate' && state.active.includes(n.id));

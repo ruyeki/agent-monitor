@@ -39,7 +39,7 @@ test('REST: run list, detail, respond, stop and 404s', async () => {
     advance(s.store, 'first-run', 'gate1');
     const list = (await call(s, 'GET', '/api/runs')).body;
     assert.equal(list.length, 1);
-    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'active', 'ask', 'branch', 'createdAt', 'endedAt', 'id', 'maxRounds', 'note', 'repo', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
+    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'active', 'ask', 'branch', 'createdAt', 'endedAt', 'id', 'limitAt', 'limitSource', 'maxRounds', 'note', 'provider', 'codexThreadId', 'repo', 'resetsAt', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
     assert.deepEqual([list[0].status, list[0].textField, list[0].actions], ['waiting', true, [{ label: 'Agree spec' }, { label: 'Stop run' }]]);
 
     const d = (await call(s, 'GET', '/api/runs/first-run')).body;
@@ -410,7 +410,7 @@ test('REST: usage stats, version stats and prices', async () => {
     fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 1e6, output: 1e6 }) + tline('m2', { session: 'sess1', input: 100, model: 'mystery-1' }));
     await rescan(s);
     const u = (await call(s, 'GET', '/api/stats/usage')).body;
-    assert.deepEqual(Object.keys(u).sort(), ['daily', 'indexer', 'periods', 'unpricedModels']);
+    assert.deepEqual(Object.keys(u).sort(), ['codex', 'daily', 'indexer', 'periods', 'unpricedModels']);
     assert.equal(u.indexer.messages, 2);
     assert.deepEqual(Object.keys(u.periods).sort(), ['avg30', 'month', 'today', 'week']);
     assert.equal(u.periods.today.total, 2e6 + 100);

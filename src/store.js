@@ -20,14 +20,15 @@ CREATE TABLE IF NOT EXISTS workflow_draft (id INTEGER PRIMARY KEY CHECK (id = 1)
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, task TEXT, repo TEXT, branch TEXT, workflow_version INTEGER NOT NULL,
   stage TEXT NOT NULL, round INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, verdict TEXT, ask TEXT, note TEXT,
-  answer_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, ended_at TEXT, active_json TEXT, joins_json TEXT);
+  answer_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, ended_at TEXT, active_json TEXT, joins_json TEXT,
+  provider TEXT, codex_thread_id TEXT, limit_at TEXT, resets_at TEXT, limit_source TEXT, cwds_json TEXT);
 CREATE TABLE IF NOT EXISTS run_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
   stage TEXT, round INTEGER, verdict TEXT, note TEXT);
 CREATE INDEX IF NOT EXISTS run_events_run ON run_events (run_id, id);
 CREATE TABLE IF NOT EXISTS node_visits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, node_id TEXT NOT NULL, entered_at TEXT NOT NULL,
-  left_at TEXT, outcome TEXT);
+  left_at TEXT, outcome TEXT, provider TEXT);
 CREATE INDEX IF NOT EXISTS node_visits_run ON node_visits (run_id, id);
 CREATE TABLE IF NOT EXISTS activity (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, agent_id TEXT, at TEXT NOT NULL,
@@ -43,12 +44,22 @@ CREATE TABLE IF NOT EXISTS agents (
   input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
   cache_creation_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
   transcript_path TEXT, transcript_offset INTEGER NOT NULL DEFAULT 0, last_msg_id TEXT,
-  started_at TEXT NOT NULL, finished_at TEXT, last_message TEXT, start_nodes TEXT, reported_nodes TEXT);
+  started_at TEXT NOT NULL, finished_at TEXT, last_message TEXT, start_nodes TEXT, reported_nodes TEXT, provider TEXT);
 CREATE INDEX IF NOT EXISTS agents_run ON agents (run_id);
 `;
 // Columns added after v1: an older database gets them in the migration.
-const NEW_COLUMNS = { runs: ['active_json', 'joins_json'], agents: ['start_nodes', 'reported_nodes'] };
-const SCHEMA_VERSION = 2;
+const NEW_COLUMNS = {
+  runs: ['active_json', 'joins_json', 'provider', 'codex_thread_id', 'limit_at', 'resets_at', 'limit_source', 'cwds_json'],
+  agents: ['start_nodes', 'reported_nodes', 'provider'], node_visits: ['provider'],
+};
+const SCHEMA_VERSION = 3;
+const MAX_CWDS = 5;
+const sameCwd = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+// A time given as epoch seconds, epoch ms or an ISO string -> ISO, else null.
+const isoOf = (v) => {
+  const d = typeof v === 'number' && Number.isFinite(v) ? new Date(v < 1e11 ? v * 1000 : v) : typeof v === 'string' && v ? new Date(v) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
+};
 
 const AGENT_COLUMNS = new Set([
   'run_id', 'type', 'model', 'description', 'status', 'last_tool', 'last_summary', 'last_activity_at', 'tool_calls',
@@ -70,7 +81,7 @@ const toAgent = (a) => ({
   lastTool: a.last_tool, lastSummary: a.last_summary, lastActivityAt: a.last_activity_at,
   toolCalls: a.tool_calls, errors: a.errors, lastError: a.last_error, waitingPermission: !!a.waiting_permission,
   tokens: { input: a.input_tokens, output: a.output_tokens, cacheCreation: a.cache_creation_tokens, cacheRead: a.cache_read_tokens },
-  startedAt: a.started_at, finishedAt: a.finished_at,
+  startedAt: a.started_at, finishedAt: a.finished_at, provider: a.provider ?? 'claude',
 });
 
 const LIMITS = { nodes: 100, edges: 300, actions: 10, label: 80, edgeId: 120 };
@@ -187,6 +198,7 @@ export function openStore(dataDir) {
       round: r.round, maxRounds: wf.loop.maxRounds, status: r.status, verdict: r.verdict, ask: r.ask,
       actions: gate ? gate.actions.map(({ label }) => ({ label })) : [], textField: !!gate?.textField,
       note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, endedAt: r.ended_at,
+      provider: r.provider ?? 'claude', codexThreadId: r.codex_thread_id, limitAt: r.limit_at, resetsAt: r.resets_at, limitSource: r.limit_source,
     };
   }
 
@@ -195,7 +207,8 @@ export function openStore(dataDir) {
   }
 
   const openVisit = (runId, node, at, leftAt = null, outcome = null) => q(
-    'INSERT INTO node_visits (run_id, node_id, entered_at, left_at, outcome) VALUES (?, ?, ?, ?, ?)').run(runId, node, at, leftAt, outcome);
+    `INSERT INTO node_visits (run_id, node_id, entered_at, left_at, outcome, provider)
+     VALUES (?, ?, ?, ?, ?, COALESCE((SELECT provider FROM runs WHERE id = ?), 'claude'))`).run(runId, node, at, leftAt, outcome, runId);
   const closeVisit = (runId, node, at, outcome) => q(`UPDATE node_visits SET left_at = ?, outcome = ? WHERE id =
     (SELECT id FROM node_visits WHERE run_id = ? AND node_id = ? AND left_at IS NULL ORDER BY id DESC LIMIT 1)`).run(at, outcome, runId, node);
   const isEnd = (wf, id) => nodeOf(wf, id)?.type === 'end';
@@ -267,12 +280,66 @@ export function openStore(dataDir) {
     return { run: save(r, stateOf(r), { note }) };
   });
 
+  // ---- Claude -> Codex hand-off ----
+  // Distinct, most recent first, capped. Written only when the list changes.
+  function noteCwd(runId, cwd) {
+    const r = getRun(runId);
+    if (!r || typeof cwd !== 'string' || !cwd || cwd.length > 1000) return;
+    const list = r.cwds_json ? parse(r.cwds_json) : [];
+    if (list[0] !== undefined && sameCwd(list[0], cwd)) return;
+    const next = [cwd, ...list.filter((c) => !sameCwd(c, cwd))].slice(0, MAX_CWDS);
+    q('UPDATE runs SET cwds_json = ? WHERE id = ?').run(JSON.stringify(next), runId);
+  }
+
+  // True only the first time, for a live Claude run: one atomic UPDATE decides.
+  function markLimit(runId, { at, resetsAt, source } = {}) {
+    const reset = isoOf(resetsAt);
+    const res = q(`UPDATE runs SET limit_at = ?, resets_at = ?, limit_source = ? WHERE id = ? AND limit_at IS NULL
+      AND status IN ('active', 'waiting') AND (provider IS NULL OR provider = 'claude')`).run(isoOf(at) ?? now(), reset, source ?? null, runId);
+    if (res.changes) {
+      const r = getRun(runId);
+      addEvent(runId, 'log', { stage: r.stage, round: r.round, note: `Claude usage limit hit${reset ? `, resets ${reset}` : ''}` });
+      emit('run', runId);
+      return true;
+    }
+    if (reset && q('UPDATE runs SET resets_at = ? WHERE id = ? AND limit_at IS NOT NULL AND resets_at IS NULL').run(reset, runId).changes) emit('run', runId);
+    return false;
+  }
+
+  function handOver(runId) {
+    const r = getRun(runId);
+    if (!r) return;
+    q("UPDATE runs SET provider = 'codex' WHERE id = ?").run(runId);
+    q("UPDATE node_visits SET provider = 'codex' WHERE run_id = ? AND left_at IS NULL").run(runId);
+    addEvent(runId, 'log', { stage: r.stage, round: r.round, note: 'Handed over to Codex' });
+    emit('run', runId);
+  }
+
+  function setCodexThread(runId, threadId) {
+    q('UPDATE runs SET codex_thread_id = ? WHERE id = ?').run(threadId, runId);
+    linkSession(threadId, runId);
+    emit('run', runId);
+  }
+
+  // Sends the run to its decision gate with the note as the question; a workflow without one only logs the note.
+  const escalate = (id, note) => mutate(id, (r, wf) => {
+    const res = engine.escalate(wf, stateOf(r), note);
+    if (!res.ok) return { error: res.error };
+    addEvent(id, 'log', { stage: r.stage, round: r.round, note });
+    if (res.noGate) return { run: save(r, stateOf(r), { note }) };
+    return { run: save(r, res.state, { ...res, outcome: () => 'escalated', note }) };
+  });
+
+  // A new prompt from the main session frees it from stopped and handed-over runs.
+  const releaseSession = (sessionId) => q(`DELETE FROM session_links WHERE session_id = ? AND run_id IN
+    (SELECT id FROM runs WHERE status = 'stopped' OR provider = 'codex')`).run(sessionId);
+
   function detail(id) {
     const r = getRun(id);
     if (!r) return null;
     const wf = version(r.workflow_version);
     const t = Date.now();
-    const visits = q('SELECT node_id AS node, entered_at AS enteredAt, left_at AS leftAt, outcome FROM node_visits WHERE run_id = ? ORDER BY id').all(id);
+    const visits = q("SELECT node_id AS node, entered_at AS enteredAt, left_at AS leftAt, outcome, COALESCE(provider, 'claude') AS provider FROM node_visits WHERE run_id = ? ORDER BY id").all(id);
     const nodes = Object.fromEntries(wf.nodes.map((n) => [n.id, { visits: 0, durationMs: 0 }]));
     for (const v of visits) {
       const n = Object.hasOwn(nodes, v.node) ? nodes[v.node] : (nodes[v.node] = { visits: 0, durationMs: 0 });
@@ -300,8 +367,8 @@ export function openStore(dataDir) {
   const createAgent = (a) => {
     const run = getRun(a.runId);
     const startNodes = JSON.stringify(run ? stateOf(run).active : []);
-    q(`INSERT OR IGNORE INTO agents (agent_id, run_id, session_id, type, transcript_path, transcript_offset, started_at, last_activity_at, start_nodes, reported_nodes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]')`).run(a.id, a.runId, a.sessionId ?? null, a.type ?? null, a.transcriptPath ?? null, a.offset ?? 0, now(), now(), startNodes);
+    q(`INSERT OR IGNORE INTO agents (agent_id, run_id, session_id, type, transcript_path, transcript_offset, started_at, last_activity_at, start_nodes, reported_nodes, provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`).run(a.id, a.runId, a.sessionId ?? null, a.type ?? null, a.transcriptPath ?? null, a.offset ?? 0, now(), now(), startNodes, a.provider ?? 'claude');
     emit('agent', a.runId);
   };
   function updateAgent(id, fields) {
@@ -388,6 +455,7 @@ export function openStore(dataDir) {
   return {
     bus, close, version, published, draft, saveDraft, resetDraft, loadVersion, publish, versions,
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
+    noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, activityCount,
   };
 }

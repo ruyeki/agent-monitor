@@ -32,7 +32,7 @@ test('periods: today, Monday-start week, calendar month, and the average over da
   assert.equal(s.unpricedModels.join(), 'mystery-1');
   assert.equal(s.daily.length, 7); // 90-day window: from 2026-07-24, today included, tomorrow's row excluded
   assert.ok(s.daily.every((d) => d.day >= '2026-07-24' && d.day <= '2026-10-21'));
-  assert.deepEqual(Object.keys(s.daily[0]).sort(), ['cacheRead', 'cacheWrite', 'cost', 'day', 'input', 'model', 'output', 'total']);
+  assert.deepEqual(Object.keys(s.daily[0]).sort(), ['cacheRead', 'cacheWrite', 'cost', 'day', 'input', 'model', 'output', 'provider', 'total']);
   const d30 = usageStats({ usage: stub(rows), prices: SEED_PRICES, now, days: 30 });
   assert.equal(d30.daily.length, 6); // 2026-08-15 drops out
   assert.equal(s.periods.avg30.days, 8); // 05-01, 08-15, 09-30, 10-02, 10-18, 10-19, 10-20, 10-21 (tomorrow excluded)

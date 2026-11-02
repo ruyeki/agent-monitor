@@ -7,14 +7,16 @@ export const localDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pa
 const shiftDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const COUNTS = ['input', 'output', 'cacheWrite', 'cacheRead'];
 
-const sum = (rows, prices) => { const a = emptyAcc(); for (const r of rows) add(a, r, priceFor(prices, r.model)); return toTokens(a); };
+export const sum = (rows, prices) => { const a = emptyAcc(); for (const r of rows) add(a, r, priceFor(prices, r.model)); return toTokens(a); };
 
 // Dashboard numbers: today, Monday-start week, calendar month and the average of the latest 30 days with data.
 export function usageStats({ usage, prices, now = new Date(), days = 90 }) {
   const today = localDay(now);
   const weekStart = localDay(shiftDays(now, -((now.getDay() + 6) % 7)));
   const monthStart = `${today.slice(0, 8)}01`;
-  const rows = usage.daily({});
+  const all = usage.daily({});
+  const rows = all.filter((r) => r.provider !== 'codex'); // the headline numbers stay Claude's
+  const codexRows = all.filter((r) => r.provider === 'codex');
   const inRange = (from) => rows.filter((r) => r.day >= from && r.day <= today);
 
   const dataDays = [...new Set(rows.filter((r) => r.day <= today).map((r) => r.day))].sort().slice(-30);
@@ -27,14 +29,16 @@ export function usageStats({ usage, prices, now = new Date(), days = 90 }) {
   mean.unpriced = n ? Math.round(total.unpriced / n) : 0;
   const avg = { days: n, ...toTokens(mean) };
 
-  const windowRows = inRange(localDay(shiftDays(now, -(days - 1))));
+  const windowFrom = localDay(shiftDays(now, -(days - 1)));
+  const windowRows = all.filter((r) => r.day >= windowFrom && r.day <= today);
   const daily = windowRows.map((r) => {
     const t = sum([r], prices);
-    return { day: r.day, model: r.model, input: r.input, output: r.output, cacheWrite: r.cacheWrite, cacheRead: r.cacheRead, total: t.total, cost: t.cost };
+    return { day: r.day, provider: r.provider, model: r.model, input: r.input, output: r.output, cacheWrite: r.cacheWrite, cacheRead: r.cacheRead, total: t.total, cost: t.cost };
   });
-  const unpricedModels = [...new Set(windowRows.filter((r) => r.model && !priceFor(prices, r.model)).map((r) => r.model))].sort();
+  const unpricedModels = [...new Set(windowRows.filter((r) => r.provider !== 'codex' && r.model && !priceFor(prices, r.model)).map((r) => r.model))].sort();
   return {
     indexer: usage.status(),
+    codex: { today: sum(codexRows.filter((r) => r.day === today), prices), week: sum(codexRows.filter((r) => r.day >= weekStart && r.day <= today), prices), month: sum(codexRows.filter((r) => r.day >= monthStart && r.day <= today), prices) },
     periods: { today: sum(inRange(today), prices), week: sum(inRange(weekStart), prices), month: sum(inRange(monthStart), prices), avg30: avg },
     daily, unpricedModels,
   };

@@ -120,7 +120,7 @@ test('detail: visits, per-node visits and time, run duration', () => {
   s.completeStage('a', { stage: 'verify', outcome: 'fail', note: 'red' });
   s.completeStage('a', { stage: 'fix', outcome: 'done' });
   const d = s.detail('a');
-  assert.deepEqual(Object.keys(d.visits[0]).sort(), ['enteredAt', 'leftAt', 'node', 'outcome']);
+  assert.deepEqual(Object.keys(d.visits[0]).sort(), ['enteredAt', 'leftAt', 'node', 'outcome', 'provider']);
   assert.equal(d.nodes.verify.visits, 2);
   assert.equal(d.nodes.fix.visits, 1);
   assert.deepEqual(d.nodes.stopped, { visits: 0, durationMs: 0 }, 'every node of the pinned graph is listed');
@@ -374,6 +374,6 @@ test('migration: runs once, adds the new agent columns, and survives a reopen', 
   assert.equal(s.versions().length, 2);
   s.close();
   const db = new DatabaseSync(path.join(dir, 'agent-monitor.db'));
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
   db.close();
 });

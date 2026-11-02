@@ -42,7 +42,7 @@ function workflowText(wf, version) {
   return [`WORKFLOW v${version}`, ...nodes, 'Edges:', ...edges, `Fix rounds: up to ${wf.loop.maxRounds}, then the decision '${wf.loop.decision}'.`].join('\n');
 }
 
-function buildServer(store) {
+function buildServer(store, afterRespond) {
   const server = new McpServer({ name: 'agent-monitor', version: '1.0.0' });
   const run = z.string().describe('Run id');
 
@@ -59,7 +59,11 @@ function buildServer(store) {
   server.registerTool('respond', {
     description: "Answer a gate or decision on Ryan's behalf, only when Ryan told you the answer.",
     inputSchema: { run, action: z.string(), text: z.string().optional() },
-  }, async ({ run: id, ...rest }) => outcome(store, store.respond(id, rest)));
+  }, async ({ run: id, ...rest }) => {
+    const res = store.respond(id, rest);
+    if (!res.error) afterRespond?.(id);
+    return outcome(store, res);
+  });
 
   server.registerTool('log', {
     description: 'Add a note to the run timeline.',
@@ -90,9 +94,9 @@ function buildServer(store) {
   return server;
 }
 
-export function createMcpHandler(store, allowedHosts) {
+export function createMcpHandler(store, allowedHosts, { afterRespond } = {}) {
   return async (req, res, body) => {
-    const server = buildServer(store);
+    const server = buildServer(store, afterRespond);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, enableJsonResponse: true, enableDnsRebindingProtection: true, allowedHosts,
     });

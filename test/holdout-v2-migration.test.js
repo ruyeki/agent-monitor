@@ -150,7 +150,7 @@ test('migration runs once: reopening publishes nothing new and duplicates no vis
   s.close();
   const Db = await DB();
   const db = new Db(path.join(dir, 'agent-monitor.db'));
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
   db.close();
 });
 
