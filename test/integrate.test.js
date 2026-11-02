@@ -10,10 +10,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'integrate.js');
 const FIXTURE = path.join(ROOT, 'test', 'fixtures', 'settings.json');
 const FILES = ['skills/fable-workflow/SKILL.md', 'skills/fable-workflow/tracking.md', 'skills/next/SKILL.md', 'agents/fable-lead.md'];
-const EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'SubagentStart', 'SubagentStop', 'Notification', 'Stop', 'SessionEnd'];
+const EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'SubagentStart', 'SubagentStop', 'Notification', 'Stop', 'SessionEnd', 'UserPromptSubmit', 'StopFailure'];
 const MCP_ADD = ['mcp', 'add', '--scope', 'user', '--transport', 'http', 'agent-monitor', 'http://127.0.0.1:4747/mcp'];
 
-let tmp, home, startup, claude, log, state;
+let tmp, home, codexHome, agentsHome, startup, claude, log, state;
 
 // A fake claude CLI: records its args, and `mcp get` succeeds only after `mcp add`.
 function makeFakeClaude() {
@@ -37,7 +37,7 @@ if (a[1] === 'get') process.exit(fs.existsSync(state) ? 0 : 1);
   return sh;
 }
 
-const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args, '--home', home, '--startup', startup, '--claude', claude], { encoding: 'utf8' });
+const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args, '--home', home, '--codex-home', codexHome, '--agents-home', agentsHome, '--startup', startup, '--claude', claude], { encoding: 'utf8' });
 const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 const settingsPath = () => path.join(home, 'settings.json');
 const readSettings = () => JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
@@ -48,6 +48,8 @@ const cmds = (s) => Object.values(s.hooks).flat().flatMap((e) => e.hooks.map((h)
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'am-integrate-'));
   home = path.join(tmp, 'claude-home');
+  codexHome = path.join(tmp, 'codex-home');
+  agentsHome = path.join(tmp, 'agents-home');
   startup = path.join(tmp, 'startup');
   log = path.join(tmp, 'claude-calls.log');
   state = path.join(tmp, 'mcp-registered');
@@ -81,7 +83,8 @@ test('install swaps Orca hooks for ours and keeps every other key byte-identical
   for (const k of Object.keys(before).filter((k) => k !== 'hooks')) {
     assert.equal(JSON.stringify(after[k]), JSON.stringify(before[k]), k);
   }
-  assert.deepEqual(Object.keys(after).filter((k) => k !== 'hooks'), Object.keys(before).filter((k) => k !== 'hooks'));
+  assert.deepEqual(Object.keys(after).filter((k) => k !== 'hooks' && k !== 'autoContinueAtUsageLimit'), Object.keys(before).filter((k) => k !== 'hooks'));
+  assert.equal(after.autoContinueAtUsageLimit, false);
   const text = fs.readFileSync(settingsPath(), 'utf8');
   assert.ok(text.endsWith('}\n') && !text.includes('\r'));
   assert.equal(text, JSON.stringify(after, null, 2) + '\n');
@@ -160,6 +163,7 @@ test('uninstall reverses the install', () => {
   const before = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
   assert.deepEqual(s.hooks.PreToolUse, [before.hooks.PreToolUse[0]]);
   for (const k of Object.keys(before).filter((k) => k !== 'hooks')) assert.deepEqual(s[k], before[k], k);
+  assert.ok(!('autoContinueAtUsageLimit' in s));
   assert.deepEqual(calls().at(-1), ['mcp', 'remove', '--scope', 'user', 'agent-monitor']);
   assert.ok(!fs.existsSync(vbs()));
   for (const rel of FILES) assert.equal(fs.readFileSync(path.join(home, ...rel.split('/')), 'utf8'), `original ${rel}\n`);
@@ -175,10 +179,12 @@ test('--dry-run prints a plan and writes and runs nothing', () => {
     assert.match(r.stdout, /settings\.json/);
     assert.match(r.stdout, /MCP/);
     assert.match(r.stdout, /Agent Monitor\.vbs/);
+    assert.match(r.stdout, /Codex config\.toml/);
   }
   assert.equal(fs.readFileSync(settingsPath(), 'utf8'), settingsBefore);
   assert.deepEqual(fs.readdirSync(home).sort(), homeBefore);
   assert.ok(!fs.existsSync(startup));
+  assert.ok(!fs.existsSync(codexHome) && !fs.existsSync(agentsHome));
   assert.equal(calls().length, 0);
 });
 

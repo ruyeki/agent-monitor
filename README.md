@@ -47,7 +47,25 @@ npm run integrate -- uninstall
 - `Agent Monitor.vbs` goes in the Windows Startup folder so it starts hidden at login.
 - The workflow files (`skills/fable-workflow`, `skills/next`, `agents/fable-lead.md`) are copied into `~/.claude`, each old copy saved as `.bak-agent-monitor-<timestamp>`.
 
-`uninstall` removes the hooks, the MCP server and the startup file, and restores the four files from their newest backup.
+`uninstall` removes the hooks, the MCP server and the startup file, and restores the four files from their oldest backup (Ryan's originals).
+
+`install` also adds the `UserPromptSubmit` and `StopFailure` hooks and sets `autoContinueAtUsageLimit` to `false` in `settings.json` (uninstall removes that key when it is `false`).
+
+## Codex fallback
+
+When Claude's usage runs out during a tracked run, Agent Monitor hands that run to Codex (`codex exec`, the `agent-monitor-handoff` profile) and resumes it with Ryan's answers at gates. The run view, graph, runs table and Stats show Codex runs and Codex tokens apart from Claude's (no dollar figure unless a price row exists). The same `npm run integrate` sets up the Codex side, in `~/.codex` and `~/.agents`:
+
+- `config.toml`: a marked block (`# >>> agent-monitor` ... `# <<< agent-monitor`) with `project_doc_fallback_filenames` and `project_doc_max_bytes` (Ryan's own top-level lines for those keys are commented out as `# agent-monitor-replaced: ...` and restored on uninstall), and a marked block with the `agent-monitor` MCP server.
+- `agents/<role>.toml` for the six roles (models and efforts come from `src/codex-config.js`), `~/.agents/skills/<name>` links to the Claude skills, a global `AGENTS.md` with Ryan's standing rules, `hooks.json` for the Agent Monitor hooks, and the `agent-monitor-handoff.config.toml` profile (no fast tier).
+- Every change is backed up as `<file>.bak-agent-monitor-<timestamp>`; `--dry-run` lists every step; `uninstall` reverses them. It never touches `auth.json`.
+
+Gate 2 (manual, once):
+
+1. `npm run integrate -- --dry-run`, then `npm run integrate -- install`.
+2. Start `codex`, run `/hooks` and approve the Agent Monitor hooks. They need this once; nothing bypasses it. The hooks file format is unverified against Codex, so check that `/hooks` lists them.
+3. Smoke test with a tiny prompt on the cheap model against a throwaway run, for example `echo "say hi" | codex exec --json -p agent-monitor-handoff -m gpt-5.6-luna -` (this is the only real Codex call; the tests use a stub).
+
+Test overrides: `--home`, `--codex-home`, `--agents-home`, `--startup`, `--claude`, `--port`.
 
 ## Wait for an answer
 

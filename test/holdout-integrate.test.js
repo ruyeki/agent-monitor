@@ -32,6 +32,7 @@ function settingsObject({ withOldAm = false } = {}) {
 
 function fixture(opts = {}) {
   const root = tmp('am-int-');
+  const codexRoot = tmp('am-int-codex-'); // outside root: skill links are directories the snapshot cannot hash
   const home = path.join(root, 'claude-home'); const startup = path.join(root, 'startup'); const bin = path.join(root, 'bin');
   fs.mkdirSync(home, { recursive: true }); fs.mkdirSync(startup); fs.mkdirSync(bin);
   const settingsText = JSON.stringify(settingsObject(opts), null, 2) + '\n';
@@ -52,11 +53,11 @@ process.exit(0);
 `);
   const cmd = path.join(bin, 'fake-claude.cmd');
   fs.writeFileSync(cmd, `@echo off\r\nnode "%~dp0fake-claude.js" %*\r\n`);
-  return { root, home, startup, cmd, log, state, settingsText, oldSkill, settingsPath: path.join(home, 'settings.json') };
+  return { root, codexRoot, home, startup, cmd, log, state, settingsText, oldSkill, settingsPath: path.join(home, 'settings.json') };
 }
 
 function run(f, args, extra = []) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...args, '--home', f.home, '--startup', f.startup, '--claude', f.cmd, ...extra], { encoding: 'utf8', timeout: 60000, windowsHide: true, env: { ...process.env, APPDATA: path.join(f.root, 'appdata') } });
+  const r = spawnSync(process.execPath, [SCRIPT, ...args, '--home', f.home, '--codex-home', path.join(f.codexRoot, 'codex'), '--agents-home', path.join(f.codexRoot, 'agents'), '--startup', f.startup, '--claude', f.cmd, ...extra], { encoding: 'utf8', timeout: 60000, windowsHide: true, env: { ...process.env, APPDATA: path.join(f.root, 'appdata') } });
   return r;
 }
 const snapshot = (dir) => {
@@ -69,7 +70,7 @@ const commandsOf = (entries) => (entries || []).flatMap((e) => (e.hooks || []).m
 const isAm = (c) => /127\.0\.0\.1:\d+\/hook/.test(c || '');
 const amEntries = (s, ev) => (s.hooks[ev] || []).filter((e) => (e.hooks || []).some((h) => isAm(h.command)));
 const logLines = (f) => (fs.existsSync(f.log) ? fs.readFileSync(f.log, 'utf8').split('\n').filter(Boolean) : []);
-const AM_EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'SubagentStart', 'SubagentStop', 'Notification', 'Stop', 'SessionEnd'];
+const AM_EVENTS = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'SubagentStart', 'SubagentStop', 'Notification', 'Stop', 'SessionEnd', 'UserPromptSubmit', 'StopFailure'];
 const claudeFiles = ['skills/fable-workflow/SKILL.md', 'skills/fable-workflow/tracking.md', 'skills/next/SKILL.md', 'agents/fable-lead.md'];
 
 test('AC14 dry-run (alone, and with install) writes nothing and prints a plan', () => {
@@ -98,7 +99,7 @@ test('AC14 install: hooks swapped, everything else byte-identical when re-serial
   for (const k of Object.keys(OTHER)) assert.equal(JSON.stringify(s[k]), JSON.stringify(OTHER[k]), k + ' untouched');
   assert.deepEqual(s.hooks.PreToolUse.find((e) => e.matcher === GUARD.matcher), GUARD, 'guardrails entry identical');
   assert.ok(!text.includes('.orca/agent-hooks'), 'orca entries removed');
-  for (const ev of ['SessionStart', 'UserPromptSubmit', 'StopFailure', 'TeammateIdle', 'PostCompact']) assert.ok(!(ev in s.hooks), ev + ' key removed when left empty');
+  for (const ev of ['SessionStart', 'TeammateIdle', 'PostCompact']) assert.ok(!(ev in s.hooks), ev + ' key removed when left empty');
   for (const ev of AM_EVENTS) {
     const es = amEntries(s, ev);
     assert.equal(es.length, 1, ev + ' has exactly one Agent Monitor entry');
