@@ -2,6 +2,7 @@
   --bg: #f6f7f9; --surface: #fff; --surface-2: #eef0f4; --text: #1b1f27; --muted: #5d6676;
   --border: #d4d9e2; --accent: #2457d6; --accent-text: #fff; --danger: #b3261e; --ok: #1d7a46;
   --warn-bg: #fff4d6; --warn: #8a5a00; --focus: #2457d6;
+  --run-pass: #1d7a46; --run-fail: #b3261e; --run-wait: #8a5a00; --run-run: #2457d6; --run-idle: #5d6676;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -9,6 +10,7 @@
     --bg: #12151b; --surface: #1a1f28; --surface-2: #232a36; --text: #e6e9ef; --muted: #98a2b3;
     --border: #333c4b; --accent: #6b95ff; --accent-text: #0b1020; --danger: #ff8a80; --ok: #5fd593;
     --warn-bg: #3a2f10; --warn: #f3c969; --focus: #8fb0ff;
+    --run-pass: #5fd593; --run-fail: #ff8a80; --run-wait: #f3c969; --run-run: #6b95ff; --run-idle: #98a2b3;
     color-scheme: dark;
   }
 }
@@ -16,6 +18,7 @@
   --bg: #12151b; --surface: #1a1f28; --surface-2: #232a36; --text: #e6e9ef; --muted: #98a2b3;
   --border: #333c4b; --accent: #6b95ff; --accent-text: #0b1020; --danger: #ff8a80; --ok: #5fd593;
   --warn-bg: #3a2f10; --warn: #f3c969; --focus: #8fb0ff;
+  --run-pass: #5fd593; --run-fail: #ff8a80; --run-wait: #f3c969; --run-run: #6b95ff; --run-idle: #98a2b3;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -75,32 +78,56 @@ main.full { max-width: none; padding: 0; overflow: hidden; display: flex; flex-d
 .versions { position: absolute; top: 100%; right: 12px; z-index: 10; max-height: 50vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .publish-errors { margin: 0; padding: 8px 12px; color: var(--danger); background: var(--surface); border-bottom: 1px solid var(--danger); max-height: 25vh; overflow: auto; }
 .publish-errors ul { margin: 4px 0 0; padding-left: 18px; }
-.editor-body { display: grid; grid-template-columns: 150px minmax(0, 1fr) 340px; flex: 1; min-height: 0; }
+.editor-body { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; flex: 1; min-height: 0; }
 .palette, .settings, .run-side { background: var(--surface); padding: 4px 12px 12px; overflow: auto; }
 .palette { border-right: 1px solid var(--border); }
 .palette h2 { margin-top: 12px; }
 .palette ul, .outline, .agent-list { list-style: none; padding: 0; margin: 0; }
 .palette li { margin: 6px 0; }
-.palette-item { width: 100%; cursor: grab; text-align: left; border-left-width: 4px; }
+.palette-item { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; cursor: grab; text-align: left; border-left: 4px solid var(--tc); padding: 7px 10px; }
+.palette-head { display: flex; align-items: center; gap: 6px; }
+.palette-desc { font-size: 12px; line-height: 1.3; white-space: nowrap; }
 .settings, .run-side { border-left: 1px solid var(--border); }
 .canvas-wrap { min-width: 0; min-height: 0; display: flex; }
-.canvas { flex: 1; min-height: 0; background: var(--surface); --xy-edge-stroke-default: var(--muted); --xy-edge-label-color-default: var(--text); --xy-edge-label-background-color-default: var(--surface); --xy-background-color-default: var(--surface); --xy-attribution-background-color-default: var(--surface-2); --xy-controls-button-background-color-default: var(--surface-2); --xy-controls-button-color-default: var(--text); --xy-controls-button-border-color-default: var(--border); }
+.canvas { flex: 1; min-height: 0; background: var(--surface); --xy-edge-stroke: var(--muted); --xy-edge-label-color: var(--text); --xy-edge-label-background-color: var(--surface); --xy-background-color: var(--surface); --xy-background-pattern-dots-color: var(--border); --xy-attribution-background-color: var(--surface-2); --xy-controls-button-background-color: var(--surface-2); --xy-controls-button-background-color-hover: var(--surface); --xy-controls-button-color: var(--text); --xy-controls-button-color-hover: var(--text); --xy-controls-button-border-color: var(--border); }
+.run-graph-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .canvas .react-flow__edge-textbg { fill: var(--surface); }
 .canvas .react-flow__edge-text { fill: var(--text); font-size: 12px; }
 .canvas .react-flow__arrowhead path { fill: var(--muted); stroke: var(--muted); }
 .canvas .react-flow__edge.selected .react-flow__edge-path { stroke: var(--accent); stroke-width: 3; }
 .canvas .react-flow__edge.edge-error .react-flow__edge-path { stroke: var(--danger); stroke-width: 3; }
-.fnode { display: flex; flex-direction: column; gap: 2px; width: 180px; padding: 8px 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+/* Node card, shared by the editor and the run view. Width and the layer/column gaps in lib/layout.js go together. */
+.type-step { --tc: var(--series-1); }
+.type-check { --tc: var(--series-3); }
+.type-gate { --tc: var(--series-7); }
+.type-split { --tc: var(--series-2); }
+.type-join { --tc: var(--series-5); }
+.type-end { --tc: var(--series-other); }
+.fnode { display: flex; flex-direction: column; gap: 3px; width: 220px; padding: 7px 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--tc); border-radius: 8px; font-size: 12px; }
 .fnode.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .fnode.has-error { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger); }
 .fnode.type-gate { border-style: dashed; }
-.fnode.type-split, .fnode.type-join { width: 120px; border-radius: 20px; }
-.fnode.type-end { background: var(--bg); }
-.fnode.visited { border-color: var(--ok); }
-.fnode.active { border: 2px solid var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
-.fnode-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 16px; }
-.fnode-badges .badge { margin-left: 0; }
-.badge.here { background: var(--accent); color: var(--accent-text); }
+.fnode-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fnode-icon, .palette-icon { flex: none; color: var(--tc); }
+.fnode-name { font-size: 16px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fnode-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.fnode .badge { margin-left: 0; }
+.fnode-type { border: 1px solid var(--tc); background: transparent; }
+.fnode-stats { line-height: 1.3; }
+.fnode-status { font-weight: 600; color: var(--rs); }
+.badge.fails { color: var(--run-fail); border: 1px solid var(--run-fail); background: transparent; }
+/* Run view: the state colour owns the border and tint; the type accent stays on the icon and type badge. */
+.run-passed { --rs: var(--run-pass); }
+.run-failed, .run-decision { --rs: var(--run-fail); }
+.run-waiting { --rs: var(--run-wait); }
+.run-running { --rs: var(--run-run); }
+.run-halted, .run-idle { --rs: var(--run-idle); }
+.fnode.run-passed, .fnode.run-failed, .fnode.run-decision, .fnode.run-waiting, .fnode.run-running, .fnode.run-halted { border-color: var(--rs); background: color-mix(in srgb, var(--rs) 14%, var(--surface-2)); }
+.fnode.run-running, .fnode.run-waiting, .fnode.run-decision { box-shadow: 0 0 0 3px color-mix(in srgb, var(--rs) 30%, transparent); }
+.fnode.run-idle { background: var(--surface); color: var(--muted); }
+.run-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px; font-size: 12px; color: var(--text); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.legend-item > [aria-hidden] { font-weight: 700; color: var(--rs); }
+.canvas .react-flow__edge.edge-fix .react-flow__edge-path { stroke-dasharray: 6 4; }
 .palette-item.type-gate { border-style: dashed; }
 .field { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
 .field input, .field select, .field textarea, .action-row input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }

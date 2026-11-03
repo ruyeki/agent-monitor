@@ -147,24 +147,25 @@ describe('layout.autoLayout', () => {
     { id: '1', from: 's', to: 'l', on: 'done' }, { id: '2', from: 's', to: 'r', on: 'done' }, { id: '3', from: 'l', to: 't', on: 'done' }, { id: '4', from: 'r', to: 't', on: 'done' }], loop: { maxRounds: 5, decision: 'x' } });
   const pos = (wf, id) => wf.nodes.find((n) => n.id === id).position;
 
-  it('lays a chain out left to right, 220 apart, starting at x 0', async () => {
+  it('lays a chain out top to bottom, 160 apart, starting at y 0 on one column', async () => {
     const { autoLayout } = await L();
     const wf = chain(); const before = frozen(wf);
     const out = autoLayout(wf);
     expect(frozen(wf)).toBe(before);
-    expect(['a', 'b', 'c', 'e'].map((id) => pos(out, id).x)).toEqual([0, 220, 440, 660]);
+    expect(['a', 'b', 'c', 'e'].map((id) => pos(out, id).y)).toEqual([0, 160, 320, 480]);
+    expect(['a', 'b', 'c', 'e'].map((id) => pos(out, id).x)).toEqual([0, 0, 0, 0]);
     expect(out.edges).toEqual(wf.edges);
     expect(out.nodes.map((n) => n.id)).toEqual(wf.nodes.map((n) => n.id));
     expect(out.loop).toEqual(wf.loop);
   });
 
-  it('puts parallel branches in one column on different rows', async () => {
+  it('puts parallel branches in one layer on different columns', async () => {
     const { autoLayout } = await L();
     const out = autoLayout(diamond());
-    expect(pos(out, 'l').x).toBe(220);
-    expect(pos(out, 'r').x).toBe(220);
-    expect(pos(out, 'l').y).not.toBe(pos(out, 'r').y);
-    expect(pos(out, 't').x).toBe(440);
+    expect(pos(out, 'l').y).toBe(160);
+    expect(pos(out, 'r').y).toBe(160);
+    expect(pos(out, 'l').x).not.toBe(pos(out, 'r').x);
+    expect(pos(out, 't').y).toBe(320);
   });
 
   it('every node gets a distinct position, including the seed-like loops and unreachable nodes; back edges terminate', async () => {
@@ -176,7 +177,7 @@ describe('layout.autoLayout', () => {
     const keys = out.nodes.map((n) => `${n.position.x},${n.position.y}`);
     expect(new Set(keys).size).toBe(keys.length);
     expect(out.nodes.every((n) => Number.isFinite(n.position.x) && Number.isFinite(n.position.y))).toBe(true);
-    expect(pos(out, 's').x).toBe(0);
+    expect(pos(out, 's').y).toBe(0);
   });
 
   it('is deterministic and idempotent on the real seed shape', async () => {

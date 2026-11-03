@@ -1,22 +1,34 @@
 import '@xyflow/react/dist/style.css';
 import { Background, Controls, ReactFlow } from '@xyflow/react';
 import { useMemo } from 'react';
-import { nodeTypes } from '../editor/Canvas.jsx';
+import { FIT_VIEW, nodeTypes } from '../editor/Canvas.jsx';
 import { toFlow } from '../editor/toFlow.js';
+import { runState } from './runState.js';
 
-const NO_STATS = {};
+const LEGEND = [
+  ['passed', '✓', 'Passed'],
+  ['failed', '✕', 'Failed or decision needed'],
+  ['waiting', '⏸', 'Waiting on Ryan'],
+  ['running', '▶', 'Running'],
+  ['idle', '–', 'Not reached / stopped'],
+];
 
-// The run's pinned graph, read-only: active nodes highlighted, visited nodes marked, visit counts (and tokens when the API has them).
+// The run's pinned graph, read-only: each node coloured by its latest visit (see runState.js), with fails, visits and tokens.
 export function RunGraph({ detail }) {
-  const { run, workflow } = detail;
-  const stats = detail.nodes ?? NO_STATS;
   const graph = useMemo(() => {
-    const active = new Set((run.active ?? [{ id: run.stage }]).map((a) => a.id));
     const codex = new Set((detail.visits ?? []).filter((v) => v.provider === 'codex').map((v) => v.node));
-    return toFlow(workflow, { runInfo: { active, nodes: stats, codex } });
-  }, [workflow, run.active, run.stage, stats, detail.visits]);
+    return toFlow(detail.workflow, { runInfo: runState(detail), codex });
+  }, [detail]);
   return (
-    <div className="canvas run-graph" role="group" aria-label="Run graph">
+    <div className="run-graph-wrap">
+      <div className="run-legend" role="group" aria-label="Colour legend">
+        {LEGEND.map(([state, glyph, label]) => (
+          <span key={state} className={`legend-item run-${state}`}>
+            <span aria-hidden="true">{glyph}</span> {label}
+          </span>
+        ))}
+      </div>
+      <div className="canvas run-graph" role="group" aria-label="Run graph">
       <ReactFlow
         nodes={graph.nodes}
         edges={graph.edges}
@@ -26,11 +38,13 @@ export function RunGraph({ detail }) {
         elementsSelectable={false}
         deleteKeyCode={null}
         fitView
+        fitViewOptions={FIT_VIEW}
         minZoom={0.2}
       >
         <Background />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} fitViewOptions={FIT_VIEW} />
       </ReactFlow>
+      </div>
     </div>
   );
 }

@@ -45,17 +45,28 @@ afterEach(() => {
 const nodeEl = (id) => document.querySelector(`[data-node="${id}"]`);
 
 describe('RunView', () => {
-  it('draws the pinned graph with the active node highlighted and visit counts on visited ones', async () => {
+  it('draws the pinned graph coloured by state, with visit counts', async () => {
+    current = detail({ visits: [{ node: 'plan', outcome: 'done' }, { node: 'plan', outcome: 'done' }, { node: 'verify', outcome: null }] });
     render(<RunView id="my-run" />);
     await screen.findByRole('group', { name: 'Run graph' });
     await waitFor(() => expect(nodeEl('verify')).toBeTruthy());
-    expect(nodeEl('verify').className).toContain('active');
-    expect(nodeEl('plan').className).toContain('visited');
+    expect(nodeEl('verify').className).toContain('run-running');
+    expect(nodeEl('plan').className).toContain('run-passed');
     expect(nodeEl('plan').textContent).toContain('2 visits');
     expect(nodeEl('verify').textContent).toContain('1 visit');
-    expect(nodeEl('pr').className).not.toContain('visited');
-    expect(nodeEl('pr').className).not.toContain('active');
+    expect(nodeEl('pr').className).toContain('run-idle');
+    expect(nodeEl('pr').getAttribute('data-state')).toBe('idle');
     expect(fetchMock.mock.calls[0][0]).toBe('/api/runs/my-run');
+  });
+
+  it('the colour legend sits above the canvas, not inside it, so it cannot cover a node', async () => {
+    current = detail({});
+    render(<RunView id="my-run" />);
+    const graph = await screen.findByRole('group', { name: 'Run graph' });
+    const legend = screen.getByRole('group', { name: 'Colour legend' });
+    expect(legend.className).toContain('run-legend');
+    expect(graph.contains(legend)).toBe(false);
+    expect(legend.textContent).toMatch(/Passed.*Failed or decision needed.*Waiting on Ryan.*Running.*Not reached \/ stopped/);
   });
 
   it('is read-only: nodes are not draggable and handles cannot start a connection', async () => {

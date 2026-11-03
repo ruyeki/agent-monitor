@@ -136,12 +136,12 @@ await check('selecting a node opens the settings panel with its fields', async (
   await name.fill('Verifier prep');
 });
 
-await check('auto-layout button saves distinct positions on the 220 grid', async () => {
+await check('auto-layout button saves distinct positions on the 160 layer grid', async () => {
   await page.getByRole('button', { name: /layout/i }).first().click();
   const ok1 = await until(async () => {
     const ns = (await draft()).workflow.nodes;
     const keys = new Set(ns.map((n) => `${n.position.x},${n.position.y}`));
-    return keys.size === ns.length && ns.every((n) => n.position.x % 220 === 0) ? ns : null;
+    return keys.size === ns.length && ns.every((n) => n.position.y % 160 === 0) ? ns : null;
   }, 6000);
   ok(ok1, 'positions are not laid out');
 });

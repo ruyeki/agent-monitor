@@ -7,9 +7,10 @@ import { ErrorList } from './ErrorList.jsx';
 import { addNode, connect, patchNode, removeEdge, removeNode, renameNode } from './model.js';
 import { Palette } from './Palette.jsx';
 import { SettingsPanel } from './SettingsPanel.jsx';
-import { errorTargets } from './toFlow.js';
+import { errorTargets, nodeStats } from './toFlow.js';
 import { TopBar } from './TopBar.jsx';
 import { useDraft } from './useDraft.js';
+import { useVersionStats } from './useVersionStats.js';
 
 const isEditable = (el) =>
   !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(el.tagName) || !!el.closest?.('[role=alertdialog], [role=dialog]'));
@@ -21,6 +22,8 @@ function EditorBody({ tick }) {
   const canvasBox = useRef(null);
   const [selected, setSelected] = useState(null); // {kind: 'node'|'edge', id}
   const [confirm, setConfirm] = useState(null); // {what: 'discard'} | {what: 'load', version}
+  const versionStats = useVersionStats(tick, draft.published?.version);
+  const stats = useMemo(() => nodeStats(versionStats?.find((v) => v.version === draft.published?.version), wf), [versionStats, draft.published, wf]);
   const errors = useMemo(() => errorTargets(draft.publishErrors), [draft.publishErrors]);
 
   const deleteSelected = useCallback(() => {
@@ -113,6 +116,7 @@ function EditorBody({ tick }) {
             wf={wf}
             selected={selected}
             errors={errors}
+            stats={stats}
             onSelect={setSelected}
             onConnect={onConnect}
             onMove={(id, pos) => edit(patchNode(wf, id, { position: { x: Math.round(pos.x), y: Math.round(pos.y) } }))}

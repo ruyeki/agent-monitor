@@ -7,10 +7,12 @@ const res = (body, ok = true) => Promise.resolve({ ok, status: ok ? 200 : 400, j
 let fetchMock;
 let puts;
 let publishResult;
+let statsResult;
 
 beforeEach(() => {
   puts = [];
   publishResult = () => res({ version: 4 });
+  statsResult = () => res([]);
   const state = { published: { version: 3, workflow: sample(), publishedAt: '2026-10-20T10:00:00Z' }, draft: { workflow: sample(), errors: [] } };
   fetchMock = vi.fn((url, opts = {}) => {
     const m = opts.method ?? 'GET';
@@ -21,6 +23,7 @@ beforeEach(() => {
       return res({ workflow: puts.at(-1), errors: [] });
     }
     if (url === '/api/workflow/publish') return publishResult();
+    if (url === '/api/stats/versions') return statsResult();
     return res({});
   });
   globalThis.fetch = fetchMock;
@@ -49,10 +52,48 @@ describe('WorkflowEditor', () => {
   it('shows the palette items and adds a node when one is pressed', async () => {
     await open();
     const palette = within(screen.getByRole('complementary', { name: 'Node palette' }));
-    expect(palette.getAllByRole('button').map((b) => b.textContent)).toEqual(['Step', 'Check', 'Gate', 'Split', 'Join', 'End']);
+    expect(palette.getAllByRole('button').map((b) => b.querySelector('.palette-name').textContent)).toEqual(['Step', 'Check', 'Gate', 'Split', 'Join', 'End']);
+    expect(palette.getAllByRole('button').every((b) => b.querySelector('.palette-icon') && b.querySelector('.palette-desc').textContent.length > 5)).toBe(true);
     fireEvent.click(palette.getByRole('button', { name: 'Gate' }));
     await waitFor(() => expect(puts.at(-1)?.nodes.at(-1).type).toBe('gate'));
     expect(screen.getByLabelText('Ask')).toBeTruthy(); // the new node is selected
+  });
+
+  it('draws node cards: icon, name, type badge, runner and model for steps and checks, pushes badge', async () => {
+    await open();
+    await waitFor(() => expect(document.querySelector('[data-node="plan"]')).toBeTruthy());
+    const card = document.querySelector('[data-node="plan"]');
+    expect(card.className).toContain('type-step');
+    expect(card.querySelector('.fnode-icon').getAttribute('aria-hidden')).toBe('true');
+    expect(card.querySelector('.fnode-type').textContent).toBe('Step');
+    expect(card.querySelector('.fnode-sub').textContent).toBe('worker · sonnet');
+    expect(document.querySelector('[data-node="gate2"] .fnode-sub')).toBeNull();
+    expect(document.querySelector('[data-node="pr"] .badge.pushes').textContent).toBe('pushes');
+    expect(document.querySelector('.react-flow__handle.target').className).toContain('react-flow__handle-top');
+  });
+
+  it('shows each published node average tokens and duration; never reached; nothing for draft-only nodes', async () => {
+    statsResult = () => res([{ version: 3, finishedRuns: 4, nodes: [{ id: 'plan', runs: 3, avgTokens: 12_000, avgDurationMs: 250_000 }, { id: 'verify', runs: 0, avgTokens: 0, avgDurationMs: 0 }] }]);
+    await open();
+    await waitFor(() => expect(document.querySelector('[data-node="plan"] .fnode-stats')).toBeTruthy());
+    expect(document.querySelector('[data-node="plan"] .fnode-stats').textContent).toBe('≈ 12k tokens · 4m 10s avg');
+    expect(document.querySelector('[data-node="verify"] .fnode-stats').textContent).toBe('never reached');
+    expect(document.querySelector('[data-node="pr"] .fnode-stats')).toBeNull();
+  });
+
+  it('says "no runs yet" when the published version has no finished runs', async () => {
+    statsResult = () => res([{ version: 3, finishedRuns: 0, nodes: [{ id: 'plan', runs: 0, avgTokens: 0, avgDurationMs: 0 }] }]);
+    await open();
+    await waitFor(() => expect(document.querySelector('[data-node="plan"] .fnode-stats')?.textContent).toBe('no runs yet'));
+  });
+
+  it('a failing stats request leaves the editor working with no stats line', async () => {
+    statsResult = () => res({ error: 'boom' }, false);
+    await open();
+    await waitFor(() => expect(document.querySelector('[data-node="plan"]')).toBeTruthy());
+    await waitFor(() => expect(fetchMock.mock.calls.some((c) => c[0] === '/api/stats/versions')).toBe(true));
+    expect(document.querySelector('.fnode-stats')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('adds a node where a palette item is dropped on the canvas', async () => {

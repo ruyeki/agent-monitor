@@ -6,9 +6,9 @@ const pos = (wf, id) => wf.nodes.find((n) => n.id === id).position;
 const distinct = (wf) => new Set(wf.nodes.map((n) => `${n.position.x},${n.position.y}`)).size;
 
 describe('autoLayout', () => {
-  it('lays the spine out left to right, ignoring the back edge', () => {
+  it('lays the spine out top to bottom, ignoring the back edge', () => {
     const wf = autoLayout(sample());
-    expect(['plan', 'verify', 'gate2', 'pr', 'done'].map((id) => pos(wf, id).x)).toEqual([0, 220, 440, 660, 880]);
+    expect(['plan', 'verify', 'gate2', 'pr', 'done'].map((id) => pos(wf, id).y)).toEqual([0, 160, 320, 480, 640]);
   });
   it('stacks parallel branches in one layer with distinct positions', () => {
     const wf = autoLayout({
@@ -20,7 +20,8 @@ describe('autoLayout', () => {
         { id: '4', from: 'b', to: 'j', on: 'done' },
       ],
     });
-    expect([pos(wf, 'a').x, pos(wf, 'b').x, pos(wf, 'j').x]).toEqual([220, 220, 440]);
+    expect([pos(wf, 'a').y, pos(wf, 'b').y, pos(wf, 'j').y]).toEqual([160, 160, 320]);
+    expect([pos(wf, 'a').x, pos(wf, 'b').x, pos(wf, 'j').x]).toEqual([-140, 140, 0]);
     expect(distinct(wf)).toBe(4);
   });
   it('uses the longest path for depth and keeps unreachable nodes distinct', () => {
@@ -32,7 +33,7 @@ describe('autoLayout', () => {
         { id: '3', from: 'a', to: 'c', on: 'fail' },
       ],
     });
-    expect(pos(wf, 'c').x).toBe(440);
+    expect(pos(wf, 'c').y).toBe(320);
     expect(distinct(wf)).toBe(4);
   });
   it('does not mutate the input and handles an empty graph', () => {

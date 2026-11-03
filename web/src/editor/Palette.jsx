@@ -1,11 +1,12 @@
+import { TypeIcon } from './FlowNode.jsx';
 import { NODE_TYPES, typeName } from './model.js';
 
 export const DRAG_TYPE = 'application/x-agent-monitor-node';
 
 const HINT = {
-  step: 'An agent does some work',
-  check: 'An agent checks the work: pass or fail',
-  gate: 'Waits for Ryan to answer',
+  step: 'An agent does work',
+  check: 'An agent checks the work',
+  gate: "Waits for Ryan's answer",
   split: 'Starts parallel branches',
   join: 'Waits for every branch',
   end: 'Ends the run',
@@ -24,14 +25,19 @@ export function Palette({ onAdd }) {
               type="button"
               className={`palette-item type-${t}`}
               draggable
-              title={HINT[t]}
+              aria-labelledby={`palette-name-${t}`}
+              aria-describedby={`palette-desc-${t}`}
               onDragStart={(e) => {
                 e.dataTransfer.setData(DRAG_TYPE, t);
                 e.dataTransfer.effectAllowed = 'move';
               }}
               onClick={() => onAdd(t)}
             >
-              {typeName(t)}
+              <span className="palette-head">
+                <TypeIcon type={t} className="palette-icon" />
+                <strong id={`palette-name-${t}`} className="palette-name">{typeName(t)}</strong>
+              </span>
+              <span id={`palette-desc-${t}`} className="muted palette-desc">{HINT[t]}</span>
             </button>
           </li>
         ))}

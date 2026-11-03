@@ -39,6 +39,12 @@ const savedText = async () => (await page.locator('[role=status]').allInnerTexts
 const waitSaved = () => until(async () => /Draft — saved/.test(await savedText()), 5000, 100);
 const node = (id) => page.locator(`.react-flow__node[data-id="${id}"]`);
 const fnode = (id) => page.locator(`.fnode[data-node="${id}"]`);
+// A node name's effective size: its font size times the canvas zoom (AC1: at least 12 px at fit-to-view).
+const nameSize = () => page.evaluate(() => {
+  const name = document.querySelector('.fnode-name');
+  const zoom = new DOMMatrix(getComputedStyle(document.querySelector('.react-flow__viewport')).transform).a;
+  return parseFloat(getComputedStyle(name).fontSize) * zoom;
+});
 
 // ---- seed runs through MCP (the same path agents use)
 const mcp = await mcpClient(app.url);
@@ -84,10 +90,13 @@ await check('run view: pinned graph with the active node, visited marks and visi
   await page.goto(`${base}/#/runs/${viewed}`);
   await page.getByRole('group', { name: 'Run graph' }).waitFor({ timeout: 8000 });
   await fnode('gate1').waitFor({ timeout: 5000 });
-  ok((await fnode('gate1').getAttribute('class')).includes('active'), 'gate1 is not highlighted as active');
-  ok((await fnode('frame').getAttribute('class')).includes('visited'), 'frame is not marked visited');
-  ok(/1 visit/.test(await fnode('frame').innerText()), 'frame shows no visit count');
-  ok(!(await fnode('plan').getAttribute('class')).includes('visited'), 'plan is marked visited before it ran');
+  ok(await fnode('gate1').getAttribute('data-state') === 'waiting', 'gate1 is not shown as waiting');
+  ok(await fnode('frame').getAttribute('data-state') === 'passed', 'frame is not shown as passed');
+  ok(await until(async () => /1 visit/.test(await fnode('frame').innerText()), 5000, 100), 'frame shows no visit count'); // innerText is empty while a re-rendered node is still unmeasured (hidden)
+  ok(await fnode('plan').getAttribute('data-state') === 'idle', 'plan is not idle before it ran');
+  const size = await nameSize();
+  console.log(`run view: effective name size ${size.toFixed(2)} px`);
+  ok(size >= 12 - 0.01, `node names are ${size} px at fit-to-view`);
   await page.screenshot({ path: path.join(SHOTS, '01-run-view.png') });
 });
 
@@ -105,8 +114,8 @@ await check('run view: side panel shows the ask, totals and timeline; responding
   ok(await side.getByRole('region', { name: 'Timeline' }).getByRole('listitem').count() > 0, 'empty timeline');
   await side.getByRole('button', { name: /agree spec/i }).click();
   ok(await until(async () => (await get(`/api/runs/${viewed}`)).run.stage === 'plan', 5000), 'run did not move to plan');
-  ok(await until(async () => (await fnode('plan').getAttribute('class')).includes('active'), 6000), 'plan was not highlighted live');
-  ok(await until(async () => (await fnode('gate1').getAttribute('class')).includes('visited'), 3000), 'gate1 was not marked visited');
+  ok(await until(async () => (await fnode('plan').getAttribute('data-state')) === 'running', 6000), 'plan was not shown as running live');
+  ok(await until(async () => (await fnode('gate1').getAttribute('data-state')) === 'passed', 3000), 'gate1 was not shown as passed');
 });
 
 // ---- Stats
@@ -144,7 +153,22 @@ await check('stats: no horizontal page scroll at 390 px wide', async () => {
 });
 
 // ---- Editor
+// The canvas re-fits to view on its own after the node set changes (a dropped node widens the bounds), and boxes read
+// mid-shift are stale by the time the mouse gets there. Wait until the viewport transform and every node's measured
+// edges have held still for a few samples before a check reads boxes and drags.
+const settled = async () => {
+  let last = '';
+  let steady = 0;
+  const done = await until(async () => {
+    const now = await page.evaluate(() => `${document.querySelector('.react-flow__viewport')?.style.transform}|${document.querySelectorAll('.react-flow__edge').length}`);
+    steady = now === last && !now.endsWith('|0') ? steady + 1 : 0;
+    last = now;
+    return steady >= 4;
+  }, 8000, 150);
+  ok(done, 'the canvas never settled');
+};
 const connectNodes = async (from, to) => {
+  await settled();
   const a = await node(from).locator('.react-flow__handle.source').boundingBox();
   const b = await node(to).locator('.react-flow__handle.target').boundingBox();
   ok(a && b, 'handles not found');
@@ -159,13 +183,16 @@ await check('editor: opens full page with palette, canvas, settings and top bar'
   await page.goto(`${base}/#/workflow`);
   await page.getByRole('button', { name: /^publish$/i }).waitFor({ timeout: 8000 });
   await node('frame').waitFor({ timeout: 5000 });
-  const names = await page.getByRole('complementary', { name: 'Node palette' }).getByRole('button').allInnerTexts();
+  const names = await page.getByRole('complementary', { name: 'Node palette' }).locator('.palette-name').allInnerTexts();
   ok(names.join() === 'Step,Check,Gate,Split,Join,End', `palette: ${names.join()}`);
   ok(/Published v\d+/.test(await page.locator('.topbar').innerText()), 'no Published vN');
   ok(/Draft — saved/.test(await savedText()), 'draft is not shown as saved');
   await page.getByRole('region', { name: 'Loop settings' }).waitFor({ timeout: 2000 });
   ok(await page.getByLabel('Max rounds (1-10)').inputValue() === '5', 'max rounds is not 5');
   await page.screenshot({ path: path.join(SHOTS, '02-editor-light.png') });
+  const size = await nameSize();
+  console.log(`editor: effective name size ${size.toFixed(2)} px`);
+  ok(size >= 12 - 0.01, `node names are ${size} px at fit-to-view`);
 });
 
 await check('editor: dragging Step from the palette onto the canvas adds a node at the drop point', async () => {
@@ -227,6 +254,7 @@ await check('editor: Delete key removes the selected edge, then the selected nod
 });
 
 await check('editor: dragging a node saves its position', async () => {
+  await settled();
   const before = (await draft()).nodes.find((n) => n.id === 'commit').position;
   const b = await node('commit').boundingBox();
   await page.mouse.move(b.x + b.width / 2, b.y + 10);
@@ -240,7 +268,7 @@ await check('editor: dragging a node saves its position', async () => {
 });
 
 await check('editor: gate actions can be added, renamed and removed with their edges kept in sync', async () => {
-  await node('gate2').click();
+  await node('gate2').dispatchEvent('click'); // off screen at fit-to-view (long graph, panned)
   const before = (await draft()).edges.filter((e) => e.from === 'gate2').map((e) => e.on);
   const label = page.getByLabel('Action 1 label');
   const old = await label.inputValue();
@@ -287,8 +315,8 @@ await check('editor: Auto-layout saves distinct positions in layers', async () =
   await page.getByRole('button', { name: 'Auto-layout' }).click();
   const d = await until(async () => { const x = await draft(); return new Set(x.nodes.map((n) => `${n.position.x},${n.position.y}`)).size === x.nodes.length ? x : null; }, 5000);
   ok(d, 'positions are not distinct');
-  const x = (id) => d.nodes.find((n) => n.id === id).position.x;
-  ok(x('frame') === 0 && x('gate1') === 220, `frame ${x('frame')}, gate1 ${x('gate1')}`);
+  const p = (id) => d.nodes.find((n) => n.id === id).position;
+  ok(p('frame').x === 0 && p('frame').y === 0 && p('gate1').x === 0 && p('gate1').y === 160, `frame ${JSON.stringify(p('frame'))}, gate1 ${JSON.stringify(p('gate1'))}`);
   ok(await waitSaved(), 'not saved');
 });
 
@@ -331,7 +359,7 @@ await check('dark theme renders with readable text', async () => {
   page = await dctx.newPage();
   await page.goto(`${base}/#/workflow`);
   await page.getByRole('button', { name: /^publish$/i }).waitFor({ timeout: 8000 });
-  await node('frame').click();
+  await node('frame').dispatchEvent('click'); // a long graph is centred and panned at fit-to-view: the top may be off screen
   await page.screenshot({ path: path.join(SHOTS, '04-editor-dark.png') });
   const probe = await page.evaluate(() => {
     const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };

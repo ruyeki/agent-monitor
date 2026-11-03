@@ -6,11 +6,15 @@ import { toFlow } from './toFlow.js';
 
 export const nodeTypes = { wf: FlowNode };
 
+// Fit-to-view for both canvases. Names are 16 px (.fnode-name), so a minZoom of 12/16 keeps them at 12 px or more
+// at fit-to-view whatever the graph size: a long graph is centred and panned, not shrunk.
+export const FIT_VIEW = { padding: 0.1, minZoom: 0.75 };
+
 // The full-page graph: select, drag, connect, and receive palette drops. Edits go up through the callbacks.
-export function Canvas({ wf, selected, errors, onSelect, onConnect, onMove, onDropType }) {
-  const graph = useMemo(() => toFlow(wf, { selected, errors }), [wf, selected, errors]);
+export function Canvas({ wf, selected, errors, stats, onSelect, onConnect, onMove, onDropType }) {
+  const graph = useMemo(() => toFlow(wf, { selected, errors, stats }), [wf, selected, errors, stats]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
-  useEffect(() => setNodes(graph.nodes), [graph.nodes, setNodes]);
+  useEffect(() => setNodes((old) => graph.nodes.map((n) => { const m = old.find((o) => o.id === n.id)?.measured; return m ? { ...n, measured: m } : n; })), [graph.nodes, setNodes]);
 
   const onDragOver = (e) => {
     if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
@@ -38,10 +42,11 @@ export function Canvas({ wf, selected, errors, onSelect, onConnect, onMove, onDr
         onConnect={(c) => onConnect(c.source, c.target)}
         deleteKeyCode={null}
         fitView
+        fitViewOptions={FIT_VIEW}
         minZoom={0.2}
       >
         <Background />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} fitViewOptions={FIT_VIEW} />
       </ReactFlow>
     </div>
   );
