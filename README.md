@@ -1,6 +1,6 @@
 # Agent Monitor
 
-Agent Monitor is a small local app that watches Fable runs. It shows each run, its stage, its agents and what they are doing, and it holds the workflow (the stages and gates) that runs follow. Ryan answers the gates in the browser. Agents report in through an MCP server and Claude Code hooks.
+A small app I use at work that allows me to monitor my agents. I can see what step in my workflow the agents are currently in, how many tokens they've been using at each step, what decisions they've made, etc. Also, I can easily edit and optimize my workflows with React Flow. 
 
 ## Requirements
 
