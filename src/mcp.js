@@ -72,7 +72,7 @@ function buildServer(store, afterRespond) {
 
   server.registerTool('escalate', {
     description: 'Stop for Ryan from any stage: moves the run to its Decision gate with `question` shown to him in full. '
-      + 'Write it so he can decide from it alone: what happened, each option with its trade-offs, your recommendation.',
+      + 'Keep it short: a few lines of background and your recommended solution.',
     inputSchema: { run, question: z.string().min(1) },
   }, async ({ run: id, question }) => outcome(store, store.escalate(id, question)));
 
