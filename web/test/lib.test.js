@@ -31,7 +31,7 @@ describe('format', () => {
   });
   it('splitRuns', () => {
     const s = splitRuns([{ status: 'waiting' }, { status: 'active' }, { status: 'done' }, { status: 'stopped' }]);
-    expect([s.waiting.length, s.live.length, s.finished.length]).toEqual([1, 2, 2]);
+    expect([s.waiting.length, s.live.length, s.finished.length]).toEqual([1, 1, 2]);
   });
 });
 
@@ -49,6 +49,7 @@ describe('parseRoute', () => {
     expect(parseRoute('')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
+    expect(parseRoute('#/waiting')).toEqual({ name: 'waiting' });
     expect(parseRoute('#/runs/my-run')).toEqual({ name: 'run', id: 'my-run' });
     expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
     expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });

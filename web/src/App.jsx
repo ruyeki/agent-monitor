@@ -12,6 +12,7 @@ import { WaitingCards } from './WaitingCards.jsx';
 const LIVE_LABEL = { live: 'Live', connecting: 'Connecting', reconnecting: 'Reconnecting' };
 const NAV = [
   ['monitor', '#/', 'Monitor'],
+  ['waiting', '#/waiting', 'Waiting'],
   ['workflow', '#/workflow', 'Workflow'],
   ['stats', '#/stats', 'Stats'],
 ];
@@ -20,19 +21,30 @@ const openRun = (id) => {
   window.location.hash = runHref(id);
 };
 
-function Monitor({ runs, loadError, onChanged }) {
-  const { waiting, live, finished } = splitRuns(runs);
+function LoadError({ message }) {
+  return (
+    message && (
+      <p className="error" role="alert">
+        Could not load runs: {message}
+      </p>
+    )
+  );
+}
+
+function Monitor({ waiting, live, finished, loadError }) {
   return (
     <>
-      {loadError && (
-        <p className="error" role="alert">
-          Could not load runs: {loadError}
+      <LoadError message={loadError} />
+      {waiting.length > 0 && (
+        <p>
+          <a href="#/waiting">
+            {waiting.length} run{waiting.length === 1 ? '' : 's'} waiting on you →
+          </a>
         </p>
       )}
-      <WaitingCards runs={waiting} onDone={onChanged} />
       <section aria-labelledby="runs-h">
         <h2 id="runs-h">Runs ({live.length})</h2>
-        <RunsTable runs={live} onSelect={openRun} caption="Active and waiting runs" />
+        <RunsTable runs={live} onSelect={openRun} caption="Active runs" />
       </section>
       <details className="finished">
         <summary>Finished runs ({finished.length})</summary>
@@ -67,6 +79,7 @@ export default function App() {
     refresh();
   }, [refresh]);
 
+  const { waiting, live, finished } = splitRuns(runs);
   const current = route.name === 'run' ? 'monitor' : route.name;
   return (
     <>
@@ -75,7 +88,7 @@ export default function App() {
         <nav className="tabs" aria-label="Sections">
           {NAV.map(([id, href, label]) => (
             <a key={id} href={href} className={current === id ? 'active' : ''} aria-current={current === id ? 'page' : undefined}>
-              {label}
+              {id === 'waiting' ? `${label} (${waiting.length})` : label}
             </a>
           ))}
         </nav>
@@ -86,11 +99,17 @@ export default function App() {
           Theme: {theme}
         </button>
       </header>
-      <main className={route.name === 'monitor' || route.name === 'stats' ? '' : 'full'}>
+      <main className={['monitor', 'waiting', 'stats'].includes(route.name) ? '' : 'full'}>
         {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
         {route.name === 'stats' && <StatsPage tick={tick} />}
         {route.name === 'run' && <RunView key={route.id} id={route.id} tick={tick} />}
-        {route.name === 'monitor' && <Monitor runs={runs} loadError={loadError} onChanged={refreshAll} />}
+        {route.name === 'monitor' && <Monitor waiting={waiting} live={live} finished={finished} loadError={loadError} />}
+        {route.name === 'waiting' && (
+          <>
+            <LoadError message={loadError} />
+            <WaitingCards runs={waiting} onDone={refreshAll} />
+          </>
+        )}
       </main>
     </>
   );
