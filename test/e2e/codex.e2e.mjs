@@ -68,11 +68,13 @@ await check('a Claude-only run shows no Codex text', async () => {
   const t = await text();
   ok(!/Claude usage ran out/i.test(t) && !/Codex tokens/i.test(t), 'Codex text leaked into a Claude run');
 });
-await check('monitor tables tag the Codex run', async () => {
+await check('waiting card tags the Codex run; the monitor row of a Claude run is not tagged', async () => {
+  await page.goto(`${base}/#/waiting`);
+  const card = page.getByRole('article', { name: /Waiting on you: Handed over run/ });
+  await card.waitFor({ timeout: 8000 });
+  ok(/Codex/.test(await card.innerText()), 'card has no Codex tag');
   await page.goto(`${base}/#/`);
-  await page.getByText('Handed over run').first().waitFor({ timeout: 8000 });
-  const row = page.locator('tr, li, [role=row]', { hasText: 'Handed over run' }).first();
-  ok(/Codex/.test(await row.innerText()), 'row has no Codex tag');
+  await page.getByText('Plain Claude run').first().waitFor({ timeout: 8000 });
   const plain = page.locator('tr, li, [role=row]', { hasText: 'Plain Claude run' }).first();
   ok(!/Codex/.test(await plain.innerText()), 'Claude row tagged Codex');
 });

@@ -64,7 +64,8 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto(`${base}/#/`);
 
 // ---- Monitor
-await check('monitor: waiting card responds', async () => {
+await check('waiting tab: the waiting card responds', async () => {
+  await page.goto(`${base}/#/waiting`);
   const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 5000 });
   ok(/solution/i.test(await card.innerText()), 'card does not show the gate question');
@@ -73,6 +74,7 @@ await check('monitor: waiting card responds', async () => {
   const r = await until(async () => { const j = await get(`/api/runs/${waiting}`); return j.run.stage === 'plan' ? j : null; }, 5000);
   ok(r, 'run did not move to plan after Agree spec');
   await card.waitFor({ state: 'detached', timeout: 5000 });
+  await page.goto(`${base}/#/`);
 });
 
 await check('monitor: a run row opens #/runs/<id>; Stop confirm flow ends the run', async () => {
@@ -122,7 +124,7 @@ await check('run view: side panel shows the ask, totals and timeline; responding
 await check('stats: nav has Stats; the page shows period cards, the chart, versions and prices', async () => {
   await page.goto(`${base}/#/`);
   const nav = page.getByRole('navigation', { name: 'Sections' });
-  ok((await nav.getByRole('link').allInnerTexts()).join() === 'Monitor,Workflow,Stats', 'nav is not Monitor,Workflow,Stats');
+  ok(/^Monitor,Waiting \(\d+\),Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).join()), 'nav is not Monitor,Waiting (n),Workflow,Stats');
   await nav.getByRole('link', { name: 'Stats' }).click();
   await page.waitForURL(/#\/stats$/);
   await page.getByRole('region', { name: 'Usage statistics' }).waitFor({ timeout: 8000 });
@@ -142,7 +144,7 @@ await check('stats: nav has Stats; the page shows period cards, the chart, versi
 await check('stats: no horizontal page scroll at 390 px wide', async () => {
   await page.setViewportSize({ width: 390, height: 800 });
   try {
-    for (const hash of ['#/stats', '#/']) {
+    for (const hash of ['#/stats', '#/waiting', '#/']) {
       await page.goto(`${base}/${hash}`);
       await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 3000 });
       await page.waitForTimeout(500);

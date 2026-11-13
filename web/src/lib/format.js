@@ -19,10 +19,8 @@ export function splitRuns(runs) {
   const finished = [];
   for (const r of runs || []) {
     if (isEnded(r)) finished.push(r);
-    else {
-      live.push(r);
-      if (r.status === 'waiting') waiting.push(r);
-    }
+    else if (r.status === 'waiting') waiting.push(r);
+    else live.push(r);
   }
   return { waiting, live, finished };
 }

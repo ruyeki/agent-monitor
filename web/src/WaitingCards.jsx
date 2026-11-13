@@ -2,6 +2,31 @@ import { useState } from 'react';
 import { respond } from './api.js';
 import { Ago } from './Ago.jsx';
 import { CodexTag } from './RunsTable.jsx';
+import { parseAsk, splitCode } from './lib/ask.js';
+
+function Code({ text }) {
+  return splitCode(text).map((s, i) => (s.code ? <code key={i}>{s.text}</code> : s.text));
+}
+
+function Ask({ text }) {
+  const { heading, blocks } = parseAsk(text);
+  if (!heading) return null;
+  return (
+    <div className="ask">
+      <h4 className="ask-heading"><Code text={heading} /></h4>
+      {blocks.map((b, i) =>
+        b.kind === 'row' ? (
+          <div key={i} className="ask-row">
+            <span className="ask-label">{b.label}</span>
+            <span className="ask-text"><Code text={b.text} /></span>
+          </div>
+        ) : (
+          <p key={i} className="ask-para"><Code text={b.text} /></p>
+        ),
+      )}
+    </div>
+  );
+}
 
 export function WaitingCard({ run, onDone }) {
   const [text, setText] = useState('');
@@ -30,7 +55,7 @@ export function WaitingCard({ run, onDone }) {
           {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
         </span>
       </header>
-      <p className="ask">{run.ask}</p>
+      <Ask text={run.ask} />
       {run.textField && (
         <textarea
           aria-label={`Reply for ${run.title}`}

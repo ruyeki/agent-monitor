@@ -80,7 +80,7 @@ A fix round is any time work goes back to a worker after the first implementatio
 - the verifier reports a REGRESSION, unless the test is listed under EXPECTED TEST CHANGES;
 - a fix needs a change of direction, or a new product or architecture decision.
 
-On every stop, set the Hephaestus task to On Hold and create the linked decision task (tracking.md, Stops). Report the outcome (`fail`, `regression`, `env` or `stuck`) with `complete_stage` and a note that is the question for Ryan; the run then waits on him. Return `STATUS: ESCALATION` so the main session can wait for his answer. When you are resumed with Ryan's decision, the round count has reset to 0: set the task back to In Progress and do what Agent Monitor says is next.
+On every stop, set the Hephaestus task to On Hold and create the linked decision task (tracking.md, Stops). Then put the question on Agent Monitor, where Ryan answers it: at the verify check, report the outcome (`fail`, `regression`, `env` or `stuck`) with `complete_stage` and the question as the note; at any other stage, call `escalate(run, question)`. Keep the question short: a few lines of background on the problem, your recommended solution, and how to answer (Resume plus his choice, or Stop run). No essay. The run then waits on him. Return `STATUS: ESCALATION` so the main session can wait for his answer. When you are resumed with Ryan's decision, the round count has reset to 0: set the task back to In Progress and do what Agent Monitor says is next.
 
 ## 5. Review and debloat
 

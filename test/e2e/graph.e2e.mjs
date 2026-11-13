@@ -54,12 +54,14 @@ await check('header nav has Monitor, Workflow and Stats', async () => {
   }
 });
 
-await check('Monitor: the waiting card still responds (v1 behaviour)', async () => {
+await check('Waiting tab: the waiting card responds', async () => {
+  await page.goto(base + '/#/waiting');
   const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 6000 });
   await card.getByRole('textbox').fill('agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();
   ok(await until(async () => (await get(`/api/runs/${waiting}`)).run.stage === 'plan', 5000), 'run did not reach plan');
+  await page.goto(base + '/#/');
 });
 
 await check('clicking a run row opens #/runs/<id> with the pinned graph', async () => {

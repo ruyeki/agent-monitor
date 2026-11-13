@@ -70,6 +70,12 @@ function buildServer(store, afterRespond) {
     inputSchema: { run, note: z.string() },
   }, async (a) => outcome(store, store.logRun(a.run, a.note)));
 
+  server.registerTool('escalate', {
+    description: 'Stop for Ryan from any stage: moves the run to its Decision gate with `question` shown to him in full. '
+      + 'Keep it short: a few lines of background and your recommended solution.',
+    inputSchema: { run, question: z.string().min(1) },
+  }, async ({ run: id, question }) => outcome(store, store.escalate(id, question)));
+
   server.registerTool('get_run', { description: 'Show where a run is and what comes next.', inputSchema: { run } },
     async ({ run: id }) => (store.getRun(id) ? ok(describeRun(store, id)) : fail(`No run '${id}'.`)));
 
