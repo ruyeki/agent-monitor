@@ -69,7 +69,7 @@ await check('a Claude-only run shows no Codex text', async () => {
   ok(!/Claude usage ran out/i.test(t) && !/Codex tokens/i.test(t), 'Codex text leaked into a Claude run');
 });
 await check('waiting card tags the Codex run; the monitor row of a Claude run is not tagged', async () => {
-  await page.goto(`${base}/#/waiting`);
+  await page.goto(`${base}/#/`);
   const card = page.getByRole('article', { name: /Waiting on you: Handed over run/ });
   await card.waitFor({ timeout: 8000 });
   ok(/Codex/.test(await card.innerText()), 'card has no Codex tag');

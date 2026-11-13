@@ -49,7 +49,7 @@ describe('parseRoute', () => {
     expect(parseRoute('')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
-    expect(parseRoute('#/waiting')).toEqual({ name: 'waiting' });
+    expect(parseRoute('#/waiting')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/runs/my-run')).toEqual({ name: 'run', id: 'my-run' });
     expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
     expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });

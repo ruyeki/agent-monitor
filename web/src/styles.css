@@ -47,6 +47,8 @@ button.danger { color: var(--danger); border-color: var(--danger); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .conn-live .dot { background: var(--ok); }
 .conn-reconnecting .dot { background: var(--danger); }
+.waiting-panel { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 0 14px 14px; margin: 0 0 8px; }
+.waiting-panel h2 { margin-top: 12px; }
 .cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .card { background: var(--surface); border: 1px solid var(--warn); border-left-width: 4px; border-radius: 8px; padding: 12px 14px; }
 .card-head h3 { margin: 0; font-size: 15px; }
