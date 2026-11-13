@@ -1,4 +1,4 @@
-// Holdout: WaitingCard rendering, route, splitRuns, App nav + Waiting page + Monitor (AC1, AC2, AC4, AC5).
+// Holdout: WaitingCard rendering, route, splitRuns, App nav + waiting section on Monitor (AC1-AC5).
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App.jsx';
@@ -13,8 +13,8 @@ const mk = (id, over = {}) => ({
 const LONG = '[CloudLab] T10.10 template requests: a new table?\nBackground: lives in `requests` table.\nProposal: a new table.\nOptions: A = new / B = type\nAnswer: Resume with A or B.';
 
 describe('route and splitRuns', () => {
-  it('#/waiting is the waiting route; others unchanged', () => {
-    expect(parseRoute('#/waiting')).toEqual({ name: 'waiting' });
+  it('#/waiting falls back to Monitor; others unchanged', () => {
+    expect(parseRoute('#/waiting')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
     expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
     expect(parseRoute('#/waiting/x').name).toBe('monitor');
@@ -89,7 +89,8 @@ describe('WaitingCard ask rendering', () => {
   });
 });
 
-describe('App: Waiting tab, Waiting page, Monitor', () => {
+
+describe('App: no Waiting tab, waiting section on Monitor', () => {
   let runs;
   let sources;
   beforeEach(() => {
@@ -112,68 +113,74 @@ describe('App: Waiting tab, Waiting page, Monitor', () => {
 
   const nav = () => within(screen.getByRole('navigation', { name: 'Sections' }));
   const goto = (h) => act(async () => { window.location.hash = h; window.dispatchEvent(new HashChangeEvent('hashchange')); });
+  const waitingHeading = (n) => screen.getByRole('heading', { name: `Waiting on you (${n})` });
 
-  it('nav order, label with count, href, aria-current', async () => {
+  it('nav is Monitor, Workflow, Stats only; no Waiting tab', async () => {
     render(<App />);
-    await waitFor(() => expect(nav().getByRole('link', { name: 'Waiting (2)' })).toBeTruthy());
-    expect(nav().getAllByRole('link').map((a) => a.textContent)).toEqual(['Monitor', 'Waiting (2)', 'Workflow', 'Stats']);
-    expect(nav().getByRole('link', { name: 'Waiting (2)' }).getAttribute('href')).toBe('#/waiting');
+    await screen.findByText('Busy run');
+    expect(nav().getAllByRole('link').map((a) => a.textContent)).toEqual(['Monitor', 'Workflow', 'Stats']);
+    expect(nav().queryByRole('link', { name: /Waiting/ })).toBeNull();
     expect(nav().getByRole('link', { name: 'Monitor' }).getAttribute('aria-current')).toBe('page');
-    await goto('#/waiting');
-    expect(nav().getByRole('link', { name: 'Waiting (2)' }).getAttribute('aria-current')).toBe('page');
-    expect(nav().getByRole('link', { name: 'Monitor' }).getAttribute('aria-current')).toBeNull();
   });
-  it('Waiting page shows one card per waiting run and nothing else; no table', async () => {
+  it('#/waiting shows the Monitor page, with Monitor current', async () => {
     render(<App />);
     await goto('#/waiting');
     await waitFor(() => expect(screen.getAllByRole('article').length).toBe(2));
-    expect(screen.queryByRole('table')).toBeNull();
-    expect(screen.queryByText('Busy run')).toBeNull();
-  });
-  it('Monitor has no waiting cards or rows, a link line, caption Active runs', async () => {
-    render(<App />);
-    await waitFor(() => expect(screen.getByRole('link', { name: /2 runs waiting on you/ })).toBeTruthy());
-    const link = screen.getByRole('link', { name: /2 runs waiting on you/ });
-    expect(link.getAttribute('href')).toBe('#/waiting');
-    expect(link.textContent).toBe('2 runs waiting on you →');
-    expect(screen.queryByRole('article')).toBeNull();
-    expect(screen.queryByText('Run w1')).toBeNull();
-    expect(screen.getByText('Busy run')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Runs (1)' })).toBeTruthy();
-    expect(document.querySelector('table.runs caption').textContent).toBe('Active runs');
+    expect(screen.getByText('Busy run')).toBeTruthy();
+    expect(nav().getByRole('link', { name: 'Monitor' }).getAttribute('aria-current')).toBe('page');
+    expect(nav().queryByRole('link', { name: /Waiting/ })).toBeNull();
+  });
+  it('Monitor: waiting section above the Runs heading, in its own panel, one card per waiting run', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('article').length).toBe(2));
+    const wh = waitingHeading(2);
+    const rh = screen.getByRole('heading', { name: 'Runs (1)' });
+    expect(wh.compareDocumentPosition(rh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const section = wh.closest('section');
+    expect(section.contains(rh)).toBe(false);
+    const panel = section.parentElement;
+    expect(panel.tagName).not.toBe('MAIN');
+    expect(panel.contains(rh)).toBe(false);
+    expect(within(section).getAllByRole('article').length).toBe(2);
+    expect(within(section).getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy();
+    expect(document.querySelector('.ask h4.ask-heading')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /waiting on you/ })).toBeNull();
+  });
+  it('waiting runs never appear in the Runs table; caption and Finished section intact', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('article').length).toBe(2));
+    const table = document.querySelector('table.runs');
+    expect(table.querySelector('caption').textContent).toBe('Active runs');
+    expect(within(table).getByText('Busy run')).toBeTruthy();
+    expect(within(table).queryByText('Run w1')).toBeNull();
+    expect(within(table).queryByText('Run w2')).toBeNull();
     expect(screen.getByText('Finished runs (1)')).toBeTruthy();
   });
-  it('singular link text for one waiting run, no link for none', async () => {
+  it('one waiting run says (1); none says Nothing is waiting on you. with the Runs table still shown', async () => {
     runs = [mk('w1'), { ...mk('act'), status: 'active' }];
     const { unmount } = render(<App />);
-    await waitFor(() => expect(screen.getByRole('link', { name: '1 run waiting on you →' })).toBeTruthy());
+    await waitFor(() => expect(waitingHeading(1)).toBeTruthy());
     unmount();
     runs = [{ ...mk('act'), status: 'active' }];
     render(<App />);
-    await waitFor(() => expect(nav().getByRole('link', { name: 'Waiting (0)' })).toBeTruthy());
     await screen.findByText('Run act');
-    expect(screen.queryByRole('link', { name: /waiting on you →/ })).toBeNull();
-  });
-  it('empty Waiting page says Nothing is waiting on you.', async () => {
-    runs = [{ ...mk('act'), status: 'active' }];
-    render(<App />);
-    await goto('#/waiting');
-    await waitFor(() => expect(screen.getByText('Nothing is waiting on you.')).toBeTruthy());
-    expect(screen.queryByRole('heading', { name: /^Runs \(/ })).toBeNull();
-    expect(nav().getByRole('link', { name: 'Waiting (0)' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByText('Nothing is waiting on you.')).toBeTruthy();
+    expect(screen.queryByRole('article')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Runs (1)' })).toBeTruthy();
   });
   it('count updates live after a respond and after an event-stream refresh', async () => {
     render(<App />);
-    await goto('#/waiting');
     await waitFor(() => expect(screen.getAllByRole('article').length).toBe(2));
     const card = screen.getByRole('article', { name: 'Waiting on you: Run w2' });
     fireEvent.click(within(card).getByRole('button', { name: 'Agree spec' }));
     await waitFor(() => expect(screen.getAllByRole('article').length).toBe(1));
-    expect(nav().getByRole('link', { name: 'Waiting (1)' })).toBeTruthy();
+    expect(screen.queryByRole('article', { name: 'Waiting on you: Run w2' })).toBeNull();
+    expect(waitingHeading(1)).toBeTruthy();
     runs = runs.map((r) => (r.id === 'w1' ? { ...r, status: 'active' } : r));
     await act(async () => { sources.at(-1).onmessage?.({}); await new Promise((r) => setTimeout(r, 400)); });
-    await waitFor(() => expect(nav().getByRole('link', { name: 'Waiting (0)' })).toBeTruthy());
-    expect(screen.getByText('Nothing is waiting on you.')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Nothing is waiting on you.')).toBeTruthy());
+    expect(screen.getByRole('heading', { name: 'Runs (3)' })).toBeTruthy();
   });
   it('load error shows on the Waiting page too', async () => {
     globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) }));
