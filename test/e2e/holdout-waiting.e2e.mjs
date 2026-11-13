@@ -1,4 +1,4 @@
-// Holdout e2e: Waiting tab, Monitor link, full-width cards, run view card, 390 px, screenshots.
+// Holdout e2e: waiting section on Monitor, no Waiting tab, full-width cards, run view card, 390 px, screenshots.
 // Run: WEB_DIR=<temp build> CHROME_PATH=<chrome> [HV_SHOTS=<dir>] node --disable-warning=ExperimentalWarning test/e2e/holdout-waiting.e2e.mjs
 import fs from 'node:fs';
 import os from 'node:os';
@@ -56,9 +56,7 @@ page = await ctx.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 
-const tabLabel = async () => (await page.locator('nav[aria-label="Sections"] a', { hasText: /^Waiting/ }).first().innerText()).trim();
-const waitingCount = () => runsNowCount();
-async function runsNowCount() { return (await app.api('GET', '/api/runs')).json.filter((r) => r.status === 'waiting').length; }
+const tabLabel = async () => (await page.locator('main h2', { hasText: /^Waiting on you/ }).first().innerText()).trim();
 
 await check('seed: three runs are waiting, the long ask is intact', async () => {
   ok(esc && !esc.isError, `escalate failed: ${esc?.text}`);
@@ -71,20 +69,34 @@ await check('seed: three runs are waiting, the long ask is intact', async () => 
 await page.goto(`${base}/#/`);
 await page.locator('nav[aria-label="Sections"]').waitFor();
 
-await check('nav: Monitor, Waiting (n), Workflow, Stats in order; count 3', async () => {
-  await until(async () => (await tabLabel()) === 'Waiting (3)', 5000);
+await check('nav: Monitor, Workflow, Stats in order; no Waiting tab', async () => {
+  await until(async () => (await tabLabel()) === 'Waiting on you (3)', 5000);
   const labels = await page.locator('nav[aria-label="Sections"] a').allInnerTexts();
-  ok(labels.map((s) => s.trim()).join(',') === 'Monitor,Waiting (3),Workflow,Stats', `nav was ${labels.join(',')}`);
-  ok((await page.locator('nav[aria-label="Sections"] a', { hasText: /^Waiting/ }).getAttribute('href')) === '#/waiting', 'Waiting href');
+  ok(labels.map((s) => s.trim()).join(',') === 'Monitor,Workflow,Stats', `nav was ${labels.join(',')}`);
 });
 
-await check('monitor: no waiting card or row; link to #/waiting; active run row present', async () => {
-  ok((await page.getByRole('article').count()) === 0, 'a waiting card is on the Monitor page');
-  ok((await page.getByRole('row', { name: /Plain gate run|Second plain run|Escalated long ask/ }).count()) === 0, 'a waiting run row is on the Monitor page');
+await check('monitor: waiting section with 3 cards above the Runs heading, in its own panel; no waiting rows', async () => {
+  ok((await page.locator('main').getByRole('article').count()) === 3, 'expected 3 waiting cards on Monitor');
+  ok((await page.getByRole('row', { name: /Plain gate run|Second plain run|Escalated long ask/ }).count()) === 0, 'a waiting run row is in the Runs table');
   ok((await page.getByRole('row', { name: /Busy active run/ }).count()) === 1, 'active run row missing');
-  const link = page.getByRole('link', { name: /3 runs waiting on you/ });
-  ok((await link.count()) === 1, 'waiting link missing');
-  ok((await link.getAttribute('href')) === '#/waiting', 'link target');
+  ok((await page.getByRole('link', { name: /waiting on you/ }).count()) === 0, 'old waiting link is still there');
+  const wh = await page.locator('main h2', { hasText: /^Waiting on you/ }).boundingBox();
+  const rh = await page.getByRole('heading', { name: /^Runs \(/ }).boundingBox();
+  ok(wh && rh && wh.y < rh.y, 'waiting heading is not above the Runs heading');
+  const sep = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('main section')].find((x) => /^Waiting on you/.test(x.querySelector('h2')?.textContent || ''));
+    const panel = sec.parentElement;
+    const cs = getComputedStyle(panel);
+    const mainBg = getComputedStyle(document.querySelector('main')).backgroundColor;
+    const bodyBg = getComputedStyle(document.body).backgroundColor;
+    const visible = (cs.backgroundColor !== mainBg && cs.backgroundColor !== bodyBg && cs.backgroundColor !== 'rgba(0, 0, 0, 0)')
+      || parseFloat(cs.borderTopWidth) > 0;
+    const runsH = [...document.querySelectorAll('main h2')].find((h) => /^Runs \(/.test(h.textContent));
+    return { isMain: panel.tagName === 'MAIN', visible, hasRuns: panel.contains(runsH), bottom: panel.getBoundingClientRect().bottom, runsTop: runsH.getBoundingClientRect().top };
+  });
+  ok(!sep.isMain && !sep.hasRuns, 'waiting section has no panel of its own');
+  ok(sep.visible, 'the waiting panel has neither a different background nor a border');
+  ok(sep.runsTop - sep.bottom >= 4, `panel and Runs heading are not apart (${Math.round(sep.runsTop - sep.bottom)} px)`);
   const body = await page.locator('main').innerText();
   ok(/Finished runs \(1\)/.test(body), 'finished section changed');
 });
@@ -100,25 +112,27 @@ async function shots(name, hash, vp) {
   }
   await page.emulateMedia({ colorScheme: 'light' });
 }
-await check('screenshots: monitor and waiting tab, light and dark', async () => {
-  await shots('monitor', '#/', { width: 1300, height: 800 });
-  await shots('waiting', '#/waiting', { width: 1300, height: 900 });
-  await shots('waiting-mobile', '#/waiting', { width: 390, height: 844 });
+await check('screenshots: monitor light and dark, monitor at 390 px', async () => {
+  await shots('monitor', '#/', { width: 1300, height: 1000 });
+  await shots('monitor-mobile', '#/', { width: 390, height: 844 });
   await page.setViewportSize({ width: 1300, height: 900 });
 });
 
 await page.goto(`${base}/#/waiting`);
-await check('waiting tab: aria-current, three cards, nothing else', async () => {
+await check('#/waiting shows Monitor: Monitor is current, three cards and the Runs table', async () => {
   await page.getByRole('article').first().waitFor({ timeout: 5000 });
   ok((await page.getByRole('article').count()) === 3, 'expected 3 cards');
-  ok((await page.locator('nav[aria-label="Sections"] a[aria-current="page"]').innerText()).trim() === 'Waiting (3)', 'aria-current on the Waiting tab');
-  ok((await page.getByRole('table').count()) === 0, 'a table is on the Waiting page');
+  ok((await page.locator('nav[aria-label="Sections"] a[aria-current="page"]').innerText()).trim() === 'Monitor', 'aria-current on Monitor');
+  ok((await page.getByRole('heading', { name: /^Runs \(/ }).count()) === 1, 'Runs heading missing on #/waiting');
 });
+
+await page.goto(`${base}/#/`);
 
 await check('cards: full width, one per row', async () => {
   const main = await page.locator('main').boundingBox();
   const boxes = [];
   for (const c of await page.getByRole('article').all()) boxes.push(await c.boundingBox());
+  ok(boxes.length === 3, 'expected 3 cards on Monitor');
   for (const b of boxes) ok(b.width >= main.width * 0.9, `card ${Math.round(b.width)} px of main ${Math.round(main.width)} px`);
   for (let i = 1; i < boxes.length; i++) ok(boxes[i].y >= boxes[i - 1].y + boxes[i - 1].height - 1, 'cards are not stacked one per row');
 });
@@ -156,7 +170,7 @@ await check('run view: card has the same formatting, label above text in the sid
   ok(sw, 'run view scrolls sideways');
 });
 
-await check('390 px: no sideways scroll on #/waiting and #/, all four tabs reachable', async () => {
+await check('390 px: no sideways scroll on #/waiting and #/, all three tabs reachable', async () => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const h of ['#/waiting', '#/']) {
     await page.goto(`${base}/${h}`);
@@ -174,30 +188,31 @@ await check('390 px: no sideways scroll on #/waiting and #/, all four tabs reach
 
 await check('live: count drops on the Monitor page without reload after the run is answered elsewhere', async () => {
   await page.goto(`${base}/#/`);
-  ok(await until(async () => (await tabLabel()) === 'Waiting (3)', 5000), 'start count');
+  ok(await until(async () => (await tabLabel()) === 'Waiting on you (3)', 5000), 'start count');
   await page.evaluate(() => { window.__marker = 1; });
   const r = await app.api('POST', `/api/runs/${plain2}/respond`, { body: { action: 'Agree spec', text: '' } });
   ok(r.status === 200, `respond ${r.status} ${r.text}`);
-  ok(await until(async () => (await tabLabel()) === 'Waiting (2)', 6000), `tab label stayed ${await tabLabel()}`);
+  ok(await until(async () => (await tabLabel()) === 'Waiting on you (2)', 6000), `heading stayed ${await tabLabel()}`);
   ok(await page.evaluate(() => window.__marker === 1), 'page reloaded instead of updating live');
-  ok(await page.getByRole('link', { name: /2 runs waiting on you/ }).count() === 1, 'monitor link did not update');
+  ok(await page.locator('main').getByRole('article').count() === 2, 'cards did not update');
 });
 
 await check('answering from the card removes it and lowers the count', async () => {
-  await page.goto(`${base}/#/waiting`);
+  await page.goto(`${base}/#/`);
   const card = page.getByRole('article', { name: /Waiting on you: Plain gate run/ });
   await card.waitFor({ timeout: 5000 });
   await card.getByRole('textbox').fill('agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();
   await card.waitFor({ state: 'detached', timeout: 6000 });
-  ok(await until(async () => (await tabLabel()) === 'Waiting (1)', 5000), `tab label ${await tabLabel()}`);
+  ok(await until(async () => (await tabLabel()) === 'Waiting on you (1)', 5000), `heading ${await tabLabel()}`);
 });
 
 await check('empty state after everything is answered', async () => {
   const card = page.getByRole('article', { name: /Escalated long ask/ });
   await card.getByRole('button', { name: /stop run/i }).click().catch(() => {});
   ok(await until(async () => (await page.getByText('Nothing is waiting on you.').count()) === 1, 6000), 'empty text missing');
-  ok((await tabLabel()) === 'Waiting (0)', 'count not zero');
+  ok((await tabLabel()) === 'Waiting on you (0)', 'count not zero');
+  ok((await page.getByRole('heading', { name: /^Runs \(/ }).count()) === 1, 'Runs heading gone');
 });
 
 ok(true, '');

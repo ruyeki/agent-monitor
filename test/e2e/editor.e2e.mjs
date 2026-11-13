@@ -64,8 +64,8 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto(`${base}/#/`);
 
 // ---- Monitor
-await check('waiting tab: the waiting card responds', async () => {
-  await page.goto(`${base}/#/waiting`);
+await check('Monitor: the waiting card responds', async () => {
+  await page.goto(`${base}/#/`);
   const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 5000 });
   ok(/solution/i.test(await card.innerText()), 'card does not show the gate question');
@@ -124,7 +124,7 @@ await check('run view: side panel shows the ask, totals and timeline; responding
 await check('stats: nav has Stats; the page shows period cards, the chart, versions and prices', async () => {
   await page.goto(`${base}/#/`);
   const nav = page.getByRole('navigation', { name: 'Sections' });
-  ok(/^Monitor,Waiting \(\d+\),Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).join()), 'nav is not Monitor,Waiting (n),Workflow,Stats');
+  ok(/^Monitor,Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).join()), 'nav is not Monitor,Workflow,Stats');
   await nav.getByRole('link', { name: 'Stats' }).click();
   await page.waitForURL(/#\/stats$/);
   await page.getByRole('region', { name: 'Usage statistics' }).waitFor({ timeout: 8000 });
@@ -144,7 +144,7 @@ await check('stats: nav has Stats; the page shows period cards, the chart, versi
 await check('stats: no horizontal page scroll at 390 px wide', async () => {
   await page.setViewportSize({ width: 390, height: 800 });
   try {
-    for (const hash of ['#/stats', '#/waiting', '#/']) {
+    for (const hash of ['#/stats', '#/']) {
       await page.goto(`${base}/${hash}`);
       await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 3000 });
       await page.waitForTimeout(500);

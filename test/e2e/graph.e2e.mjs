@@ -54,8 +54,8 @@ await check('header nav has Monitor, Workflow and Stats', async () => {
   }
 });
 
-await check('Waiting tab: the waiting card responds', async () => {
-  await page.goto(base + '/#/waiting');
+await check('Monitor: the waiting card responds', async () => {
+  await page.goto(base + '/#/');
   const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 6000 });
   await card.getByRole('textbox').fill('agreed');
