@@ -9,6 +9,7 @@ import { safePath } from './transcripts.js';
 const MAX_NOTE = 500;
 const MAX_TRANSCRIPT_READ = 256 * 1024;
 const SESSION_ID = /^[0-9A-Za-z][0-9A-Za-z_-]{0,127}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i; // Claude session ids; anything else never reaches argv
 const DROP_ENV = new Set(['claude_code_oauth_token', 'anthropic_api_key', 'anthropic_auth_token']); // the child uses the login file, never a token from the env
 
 // The first string `cwd` field of a session transcript (first 256 KB only; a .jsonl inside projectsDir only), else null.
@@ -30,6 +31,8 @@ function transcriptCwd(file, projectsDir) {
   }
   return null;
 }
+
+const hasTranscript = (file, root) => { const f = safePath(file, root); try { return Boolean(f) && fs.statSync(f).isFile(); } catch { return false; } };
 
 export function createClaudeResume({
   store, projectsDir, manager = null, onRunLimit = () => {}, command, args = [], spawn = cp.spawn, killTree = defaultKillTree,
@@ -69,16 +72,14 @@ export function createClaudeResume({
   // Which session to resume: the headless session when there is one, else the run's latest main session.
   function pickSession(runId, answer) {
     const ra = store.runAccount(runId);
-    if (ra?.session_id) return { sid: ra.session_id, fork: !answer, file: store.getAgent(`main:${ra.session_id}`)?.transcript_path };
+    if (ra?.session_id) return { sid: ra.session_id, fork: !answer, file: store.getAgent(`main:${ra.session_id}`)?.transcript_path ?? store.latestMainSession(runId)?.transcript_path }; // same run, same folder
     const main = store.latestMainSession(runId);
     return main ? { sid: main.session_id, fork: true, file: main.transcript_path } : null;
   }
 
-  async function pickCwd(run, file) {
-    const candidates = [transcriptCwd(file, projectsDir)];
-    try { candidates.push(JSON.parse(run.cwds_json ?? '[]')[0]); } catch { /* none */ }
-    const c = candidates.find((x) => typeof x === 'string' && x);
-    if (!c) throw new Error('no working folder known for this run');
+  async function pickCwd(file) {
+    const c = transcriptCwd(file, projectsDir); // only the session's own transcript: hook payloads (cwds_json) are unauthenticated
+    if (!c) throw new Error('no working folder known for this session');
     if (!(await fs.promises.stat(c).catch(() => null))?.isDirectory()) throw new Error(`working folder ${c} is not a directory`);
     return c;
   }
@@ -95,11 +96,12 @@ export function createClaudeResume({
       if (!command) { drop(); return escalate(runId, 'Claude resume failed: claude not found'); }
       const picked = pickSession(runId, answer);
       if (!picked) { drop(); return escalate(runId, 'Claude resume failed: no Claude session known for this run'); }
+      if (!UUID.test(picked.sid)) { drop(); return escalate(runId, 'Claude resume failed: the session id is not a Claude session id'); }
       let cwd;
-      try { cwd = await pickCwd(run, picked.file); } catch (e) { drop(); return escalate(runId, `Claude resume failed: ${e.message}`); }
+      try { cwd = await pickCwd(picked.file); } catch (e) { drop(); return escalate(runId, `Claude resume failed: ${e.message}`); }
       if (entry.stopped) return drop();
       const saved = store.sessionMode(picked.sid);
-      const mode = MODES.has(saved) ? saved : 'default';
+      const mode = MODES.has(saved) && hasTranscript(picked.file, projectsDir) ? saved : 'default'; // a mode only counts for a session we saw
       entry.mode = mode;
       const argv = [...args, '--resume', picked.sid, ...(picked.fork ? ['--fork-session'] : []), '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', mode];
       const prompt = picked.fork ? [freshPrompt(run), answer ? answerLine(run) : ''].filter(Boolean).join('\n\n') : answerLine(run);

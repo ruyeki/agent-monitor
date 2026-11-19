@@ -10,9 +10,11 @@ import { recordWindows } from './record.js';
 import { refreshLogin, signIn } from './refresh.js';
 
 const DUPLICATE_MS = 120_000;
+const MAX_LIMIT_S = 7 * 86400; // a recorded reset is at most a week after the hit (a forged far-future one cannot park an account)
 const LIMIT_WAIT_MS = 150_000; // longer than a refresh (120 s) holds the lock, so a limit during one waits instead of going to Codex
 const REFRESH_AHEAD_MS = 7 * 86400_000;
 const REFRESH_EVERY_MS = 6 * 3600_000;
+const capReset = (secs, atMs) => (secs == null ? null : Math.min(secs, Math.floor(atMs / 1000) + MAX_LIMIT_S));
 const iso = (ms) => new Date(ms).toISOString();
 const isoOrNull = (v) => { const ms = toMs(v); return ms == null || ms <= 0 ? null : iso(ms); };
 const key = (name) => `account/${name}`;
@@ -170,7 +172,7 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
       if (!name || !registry().accounts[name]) return false;
       const u = readUsage(dataDir, name);
       const atMs = toMs(at) ?? clock();
-      const secs = toSecs(resetsAt);
+      const secs = capReset(toSecs(resetsAt), atMs);
       if (secs == null && (limitedUntil(u.limit) ?? 0) > atMs) return true;
       writeUsage(dataDir, name, { ...u, limit: { at: iso(atMs), resetsAt: secs } });
       return true;
@@ -205,8 +207,12 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
       hit = runAccount ?? owner(reg, active, secs);
       if (!runAccount) {
         const since = reg.lastSwitch ? atMs - (toMs(reg.lastSwitch.at) ?? 0) : Infinity;
+        const recent = reg.lastSwitch && since >= 0 && since < DUPLICATE_MS;
         if (hit !== active) duplicate = true;
-        else if (secs == null && reg.lastSwitch && since >= 0 && since < DUPLICATE_MS) { duplicate = true; hit = reg.lastSwitch.from ?? null; }
+        else if (recent) { // a chat hit is not tied to a run: at most one switch per window, whatever reset time it claims
+          duplicate = true;
+          hit = secs == null ? reg.lastSwitch.from ?? null : null;
+        }
       }
       if (hit) recordLimit(hit, { at: atMs, resetsAt: secs });
       const now = clock();

@@ -12,6 +12,10 @@ import { tmp, until, makeWorld, calls, readLog } from './codex-helpers.js';
 
 const CLAUDE_STUB = path.join(import.meta.dirname, 'fixtures', 'claude-stub.mjs');
 const RESETS = 1791655200;
+const ORIG = '11111111-1111-4111-8111-111111111111';
+const HL1 = '22222222-2222-4222-8222-222222222221';
+const HL2 = '22222222-2222-4222-8222-222222222222';
+const S1 = '33333333-3333-4333-8333-333333333333';
 const init = (sid) => ({ type: 'system', subtype: 'init', session_id: sid });
 const rl = (status = 'allowed') => ({ type: 'rate_limit_event', rate_limit_info: { status, resetsAt: RESETS, rateLimitType: 'five_hour' }, session_id: 'x' });
 
@@ -34,8 +38,8 @@ function fakeCodexChild() {
   return c;
 }
 
-// A run linked to session 'orig' whose transcript lives in projectsDir; `cwd` is the folder the transcript names.
-async function setup(t, { steps = [{ lines: [init('hl-1'), rl()], sleep: 1500 }], decisions = [{ hitAccount: 'a', next: 'b' }], manager, noAccounts = false, transcriptCwd = 'own', hookCwd = 'own' } = {}) {
+// A run linked to session ORIG whose transcript lives in projectsDir; `cwd` is the folder the transcript names.
+async function setup(t, { steps = [{ lines: [init(HL1), rl()], sleep: 1500 }], decisions = [{ hitAccount: 'a', next: 'b' }], manager, noAccounts = false, transcriptCwd = 'own', hookCwd = 'own' } = {}) {
   const world = makeWorld();
   const projectsDir = tmp('am-proj-');
   const work = fs.realpathSync(tmp('am-work-'));
@@ -57,11 +61,11 @@ async function setup(t, { steps = [{ lines: [init('hl-1'), rl()], sleep: 1500 }]
   const close = () => (shut ??= srv.close());
   t.after(close);
   const id = srv.store.startRun({ title: 'Rot', repo: world.repo }).run.id;
-  srv.store.linkSession('orig', id);
+  srv.store.linkSession(ORIG, id);
   const post = (body) => req(srv.port, 'POST', '/hook', { body });
   // Any event of the main session: creates its agent row, records the transcript, cwd and permission mode.
-  await post({ session_id: 'orig', hook_event_name: 'Notification', message: 'hi', transcript_path: transcript, cwd: hookCwd === 'own' ? work : other, permission_mode: 'acceptEdits' });
-  const limit = (extra = {}) => post({ session_id: 'orig', hook_event_name: 'StopFailure', error: 'rate_limit', error_details: { resetsAt: RESETS }, ...extra });
+  await post({ session_id: ORIG, hook_event_name: 'Notification', message: 'hi', transcript_path: transcript, cwd: hookCwd === 'own' ? work : other, permission_mode: 'acceptEdits' });
+  const limit = (extra = {}) => post({ session_id: ORIG, hook_event_name: 'StopFailure', error: 'rate_limit', error_details: { resetsAt: RESETS }, ...extra });
   return {
     srv, close, store: srv.store, id, world, work, other, transcript, projectsDir, mgr, notes, codexSpawned, post, limit, log, lines: () => readLog(log),
     respond: (action, text = '') => req(srv.port, 'POST', `/api/runs/${id}/respond`, { body: { action, text } }),
@@ -72,10 +76,10 @@ async function setup(t, { steps = [{ lines: [init('hl-1'), rl()], sleep: 1500 }]
 test('a limit rotates to the next account before Codex: exact argv (fork, mode), prompt on stdin, cwd from the transcript, session saved from init', async (t) => {
   const s = await setup(t, { transcriptCwd: 'own', hookCwd: 'other' });
   await s.limit();
-  await until(() => s.lines().length === 1 && s.store.runAccount(s.id)?.session_id === 'hl-1');
+  await until(() => s.lines().length === 1 && s.store.runAccount(s.id)?.session_id === HL1);
   assert.deepEqual(s.mgr.handled, [{ runAccount: null, at: s.mgr.handled[0].at, resetsAt: new Date(RESETS * 1000).toISOString(), source: 'stopfailure' }]);
   const [call] = s.lines();
-  assert.deepEqual(call.argv, ['--resume', 'orig', '--fork-session', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits']);
+  assert.deepEqual(call.argv, ['--resume', ORIG, '--fork-session', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits']);
   assert.equal(fs.realpathSync(call.cwd), s.work, 'cwd from the transcript, not the hook cwd');
   assert.match(call.stdin, /run "rot"/);
   assert.match(call.stdin, /Rot/);
@@ -91,7 +95,7 @@ test('a limit rotates to the next account before Codex: exact argv (fork, mode),
   assert.equal(run.limit_at, null);
   assert.equal(s.store.runAccount(s.id).account, 'b');
   assert.equal(s.store.summary(run).claudeAccount, 'b');
-  assert.equal(s.store.sessionRun('hl-1').id, s.id);
+  assert.equal(s.store.sessionRun(HL1).id, s.id);
   assert.ok(s.timeline().includes('Claude account a hit its usage limit; resumed on account b'));
   assert.deepEqual(s.notes, [['Claude account switched', 'Run rot continues headless on account b. Other chats that stopped: type "continue".']]);
   assert.equal(s.codexSpawned.length, 0);
@@ -99,11 +103,12 @@ test('a limit rotates to the next account before Codex: exact argv (fork, mode),
   assert.deepEqual(s.mgr.recorded, [['b', { status: 'allowed', resetsAt: RESETS, rateLimitType: 'five_hour' }]]);
 });
 
-test('the cwd falls back to the run folders; a missing folder escalates and spawns nothing', async (t) => {
+test('the cwd comes only from the transcript (never the hook folders): none escalates; a missing folder escalates; both spawn nothing', async (t) => {
   const s = await setup(t, { transcriptCwd: null, hookCwd: 'own' });
   await s.limit();
-  await until(() => s.lines().length === 1);
-  assert.equal(fs.realpathSync(s.lines()[0].cwd), s.work);
+  await until(() => s.store.getRun(s.id).status === 'waiting');
+  assert.match(s.store.getRun(s.id).ask, /Claude resume failed: no working folder known/);
+  assert.equal(s.lines().length, 0);
 
   const bad = await setup(t, { transcriptCwd: path.join(tmp('am-gone-'), 'nope'), hookCwd: 'other' });
   bad.store.noteCwd(bad.id, path.join(tmp('am-gone2-'), 'nope2')); // newest folder is gone too
@@ -115,10 +120,10 @@ test('the cwd falls back to the run folders; a missing folder escalates and spaw
 
 test('the permission mode comes from the stopped session; an unknown mode falls back to default', async (t) => {
   const s = await setup(t);
-  await s.post({ session_id: 'orig', hook_event_name: 'Notification', message: 'x', permission_mode: 'dontAsk' });
-  assert.equal(s.store.sessionMode('orig'), 'acceptEdits', 'a mode outside the allowlist is not recorded');
+  await s.post({ session_id: ORIG, hook_event_name: 'Notification', message: 'x', permission_mode: 'dontAsk' });
+  assert.equal(s.store.sessionMode(ORIG), 'acceptEdits', 'a mode outside the allowlist is not recorded');
   const plain = await setup(t);
-  plain.store.noteMode('orig', 'plan');
+  plain.store.noteMode(ORIG, 'plan');
   await plain.limit();
   await until(() => plain.lines().length === 1);
   assert.equal(plain.lines()[0].argv.at(-1), 'plan');
@@ -126,7 +131,7 @@ test('the permission mode comes from the stopped session; an unknown mode falls 
 
 test('a rejected rate_limit_event rotates again from the headless session, with the run account as the hit account', async (t) => {
   const s = await setup(t, {
-    steps: [{ lines: [init('hl-1'), rl('rejected')], sleep: 5000 }, { lines: [init('hl-2'), rl()], sleep: 1500 }],
+    steps: [{ lines: [init(HL1), rl('rejected')], sleep: 5000 }, { lines: [init(HL2), rl()], sleep: 1500 }],
     decisions: [{ hitAccount: 'a', next: 'b' }, { hitAccount: 'b', next: 'c' }],
   });
   await s.limit();
@@ -134,9 +139,9 @@ test('a rejected rate_limit_event rotates again from the headless session, with 
   assert.equal(s.mgr.handled[1].runAccount, 'b');
   assert.equal(s.mgr.handled[1].source, 'headless');
   assert.equal(s.mgr.handled[1].resetsAt, RESETS);
-  assert.deepEqual(s.lines()[1].argv.slice(0, 4), ['--resume', 'hl-1', '--fork-session', '-p'], 'forks the headless session again');
+  assert.deepEqual(s.lines()[1].argv.slice(0, 4), ['--resume', HL1, '--fork-session', '-p'], 'forks the headless session again');
   assert.match(s.lines()[1].stdin, /account b hit its usage limit; account c took over/);
-  await until(() => s.store.runAccount(s.id)?.session_id === 'hl-2');
+  await until(() => s.store.runAccount(s.id)?.session_id === HL2);
   assert.equal(s.store.runAccount(s.id).account, 'c');
   assert.equal(s.store.getRun(s.id).status, 'active', 'the rejected child is stopped, not escalated');
   assert.equal(s.codexSpawned.length, 0);
@@ -144,11 +149,11 @@ test('a rejected rate_limit_event rotates again from the headless session, with 
 });
 
 test('a hit from before the switch (at <= resumed_at) is ignored', async (t) => {
-  const s = await setup(t, { steps: [{ lines: [init('hl-1')], sleep: 3000 }] });
+  const s = await setup(t, { steps: [{ lines: [init(HL1)], sleep: 3000 }] });
   await s.limit();
-  await until(() => s.store.runAccount(s.id)?.session_id === 'hl-1');
+  await until(() => s.store.runAccount(s.id)?.session_id === HL1);
   const line = fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'limit-line.jsonl'), 'utf8')
-    .replace('__SESSION__', 'orig').replace('__TS__', new Date(Date.now() - 60_000).toISOString()).replace('"agentId":"__AGENT__",', '');
+    .replace('__SESSION__', ORIG).replace('__TS__', new Date(Date.now() - 60_000).toISOString()).replace('"agentId":"__AGENT__",', '');
   fs.appendFileSync(path.join(s.projectsDir, 'proj', 'old.jsonl'), line);
   await new Promise((r) => setTimeout(r, 600)); // several scans (100 ms each)
   assert.equal(s.mgr.handled.length, 1);
@@ -159,7 +164,7 @@ test('a hit from before the switch (at <= resumed_at) is ignored', async (t) => 
 test('a transcript hit goes through the same coordinator', async (t) => {
   const s = await setup(t);
   const line = fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'limit-line.jsonl'), 'utf8')
-    .replace('__SESSION__', 'orig').replace('__TS__', new Date().toISOString()).replace('"agentId":"__AGENT__",', '');
+    .replace('__SESSION__', ORIG).replace('__TS__', new Date().toISOString()).replace('"agentId":"__AGENT__",', '');
   fs.appendFileSync(path.join(s.projectsDir, 'proj', 'orig.jsonl'), line);
   await until(() => s.lines().length === 1);
   assert.equal(s.mgr.handled[0].source, 'transcript');
@@ -204,7 +209,7 @@ test('a second hit on the same run does nothing (markLimit decides once)', async
 });
 
 test('a waiting run launches on Ryan\'s answer (fork + answer line); a later answer resumes the saved session without fork', async (t) => {
-  const s = await setup(t, { steps: [{ lines: [init('hl-1')], sleep: 150 }, { lines: [init('hl-1')], sleep: 150 }] });
+  const s = await setup(t, { steps: [{ lines: [init(HL1)], sleep: 150 }, { lines: [init(HL1)], sleep: 150 }] });
   s.store.completeStage(s.id, { stage: 'frame', outcome: 'done' }); // -> gate1
   assert.equal(s.store.getRun(s.id).status, 'waiting');
   await s.limit();
@@ -215,32 +220,32 @@ test('a waiting run launches on Ryan\'s answer (fork + answer line); a later ans
   await s.respond('Agree spec', 'go');
   await until(() => s.lines().length === 1);
   const [first] = s.lines();
-  assert.deepEqual(first.argv.slice(0, 3), ['--resume', 'orig', '--fork-session']);
+  assert.deepEqual(first.argv.slice(0, 3), ['--resume', ORIG, '--fork-session']);
   assert.match(first.stdin, /Ryan answered at gate1: Agree spec - go\./);
   assert.match(first.stdin, /get_run/);
-  await until(() => s.store.runAccount(s.id)?.session_id === 'hl-1');
+  await until(() => s.store.runAccount(s.id)?.session_id === HL1);
   await until(() => s.store.getRun(s.id).status === 'waiting' && s.store.getRun(s.id).stage === 'decision'); // clean exit while active: escalated
 
   await s.respond('Resume', 'again');
   await until(() => s.lines().length === 2);
   const second = s.lines()[1];
-  assert.deepEqual(second.argv, ['--resume', 'hl-1', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits']);
+  assert.deepEqual(second.argv, ['--resume', HL1, '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits']);
   assert.equal(second.stdin, 'Ryan answered at decision: Resume - again. Call get_run with run "rot" and continue from the current node.');
 });
 
 test('escalations: non-zero exit names the account and last error; a clean exit with the run still active; no session', async (t) => {
-  const a = await setup(t, { steps: [{ lines: [init('hl-1'), { type: 'result', subtype: 'error_during_execution', is_error: true, result: 'it broke' }], exit: 3 }] });
+  const a = await setup(t, { steps: [{ lines: [init(HL1), { type: 'result', subtype: 'error_during_execution', is_error: true, result: 'it broke' }], exit: 3 }] });
   await a.limit();
   await until(() => a.store.getRun(a.id).status === 'waiting');
   assert.equal(a.store.getRun(a.id).ask, 'Claude (account b) exited with code 3: it broke');
 
-  const b = await setup(t, { steps: [{ lines: [init('hl-1')] }] });
+  const b = await setup(t, { steps: [{ lines: [init(HL1)] }] });
   await b.limit();
   await until(() => b.store.getRun(b.id).status === 'waiting');
   assert.match(b.store.getRun(b.id).ask, /Claude ended its turn but the run is still at frame/);
 
   const c = await setup(t);
-  c.srv.store.updateAgent('main:orig', { type: 'other' }); // no main session known
+  c.srv.store.updateAgent(`main:${ORIG}`, { type: 'other' }); // no main session known
   await c.limit();
   await until(() => c.store.getRun(c.id).status === 'waiting');
   assert.match(c.store.getRun(c.id).ask, /Claude resume failed: no Claude session known/);
@@ -248,9 +253,9 @@ test('escalations: non-zero exit names the account and last error; a clean exit 
 });
 
 test('Stop kills the headless child and an answer does not restart it; close closes the manager', async (t) => {
-  const s = await setup(t, { steps: [{ lines: [init('hl-1')], sleep: 5000 }] });
+  const s = await setup(t, { steps: [{ lines: [init(HL1)], sleep: 5000 }] });
   await s.limit();
-  await until(() => s.store.runAccount(s.id)?.session_id === 'hl-1');
+  await until(() => s.store.runAccount(s.id)?.session_id === HL1);
   const r = await req(s.srv.port, 'POST', `/api/runs/${s.id}/stop`, { body: {} });
   assert.equal(r.status, 200);
   await new Promise((res) => setTimeout(res, 300));
@@ -262,6 +267,11 @@ test('Stop kills the headless child and an answer does not restart it; close clo
 
 test('stop then start while an older launch still checks its folder: the newer child stays tracked and killable', async (t) => {
   const dir = tmp('am-cwd-');
+  const projectsDir = tmp('am-proj-');
+  const transcript = path.join(projectsDir, 'p', 's.jsonl');
+  fs.mkdirSync(path.dirname(transcript), { recursive: true });
+  fs.writeFileSync(transcript, `${JSON.stringify({ cwd: dir })}
+`);
   const real = fs.promises.stat;
   let release; const gate = new Promise((r) => { release = r; });
   let n = 0;
@@ -270,12 +280,12 @@ test('stop then start while an older launch still checks its folder: the newer c
   const store = {
     getRun: (id) => ({ id, provider: 'claude', status: 'active', title: 'T', cwds_json: JSON.stringify([dir]) }),
     runAccount: () => ({ account: 'b', hit_account: 'a', session_id: null }),
-    latestMainSession: () => ({ session_id: 's1', transcript_path: null }),
+    latestMainSession: () => ({ session_id: S1, transcript_path: transcript }),
     getAgent: () => null, sessionMode: () => 'plan', escalate() {}, setClaudeSession() {}, noteMode() {}, summary: () => ({ active: [] }),
   };
   const killed = []; const spawned = [];
   const cr = createClaudeResume({
-    store, projectsDir: tmp('am-proj-'), command: 'claude', env: {}, killTree: (pid) => killed.push(pid),
+    store, projectsDir, command: 'claude', env: {}, killTree: (pid) => killed.push(pid),
     spawn: () => { const c = fakeCodexChild(); c.pid = 4242 + spawned.length; c.stdin = { on() {}, end() {} }; spawned.push(c); return c; },
   });
   const first = cr.start('r1');

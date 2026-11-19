@@ -30,10 +30,28 @@ const readLogin = (dir) => {
   try { return JSON.parse(fs.readFileSync(path.join(dir, '.credentials.json'), 'utf8'))?.claudeAiOauth ?? null; } catch { return null; }
 };
 
-// Runs fn(dir) in a fresh temp dir and removes it afterwards, whatever happens.
+// Temp dirs that could not be removed yet (a lingering helper or a scanner held a file); retried later.
+const leftovers = new Set();
+function cleanup(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); leftovers.delete(dir); } catch { leftovers.add(dir); }
+}
+let retryTimer = null;
+function scheduleRetry() {
+  if (!leftovers.size || retryTimer) return;
+  retryTimer = setTimeout(() => { retryTimer = null; retryLeftovers(); }, 30_000);
+  retryTimer.unref?.();
+}
+function retryLeftovers() {
+  for (const d of [...leftovers]) cleanup(d);
+  scheduleRetry();
+}
+
+// Runs fn(dir) in a fresh temp dir and removes it afterwards, best effort: a cleanup failure never replaces the result
+// (Claude Code has already rotated the login by then), the dir is remembered and removed on a later try.
 async function inTemp(fn) {
+  retryLeftovers();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-claude-'));
-  try { return await fn(dir); } finally { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+  try { return await fn(dir); } finally { cleanup(dir); scheduleRetry(); }
 }
 
 // Spawns claude and resolves {code, timedOut} when it ends. onLine gets each stdout line when stdout is piped.
