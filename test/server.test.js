@@ -39,7 +39,7 @@ test('REST: run list, detail, respond, stop and 404s', async () => {
     advance(s.store, 'first-run', 'gate1');
     const list = (await call(s, 'GET', '/api/runs')).body;
     assert.equal(list.length, 1);
-    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'active', 'ask', 'branch', 'createdAt', 'endedAt', 'id', 'limitAt', 'limitSource', 'maxRounds', 'note', 'provider', 'codexThreadId', 'repo', 'resetsAt', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
+    assert.deepEqual(Object.keys(list[0]).sort(), ['actions', 'active', 'ask', 'branch', 'claudeAccount', 'createdAt', 'endedAt', 'id', 'limitAt', 'limitSource', 'maxRounds', 'note', 'provider', 'codexThreadId', 'repo', 'resetsAt', 'round', 'stage', 'stageName', 'status', 'task', 'textField', 'title', 'updatedAt', 'verdict', 'workflowVersion'].sort());
     assert.deepEqual([list[0].status, list[0].textField, list[0].actions], ['waiting', true, [{ label: 'Agree spec' }, { label: 'Stop run' }]]);
 
     const d = (await call(s, 'GET', '/api/runs/first-run')).body;

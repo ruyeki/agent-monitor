@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS agents (
   transcript_path TEXT, transcript_offset INTEGER NOT NULL DEFAULT 0, last_msg_id TEXT,
   started_at TEXT NOT NULL, finished_at TEXT, last_message TEXT, start_nodes TEXT, reported_nodes TEXT, provider TEXT);
 CREATE INDEX IF NOT EXISTS agents_run ON agents (run_id);
+CREATE TABLE IF NOT EXISTS run_accounts (run_id TEXT PRIMARY KEY, account TEXT, hit_account TEXT, session_id TEXT, resumed_at TEXT);
+CREATE TABLE IF NOT EXISTS session_modes (session_id TEXT PRIMARY KEY, mode TEXT, at TEXT);
 `;
 // Columns added after v1: an older database gets them in the migration.
 const NEW_COLUMNS = {
@@ -187,6 +189,8 @@ export function openStore(dataDir) {
   });
   const nodeOf = (wf, id) => wf.nodes.find((n) => n.id === id);
 
+  const runAccount = (runId) => q('SELECT * FROM run_accounts WHERE run_id = ?').get(String(runId)) ?? null;
+
   function summary(r) {
     const wf = version(r.workflow_version);
     const { active } = stateOf(r);
@@ -199,6 +203,7 @@ export function openStore(dataDir) {
       actions: gate ? gate.actions.map(({ label }) => ({ label })) : [], textField: !!gate?.textField,
       note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, endedAt: r.ended_at,
       provider: r.provider ?? 'claude', codexThreadId: r.codex_thread_id, limitAt: r.limit_at, resetsAt: r.resets_at, limitSource: r.limit_source,
+      claudeAccount: runAccount(r.id)?.account ?? null,
     };
   }
 
@@ -330,9 +335,43 @@ export function openStore(dataDir) {
     return { run: save(r, res.state, { ...res, outcome: () => 'escalated', note }) };
   });
 
-  // A new prompt from the main session frees it from stopped and handed-over runs.
+  // ---- Claude account rotation: a run continues headless on another account ----
+  // The run moves to `account`: the limit marks are cleared (a later hit is a new one) and the switch goes on the timeline.
+  function resumeOnAccount(runId, { account, hit = null, at = null }) {
+    const r = getRun(runId);
+    if (!r) return;
+    const when = isoOf(at) ?? now();
+    q('UPDATE runs SET limit_at = NULL, resets_at = NULL, limit_source = NULL WHERE id = ?').run(runId);
+    q(`INSERT INTO run_accounts (run_id, account, hit_account, resumed_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (run_id) DO UPDATE SET account = excluded.account, hit_account = excluded.hit_account, resumed_at = excluded.resumed_at`).run(runId, account, hit, when);
+    addEvent(runId, 'log', { stage: r.stage, round: r.round, note: `Claude account ${hit ?? 'unknown'} hit its usage limit; resumed on account ${account}` });
+    emit('run', runId);
+  }
+  // The headless session that now drives the run (also its session link, so hooks and usage find the run).
+  function setClaudeSession(runId, sessionId) {
+    if (!getRun(runId)) return;
+    q(`INSERT INTO run_accounts (run_id, session_id) VALUES (?, ?)
+       ON CONFLICT (run_id) DO UPDATE SET session_id = excluded.session_id`).run(runId, sessionId);
+    linkSession(sessionId, runId);
+    emit('run', runId);
+  }
+  // The run's most recently active main Claude session (an agent row), or null.
+  const latestMainSession = (runId) => q(`SELECT * FROM agents WHERE run_id = ? AND type = 'main' AND session_id IS NOT NULL
+    AND (provider IS NULL OR provider = 'claude') ORDER BY last_activity_at DESC, rowid DESC LIMIT 1`).get(runId) ?? null;
+  const noteMode = (sessionId, mode) => q(`INSERT INTO session_modes (session_id, mode, at) VALUES (?, ?, ?)
+    ON CONFLICT (session_id) DO UPDATE SET mode = excluded.mode, at = excluded.at`).run(sessionId, mode, now());
+  const sessionMode = (sessionId) => q('SELECT mode FROM session_modes WHERE session_id = ?').get(sessionId)?.mode ?? null;
+  // Is this run driven by a headless session (other than `sessionId`) that has not ended?
+  const headlessRun = (runId) => {
+    const a = runId && runAccount(runId);
+    const r = a?.session_id && getRun(runId);
+    return r && !ENDED.includes(r.status) ? a : null;
+  };
+
+  // A new prompt from the main session frees it from stopped and handed-over runs, and from runs a headless session drives.
   const releaseSession = (sessionId) => q(`DELETE FROM session_links WHERE session_id = ? AND run_id IN
-    (SELECT id FROM runs WHERE status = 'stopped' OR provider = 'codex')`).run(sessionId);
+    (SELECT id FROM runs WHERE status = 'stopped' OR provider = 'codex'
+     OR id IN (SELECT run_id FROM run_accounts WHERE session_id IS NOT NULL AND session_id != ?))`).run(sessionId, sessionId);
 
   function detail(id) {
     const r = getRun(id);
@@ -456,6 +495,7 @@ export function openStore(dataDir) {
     bus, close, version, published, draft, saveDraft, resetDraft, loadVersion, publish, versions,
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
+    runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
     linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, activityCount,
   };
 }

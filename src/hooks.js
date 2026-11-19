@@ -1,5 +1,6 @@
 // Claude hook events -> per-agent tracking. Never throws: every problem answers {}.
 import path from 'node:path';
+import { MODES } from './exe.js';
 import { fileSize, readUsage, readMeta, subagentPath } from './transcripts.js';
 
 // Tools a Claude session may still use on a run that was handed over to Codex.
@@ -40,11 +41,16 @@ const stable = (v) => (v && typeof v === 'object'
     ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x))
   : String(v));
 
-export function createHooks(store, { projectsDir, port, defer = setImmediate, clock = Date.now, onLimit } = {}) {
+export function createHooks(store, { projectsDir, port, defer = setImmediate, clock = Date.now, onLimit, onChatLimit } = {}) {
   // A command aimed at our own port on a loopback host: subagents must use the MCP tools instead.
   const selfApi = port ? new RegExp(`(?:127\\.\\d+\\.\\d+\\.\\d+|localhost|\\[::1\\]|0\\.0\\.0\\.0):${port}(?!\\d)`, 'i') : null;
   const pending = new Map(); // tool_use_id -> {sid, agentId, tool, key}
   const lastRead = new Map(); // agent id -> ms of the last transcript read
+  const modes = new Map(); // session id -> last permission mode written (skips repeat writes)
+  const headlessDeny = (runId, sessionId) => {
+    const ra = store.headlessRun(runId);
+    return ra && ra.session_id !== sessionId ? deny(`Agent Monitor: run ${runId} continues headless on Claude account ${ra.account ?? 'unknown'}. Stop work and report back.`) : null;
+  };
 
   function readTokens(agentId, overridePath) {
     const a = store.getAgent(agentId);
@@ -143,12 +149,26 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         // Claude must not report on a run Codex took over, even from a session that is not linked.
         const target = str(p.tool_input?.run);
         if ((tool === 'complete_stage' || tool === 'log') && handedOver(target)) return deny(`Agent Monitor: run handed over to Codex (run ${target}). Stop work and report back.`);
+        // Another session may not report on a run a headless session continues after an account switch.
+        if ((tool === 'complete_stage' || tool === 'log') && target) { const d = headlessDeny(target, p.session_id); if (d) return d; }
       }
+    }
+    if (!codex && !str(p.agent_id) && typeof p.session_id === 'string' && MODES.has(p.permission_mode) && modes.get(p.session_id) !== p.permission_mode) {
+      if (modes.size >= MAX_PENDING) modes.delete(modes.keys().next().value);
+      modes.set(p.session_id, p.permission_mode);
+      store.noteMode(p.session_id, p.permission_mode); // a headless fork keeps the mode the stopped session had
     }
     if (!codex && ev === 'UserPromptSubmit' && !str(p.agent_id) && typeof p.session_id === 'string') store.releaseSession(p.session_id);
     if (tool && ev === 'PostToolUse') link(p, provider);
     const who = resolve(p, provider);
-    if (!who) return {};
+    if (!who) {
+      // A rate limit in a plain chat (no live run): the account switcher may move the login. Never blocks.
+      if (!codex && ev === 'StopFailure' && p.error === 'rate_limit' && !str(p.agent_id) && typeof p.session_id === 'string' && onChatLimit) {
+        const info = { sessionId: p.session_id, at: new Date(clock()).toISOString(), resetsAt: isoTime(p.error_details?.resetsAt ?? p.error_details?.resets_at), source: 'stopfailure' };
+        defer(() => { try { Promise.resolve(onChatLimit(info)).catch(() => {}); } catch { /* best effort */ } });
+      }
+      return {};
+    }
     const { run, agentId } = who;
     if (!codex && typeof p.cwd === 'string' && (run.provider ?? 'claude') === 'claude') store.noteCwd(run.id, p.cwd);
     const act = (event, tool, summary) => store.addActivity(run.id, agentId, event, tool, summary);
@@ -159,6 +179,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         if (!codex && run.provider === 'codex' && !ENDED.includes(run.status) && !READ_TOOLS.has(tool)) {
           return deny(`Agent Monitor: run handed over to Codex (run ${run.id}). Stop work and report back.`);
         }
+        if (!codex && !READ_TOOLS.has(tool)) { const d = headlessDeny(run.id, p.session_id); if (d) return d; }
         if ((codex || str(p.agent_id)) && run.status === 'stopped' && !tool) {
           return deny(`Agent Monitor: run ${run.id} was stopped by Ryan. Stop work and report back.`);
         }

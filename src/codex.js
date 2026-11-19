@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
+import { resolveExe, SAFE_EXE_ENV, defaultKillTree } from './exe.js';
 import { CODEX_ROOT, HANDOFF, HANDOFF_PROFILE, DISABLED_FEATURES, checkCodexConfig } from './codex-config.js';
 
 const MAX_NOTE = 500;
@@ -13,30 +14,6 @@ const SPEC_PATH = /[A-Za-z]:(?:[\\/][^\\/\r\n"'<>|*?:]+)*?[\\/]fable-runs[\\/][^
 const SCAN_TAIL = 8192;
 const LIMIT_TEXT = /hit your usage limit/i;
 const lower = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-
-// An absolute path to an executable, found on PATH only: never the current directory (Windows would pick <cwd>\name.exe first).
-function resolveExe(name, env) {
-  if (path.isAbsolute(name)) return name;
-  const win = process.platform === 'win32';
-  const exts = win ? (/\.(exe|com)$/i.test(name) ? [''] : ['.exe', '.com']) : [''];
-  const pathVar = win ? Object.keys(env).find((k) => k.toLowerCase() === 'path') : 'PATH';
-  for (const dir of String(env[pathVar] ?? '').split(path.delimiter)) {
-    if (!dir || !path.isAbsolute(dir)) continue;
-    for (const ext of exts) {
-      const file = path.join(dir, name + ext);
-      try { if (fs.statSync(file).isFile()) return file; } catch { /* not here */ }
-    }
-  }
-  return null;
-}
-const SAFE_EXE_ENV = { NoDefaultCurrentDirectoryInExePath: '1' };
-
-const defaultKillTree = (pid) => {
-  if (process.platform === 'win32') {
-    const taskkill = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'taskkill.exe');
-    cp.execFile(taskkill, ['/pid', String(pid), '/T', '/F'], { windowsHide: true, env: { ...process.env, ...SAFE_EXE_ENV } }, () => {});
-  } else { try { process.kill(pid); } catch { /* already gone */ } }
-};
 
 export function createCodex({
   store, usage, enabled = false, command = 'codex', args = [], root = CODEX_ROOT, spawn = cp.spawn, execFile = cp.execFile,
@@ -200,9 +177,10 @@ export function createCodex({
   }
 
   // The first limit hit of a run. Only the first call acts (markLimit is atomic).
-  async function trigger(runId, info = {}) {
+  // `marked`: the caller already recorded the hit (markLimit), so it is not recorded again.
+  async function trigger(runId, info = {}, { marked = false } = {}) {
     if (closed) return;
-    if (!store.markLimit(runId, info)) return;
+    if (!marked && !store.markLimit(runId, info)) return;
     onChange();
     if (!enabled) { store.logRun(runId, 'Codex hand-off is off'); return; }
     const status = store.getRun(runId)?.status;

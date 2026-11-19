@@ -10,6 +10,7 @@ import { createMcpHandler } from './mcp.js';
 import { openUsage } from './usage.js';
 import { usageStats, versionStats, runAttribution, sum } from './stats.js';
 import { createCodex } from './codex.js';
+import { createClaudeResume } from './claude-resume.js';
 import { toTokens, emptyAcc } from './attribution.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
@@ -52,7 +53,7 @@ const parseJson = (raw) => {
 export async function startServer({
   port = 4747, dataDir = path.join(os.homedir(), '.claude', 'agent-monitor'),
   projectsDir = path.join(os.homedir(), '.claude', 'projects'), webDir = fileURLToPath(new URL('../web/dist', import.meta.url)),
-  usageIntervalMs = 5000, codex = null,
+  usageIntervalMs = 5000, codex = null, accounts = null,
 } = {}) {
   const store = openStore(dataDir);
   const usage = await openUsage({ dataDir, projectsDir });
@@ -65,12 +66,53 @@ export async function startServer({
     store, usage, enabled: Boolean(codex), command: codex?.command, args: codex?.args, root: codex?.root, spawn: codex?.spawn,
     killTree: codex?.killTree, env: codex?.env, onChange: () => store.bus.emit('change', { type: 'usage' }),
   });
-  // Ryan answered a gate: a Codex run continues on its thread, a stopped one loses its child.
+  // Claude account rotation (only with the accounts option): a limit moves the run to the next account in a headless
+  // `claude --resume`; Codex takes over only when no account is left or the switch fails.
+  const manager = accounts?.manager ?? null;
+  const notify = (title, text) => { try { accounts?.notify?.(title, text); } catch { /* a notification is best effort */ } };
+  const claudeResume = manager ? createClaudeResume({
+    store, projectsDir, manager, onRunLimit: (id, info) => onRunLimit(id, info), command: accounts.command, args: accounts.args, spawn: accounts.spawn,
+    killTree: accounts.killTree, env: accounts.env, onChange: () => store.bus.emit('change', { type: 'usage' }),
+  }) : null;
+  async function onRunLimit(runId, info) {
+    if (!manager) return launcher.trigger(runId, info);
+    const ra = store.runAccount(runId);
+    if (ra?.resumed_at && Date.parse(info.at) <= Date.parse(ra.resumed_at)) return; // a hit from before the switch
+    if (!store.markLimit(runId, info)) return;
+    store.bus.emit('change', { type: 'usage' });
+    if (manager.hasAccounts()) {
+      let d;
+      try { d = await manager.handleLimit({ runAccount: ra?.account ?? null, at: info.at, resetsAt: info.resetsAt, source: info.source }); } catch (e) { d = { next: null, error: e.message }; }
+      if (d?.next) {
+        claudeResume.stop(runId);
+        store.resumeOnAccount(runId, { account: d.next, hit: d.hitAccount ?? null });
+        notify('Claude account switched', `Run ${runId} continues headless on account ${d.next}. Other chats that stopped: type "continue".`);
+        if (store.getRun(runId)?.status === 'active') await claudeResume.start(runId); // a waiting run starts when Ryan answers
+        return;
+      }
+      store.logRun(runId, d?.error ? `Account switch failed: ${d.error}; handing over to Codex` : 'All Claude accounts are out of usage; handing over to Codex');
+    }
+    await launcher.trigger(runId, info, { marked: true });
+  }
+  // A limit in a chat that is not a tracked run: switch the login and tell Ryan which chat to continue.
+  async function onChatLimit(info) {
+    if (!manager?.hasAccounts()) return;
+    const d = await manager.handleLimit({ runAccount: null, at: info.at, resetsAt: info.resetsAt, source: info.source });
+    if (d?.error) notify('Claude account switch failed', d.error);
+    else if (d?.switched) notify('Claude account switched', `Now on ${d.next} (${d.hitAccount} hit its usage limit). Type "continue" in the chat that stopped.`);
+    else if (!d?.next && !d?.duplicate) notify('Claude accounts all out', 'Every Claude account is at its usage limit.');
+  }
+  // Ryan answered a gate: a Codex run continues on its thread, a run on another Claude account in its headless session,
+  // a stopped one loses its child.
   const afterRespond = (runId) => {
     const r = store.getRun(runId);
-    if (r?.provider !== 'codex') return;
-    if (r.status === 'active') launcher.resume(runId).catch(() => {});
-    else if (r.status === 'stopped') launcher.stop(runId);
+    if (r?.provider === 'codex') {
+      if (r.status === 'active') launcher.resume(runId).catch(() => {});
+      else if (r.status === 'stopped') launcher.stop(runId);
+    } else if (claudeResume && store.runAccount(runId)) {
+      if (r?.status === 'active') claudeResume.resume(runId).catch(() => {});
+      else if (r?.status === 'stopped') claudeResume.stop(runId);
+    }
   };
 
   const handleApi = async (req, res, url) => {
@@ -92,7 +134,7 @@ export async function startServer({
     }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/stop$/))) {
       const r = store.stopRun(decodeURIComponent(g[1]));
-      if (r.run) launcher.stop(r.run.id);
+      if (r.run) { launcher.stop(r.run.id); claudeResume?.stop(r.run.id); }
       return send(res, r.notFound ? 404 : r.error ? 400 : 200, r.error ? { error: r.error } : r.run);
     }
     if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)\/wait$/))) return handleWait(req, res, decodeURIComponent(g[1]), url);
@@ -234,12 +276,12 @@ export async function startServer({
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   const actual = server.address().port;
   hostPorts = [`127.0.0.1:${actual}`, `localhost:${actual}`];
-  hooks = createHooks(store, { projectsDir, port: actual, onLimit: (info) => launcher.trigger(info.runId, info).catch(() => {}) });
+  hooks = createHooks(store, { projectsDir, port: actual, onLimit: (info) => onRunLimit(info.runId, info).catch(() => {}), onChatLimit: manager ? (info) => onChatLimit(info) : undefined });
   mcp = createMcpHandler(store, hostPorts, { afterRespond });
   // A transcript hit names a session or subagent; its run is the agent's run, else the session's live run.
   const onTranscriptLimit = (h) => {
     const runId = (h.agentId && store.getAgent(h.agentId)?.run_id) || store.sessionRun(h.sessionId)?.id;
-    if (runId) launcher.trigger(runId, { at: h.ts, resetsAt: h.resetsAt, source: 'transcript' }).catch(() => {});
+    if (runId) onRunLimit(runId, { at: h.ts, resetsAt: h.resetsAt, source: 'transcript' }).catch(() => {});
   };
   // The first scan (backfill) runs in the background; listen() has already resolved.
   usage.start({ intervalMs: usageIntervalMs, onLimit: onTranscriptLimit, onScan: (r) => { if (r.newMessages > 0) store.bus.emit('change', { type: 'usage' }); } });
@@ -248,6 +290,8 @@ export async function startServer({
     port: actual, url: `http://127.0.0.1:${actual}`, store, usage,
     close: () => new Promise((resolve) => {
       launcher.close();
+      claudeResume?.close();
+      try { manager?.close?.(); } catch { /* closing is best effort */ }
       for (const s of streams) s.end();
       server.close(() => { usage.close().then(() => { store.close(); resolve(); }); });
       server.closeAllConnections();
