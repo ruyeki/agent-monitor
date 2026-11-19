@@ -30,6 +30,48 @@ export function liveOauth(home) {
 export const validOauth = (o) => Boolean(o && typeof o === 'object' && typeof o.accessToken === 'string' && o.accessToken
   && typeof o.refreshToken === 'string' && o.refreshToken && typeof o.accountUuid === 'string' && o.accountUuid);
 
+// Tokens only: Claude Code 2.1.287 writes claudeAiOauth without accountUuid.
+export const hasTokens = (o) => Boolean(o && typeof o === 'object' && typeof o.accessToken === 'string' && o.accessToken
+  && typeof o.refreshToken === 'string' && o.refreshToken);
+
+const str = (v) => (typeof v === 'string' && v ? v : null);
+
+const rawAccount = (claudeJson) => {
+  try { return JSON.parse(fs.readFileSync(guardReal(claudeJson), 'utf8'))?.oauthAccount ?? null; } catch { return null; }
+};
+
+// Claude Code's .claude.json oauthAccount -> {accountUuid, email, organizationUuid}, or null. Read only, never throws.
+export function readOauthAccount(claudeJson) {
+  const a = rawAccount(claudeJson);
+  const accountUuid = str(a?.accountUuid);
+  return accountUuid ? { accountUuid, email: str(a.emailAddress), organizationUuid: str(a.organizationUuid) } : null;
+}
+
+// Just oauthAccount's email, for an oauthAccount that has no accountUuid, or null.
+export const readOauthEmail = (claudeJson) => str(rawAccount(claudeJson)?.emailAddress);
+
+const NO_LOGIN = { oauth: null, accountUuid: null, email: null, reason: null };
+
+// Who the live login is -> {oauth, accountUuid, email, reason}. oauth carries an accountUuid when known.
+// No tokens: all null (no live login). Uncertain: oauth null and reason set. The creds' own accountUuid is trusted;
+// else .claude.json's oauthAccount, unless Agent Monitor switched last (a refresh drops accountUuid but oauthAccount
+// keeps the previous account), then only when it names the account switched to.
+export function liveIdentity({ home, claudeJson, reg }) {
+  const live = liveOauth(home);
+  if (!hasTokens(live)) return NO_LOGIN;
+  if (str(live.accountUuid)) return { oauth: live, accountUuid: live.accountUuid, email: null, reason: null };
+  const oa = readOauthAccount(claudeJson);
+  const to = reg?.lastSwitch?.to;
+  const wanted = to ? reg.accounts?.[to]?.accountUuid : null;
+  if (oa && (!reg?.lastSwitch || oa.accountUuid === wanted)) {
+    const org = live.organizationUuid ?? oa.organizationUuid;
+    return { oauth: { ...live, accountUuid: oa.accountUuid, ...(org ? { organizationUuid: org } : {}) }, accountUuid: oa.accountUuid, email: oa.email, reason: null };
+  }
+  const reason = `the live login carries no account id; Claude Code's .claude.json names ${oa ? (oa.email ?? 'another account') : 'no account'}`
+    + `${to ? `, but Agent Monitor last switched to "${to}"` : ''}; sign in to Claude Code (/login) as the account you want, or wait for Claude Code to re-read its account profile (within a day)`;
+  return { oauth: null, accountUuid: null, email: null, reason };
+}
+
 // A vault value -> a valid login, or null.
 export function parseOauth(text) {
   if (typeof text !== 'string') return null;

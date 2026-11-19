@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import cp from 'node:child_process';
-import { validOauth } from './creds.js';
+import { hasTokens, readOauthAccount, readOauthEmail } from './creds.js';
 
 export const REFRESH_TIMEOUT_MS = 120_000;
 export const LOGIN_TIMEOUT_MS = 600_000;
@@ -99,11 +99,15 @@ export async function refreshLogin(saved, { claude, spawn = cp.spawn, env = proc
     };
     const r = await runChild(spawn, cmd, REFRESH_ARGS, { dir, env, stdio: ['pipe', 'pipe', 'pipe'], input: PROMPT, timeoutMs, onLine });
     const back = readLogin(dir);
-    if (!validOauth(back) || back.accountUuid !== saved.accountUuid) {
+    const acct = readOauthAccount(path.join(dir, '.claude.json'));
+    // Claude Code 2.1.287 drops accountUuid on a refresh. A uuid that is there must match; none -> the saved one
+    // (the temp profile held only this login).
+    if (!hasTokens(back) || (back.accountUuid && back.accountUuid !== saved.accountUuid) || (acct && acct.accountUuid !== saved.accountUuid)) {
       throw new Error(`Claude Code did not return a login for this account (${why(r)})`);
     }
     if (!(Number(back.expiresAt) > 0)) throw new Error(`Claude Code did not refresh the login (${why(r)})`);
-    return { oauth: back };
+    const org = back.organizationUuid ?? saved.organizationUuid ?? acct?.organizationUuid;
+    return { oauth: { ...back, accountUuid: saved.accountUuid, ...(org ? { organizationUuid: org } : {}) } };
   });
 }
 
@@ -115,9 +119,16 @@ export async function signIn({ claude, spawn = cp.spawn, env = process.env, emai
     const argv = ['auth', 'login', '--claudeai', ...(email ? ['--email', email] : [])];
     const r = await runChild(spawn, cmd, argv, { dir, env, stdio: 'inherit', timeoutMs });
     const oauth = readLogin(dir);
-    if (!validOauth(oauth)) throw new Error(`sign-in did not finish (${why(r)})`);
-    let found = null;
-    try { found = JSON.parse(fs.readFileSync(path.join(dir, '.claude.json'), 'utf8'))?.oauthAccount?.emailAddress ?? null; } catch { /* none */ }
-    return { oauth, email: typeof found === 'string' ? found : null };
+    const profile = path.join(dir, '.claude.json');
+    const acct = readOauthAccount(profile);
+    const found = acct?.email ?? readOauthEmail(profile);
+    const uuid = (typeof oauth?.accountUuid === 'string' && oauth.accountUuid) || acct?.accountUuid;
+    if (!hasTokens(oauth) || !uuid) throw new Error(`sign-in did not finish (${why(r)})`);
+    if (acct && acct.accountUuid !== uuid) throw new Error('sign-in returned conflicting account ids; nothing was saved');
+    if (email && found && found.toLowerCase() !== email.toLowerCase()) {
+      throw new Error(`signed in as ${found}, not ${email}; nothing was saved. Sign the browser out of ${found} (or use a private window) and run this again`);
+    }
+    const org = oauth.organizationUuid ?? acct?.organizationUuid;
+    return { oauth: { ...oauth, accountUuid: uuid, ...(org ? { organizationUuid: org } : {}) }, email: found };
   });
 }

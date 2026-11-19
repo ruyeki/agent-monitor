@@ -3,12 +3,13 @@
 // imports, writes only when a window changed, never fails (always exit 0).
 import { defaults } from './paths.js';
 import { loadRegistry, readUsage, saveReading } from './state.js';
-import { liveOauth } from './creds.js';
+import { join } from 'node:path';
+import { liveIdentity } from './creds.js';
 import { attribute, normWindow } from './usage.js';
 
 // Records reading {five_hour, seven_day} on name, or (name null) on the account it belongs to: attribution by
 // five_hour.resets_at, else the live login's account. -> the account name, or null when nothing was recorded.
-export function recordWindows({ dataDir, home, name = null, reading, now }) {
+export function recordWindows({ dataDir, home, claudeJson = join(home, '.claude.json'), name = null, reading, now }) {
   const five = normWindow(reading?.five_hour);
   const seven = normWindow(reading?.seven_day);
   if (!five && !seven) return null;
@@ -17,7 +18,7 @@ export function recordWindows({ dataDir, home, name = null, reading, now }) {
   if (!names.length) return null;
   let target = name;
   if (!target) {
-    const uuid = liveOauth(home)?.accountUuid;
+    const uuid = liveIdentity({ home, claudeJson, reg }).accountUuid;
     const active = names.find((n) => reg.accounts[n].accountUuid === uuid) ?? null;
     target = attribute(names, active, Object.fromEntries(names.map((n) => [n, readUsage(dataDir, n)])), five?.resets_at ?? null);
   }
@@ -27,10 +28,10 @@ export function recordWindows({ dataDir, home, name = null, reading, now }) {
 }
 
 // The statusline JSON's rate_limits -> recordWindows. Never throws.
-export function recordStatusline(raw, { dataDir, home, clock = Date.now }) {
+export function recordStatusline(raw, { dataDir, home, claudeJson, clock = Date.now }) {
   try {
     const rl = JSON.parse(raw)?.rate_limits;
-    return rl && typeof rl === 'object' ? recordWindows({ dataDir, home, reading: rl, now: clock() }) : null;
+    return rl && typeof rl === 'object' ? recordWindows({ dataDir, home, claudeJson, reading: rl, now: clock() }) : null;
   } catch { return null; }
 }
 

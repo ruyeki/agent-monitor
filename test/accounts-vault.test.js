@@ -51,8 +51,9 @@ test('paths: defaults refuse the real ~/.claude and the production prefix under 
   assert.throws(() => defaults({ AGENT_MONITOR_HOME: temp, AGENT_MONITOR_CLAUDE_HOME: real, AGENT_MONITOR_VAULT_PREFIX: 'agent-monitor-test-a/' }), /real ~\/\.claude/);
   assert.throws(() => defaults({ AGENT_MONITOR_CLAUDE_HOME: temp, AGENT_MONITOR_VAULT_PREFIX: 'agent-monitor-test-a/' }), /real ~\/\.claude/, 'dataDir defaults inside ~/.claude');
   assert.throws(() => defaults({ AGENT_MONITOR_HOME: temp, AGENT_MONITOR_CLAUDE_HOME: temp }), /production vault prefix/);
-  assert.deepEqual(defaults({ AGENT_MONITOR_HOME: temp, CLAUDE_CONFIG_DIR: temp, AGENT_MONITOR_VAULT_PREFIX: 'agent-monitor-test-a/' }),
-    { dataDir: temp, home: temp, vaultPrefix: 'agent-monitor-test-a/' });
+  const env = { AGENT_MONITOR_HOME: temp, CLAUDE_CONFIG_DIR: temp, AGENT_MONITOR_VAULT_PREFIX: 'agent-monitor-test-a/' };
+  assert.deepEqual(defaults(env),
+    { dataDir: temp, home: temp, claudeJson: path.join(env.AGENT_MONITOR_CLAUDE_HOME || env.CLAUDE_CONFIG_DIR || os.homedir(), '.claude.json'), vaultPrefix: 'agent-monitor-test-a/' });
 });
 
 test('vault: errors carry no secret, stdout or stderr text', async () => {

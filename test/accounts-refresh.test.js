@@ -89,10 +89,10 @@ test('refreshDue: only non-active accounts whose refresh token expires within 7 
 test('add: signs in through `claude auth login` in a temp config dir and saves the new login', async (t) => {
   const NEW = oauth('uuid-new');
   const w = stubWorld(t, { oauth: NEW, email: 'new@example.com' });
-  const r = await w.m.add('newbie', { email: 'given@example.com' });
-  assert.deepEqual(r, { name: 'newbie', email: 'given@example.com', accountUuid: 'uuid-new' });
+  const r = await w.m.add('newbie', { email: 'new@example.com' });
+  assert.deepEqual(r, { name: 'newbie', email: 'new@example.com', accountUuid: 'uuid-new' });
   const [call] = w.calls();
-  assert.deepEqual(call.argv, ['auth', 'login', '--claudeai', '--email', 'given@example.com']);
+  assert.deepEqual(call.argv, ['auth', 'login', '--claudeai', '--email', 'new@example.com']);
   assert.equal(call.hasOauthToken, false);
   assert.equal(call.hasAuthToken, false);
   assert.equal(fs.existsSync(call.configDir), false);

@@ -26,7 +26,7 @@ async function serve() {
       const { createAccounts } = await import('../src/accounts/index.js');
       const { desktopNotify } = await import('../src/notify.js');
       const o = await accountsOptions();
-      const manager = createAccounts({ dataDir: o.dataDir, home: o.home, vault: o.vault, claude: o.claude });
+      const manager = createAccounts({ dataDir: o.dataDir, home: o.home, claudeJson: o.claudeJson, vault: o.vault, claude: o.claude });
       manager.startSync();
       accounts = { manager, command: o.claude, notify: desktopNotify };
     } catch (e) {
@@ -87,8 +87,8 @@ if (cmd === 'serve') await serve();
 else if (cmd === 'accounts') {
   const { runAccountsCli } = await import('../src/accounts/cli.js');
   try {
-    const { dataDir, home, vault, claude } = await accountsOptions();
-    process.exitCode = await runAccountsCli(process.argv.slice(3), { dataDir, home, vault, claude });
+    const { dataDir, home, claudeJson, vault, claude } = await accountsOptions();
+    process.exitCode = await runAccountsCli(process.argv.slice(3), { dataDir, home, claudeJson, vault, claude });
   } catch (e) {
     console.error(`accounts: ${e.message}`);
     process.exitCode = 1;

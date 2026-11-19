@@ -44,16 +44,17 @@ function parse(argv) {
 }
 
 // argv: the words after `accounts` (a leading 'accounts' is skipped). out/err: line printers (default: the console).
-export async function runAccountsCli(argv, { dataDir, home, vault, claude = null, out = console.log, err = console.error } = {}) {
+export async function runAccountsCli(argv, { dataDir, home, claudeJson, vault, claude = null, out = console.log, err = console.error } = {}) {
   const say = typeof out === 'function' ? out : (s) => out.write(`${s}\n`);
   const warn = typeof err === 'function' ? err : (s) => err.write(`${s}\n`);
   const p = parse(argv ?? []);
   if (!p) { warn(USAGE); return 2; }
-  const m = createAccounts({ dataDir, home, vault, claude });
+  const m = createAccounts({ dataDir, home, claudeJson, vault, claude });
   try {
     switch (p.cmd) {
       case 'list':
         for (const line of formatList(m.list())) say(line);
+        { const why = m.liveReason(); if (why) say(`Live login: unknown account (${why})`); }
         return 0;
       case 'add': {
         if (!p.opts.current) say(`Signing in to Claude for "${p.name}" in a separate Claude Code profile...`);

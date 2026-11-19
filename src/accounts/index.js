@@ -1,10 +1,11 @@
 // Claude accounts manager: saved logins (vault), usage per account, swapping the live login, limit hand-offs,
 // refreshes through Claude Code and saving rotated tokens back from the live file.
 import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import cp from 'node:child_process';
 import { NAME, loadRegistry, saveRegistry, readUsage, writeUsage, removeUsage, withLock } from './state.js';
-import { readCredsText, parseCreds, liveOauth, parseOauth, validOauth, applySwap, credsPath } from './creds.js';
+import { readCredsText, parseCreds, liveIdentity, parseOauth, validOauth, applySwap, credsPath } from './creds.js';
 import { usageLeft, windowPct, limitedUntil, isAvailable, pickBest as best, attribute, toSecs, toMs, fromRateLimitInfo } from './usage.js';
 import { recordWindows } from './record.js';
 import { refreshLogin, signIn } from './refresh.js';
@@ -25,7 +26,7 @@ function checkName(name) {
   return name;
 }
 
-export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp.spawn, clock = Date.now, env = process.env, limitWaitMs = LIMIT_WAIT_MS } = {}) {
+export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.claude.json'), vault, claude = null, spawn = cp.spawn, clock = Date.now, env = process.env, limitWaitMs = LIMIT_WAIT_MS } = {}) {
   const saved = new Map(); // name -> hash of the login last written to or read from the vault (sync-back skips equal ones)
   let timers = [];
   let watcher = null;
@@ -33,7 +34,10 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
 
   const registry = () => loadRegistry(dataDir);
   const nameFor = (reg, uuid) => (uuid ? Object.keys(reg.accounts).find((n) => reg.accounts[n].accountUuid === uuid) ?? null : null);
-  const activeOf = (reg) => nameFor(reg, liveOauth(home)?.accountUuid);
+  const identity = (reg) => liveIdentity({ home, claudeJson, reg });
+  const activeOf = (reg) => nameFor(reg, identity(reg).accountUuid);
+  // Why the live login's account is unknown (tokens but no usable account id), else null.
+  const liveReason = () => { try { return identity(registry()).reason; } catch { return null; } };
   const need = (reg, name) => { if (!reg.accounts[checkName(name)]) throw new Error(`no account named "${name}"`); return reg.accounts[name]; };
   const accountsOf = (reg) => Object.keys(reg.accounts).map((n) => ({ name: n, saved: Boolean(reg.accounts[n].savedAt), usage: readUsage(dataDir, n) }));
   const usages = (names) => Object.fromEntries(names.map((n) => [n, readUsage(dataDir, n)]));
@@ -79,8 +83,11 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
     checkName(name);
     let oauth;
     let found = null;
-    if (current) oauth = liveOauth(home);
-    else ({ oauth, email: found } = await signIn({ claude, spawn, env, email }));
+    if (current) {
+      const id = identity(registry());
+      if (id.reason) throw new Error(id.reason);
+      ({ oauth, email: found } = id);
+    } else ({ oauth, email: found } = await signIn({ claude, spawn, env, email }));
     if (!validOauth(oauth)) throw new Error(current ? 'there is no usable live login to save' : 'the sign-in returned no usable login');
     return withLock(dataDir, async () => {
       const reg = registry();
@@ -90,7 +97,7 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
       if (old && old.accountUuid !== oauth.accountUuid) throw new Error(`"${name}" is a different account; remove it first`);
       await vault.set(key(name), JSON.stringify(oauth));
       const now = iso(clock());
-      reg.accounts[name] = { accountUuid: oauth.accountUuid, email: email ?? found ?? old?.email ?? null, addedAt: old?.addedAt ?? now, savedAt: null, refreshExpiresAt: null };
+      reg.accounts[name] = { accountUuid: oauth.accountUuid, email: found ?? email ?? old?.email ?? null, addedAt: old?.addedAt ?? now, savedAt: null, refreshExpiresAt: null };
       markSaved(reg, name, oauth);
       saveRegistry(dataDir, reg);
       return { name, email: reg.accounts[name].email, accountUuid: oauth.accountUuid };
@@ -106,8 +113,10 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
     let first;
     for (let attempt = 0; ; attempt++) {
       const curText = readCredsText(home);
-      const cur = parseCreds(curText);
-      const curOauth = validOauth(cur.claudeAiOauth) ? cur.claudeAiOauth : null;
+      parseCreds(curText); // a corrupt file stops here, before any vault write
+      const id = identity(reg);
+      if (id.reason) throw new Error(`cannot tell which account the live login is: ${id.reason}; not switching`);
+      const curOauth = id.oauth;
       const from = nameFor(reg, curOauth?.accountUuid);
       // A login nobody saved would survive only in `backup`, which the next swap overwrites.
       if (curOauth && !from) throw new Error('the live login is not a saved account; save it first: agent-monitor accounts add <name> --current');
@@ -163,7 +172,7 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
   // reading {five_hour, seven_day} (statusline windows); name null = attribute by five_hour.resets_at.
   // Never throws; -> the account it was recorded on, or null.
   function recordReading(name, reading) {
-    try { return recordWindows({ dataDir, home, name, reading, now: clock() }); } catch { return null; }
+    try { return recordWindows({ dataDir, home, claudeJson, name, reading, now: clock() }); } catch { return null; }
   }
 
   // A hit without a reset time keeps a stored limit that is still in force (it would only lose information).
@@ -265,9 +274,9 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
   let syncing = null;
   // Checked once without the lock (cheap), then again under it: a swap in between may have changed the file.
   const pending = () => {
-    const oauth = liveOauth(home);
-    if (!validOauth(oauth)) return null;
     const reg = registry();
+    const oauth = identity(reg).oauth;
+    if (!oauth) return null;
     const name = nameFor(reg, oauth.accountUuid);
     return name && saved.get(name) !== hash(oauth) ? { reg, name, oauth } : null;
   };
@@ -323,7 +332,7 @@ export function createAccounts({ dataDir, home, vault, claude = null, spawn = cp
   }
 
   return {
-    list, activeName, hasAccounts, add, use, remove, recordReading, recordRateLimit, recordLimit, pickBest, handleLimit,
+    list, liveReason, activeName, hasAccounts, add, use, remove, recordReading, recordRateLimit, recordLimit, pickBest, handleLimit,
     refresh, refreshDue, syncBack, startSync, close,
   };
 }
