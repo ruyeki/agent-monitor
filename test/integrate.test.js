@@ -80,9 +80,13 @@ test('install swaps Orca hooks for ours and keeps every other key byte-identical
   }
   // guardrails entry, and every non-hooks key, are untouched
   assert.deepEqual(after.hooks.PreToolUse[0], before.hooks.PreToolUse[0]);
-  for (const k of Object.keys(before).filter((k) => k !== 'hooks')) {
+  for (const k of Object.keys(before).filter((k) => k !== 'hooks' && k !== 'statusLine')) {
     assert.equal(JSON.stringify(after[k]), JSON.stringify(before[k]), k);
   }
+  // statusLine only gains the usage-recorder prefix (see integrate-accounts.test.js)
+  assert.match(after.statusLine.command, /statusline-record \| /);
+  assert.ok(after.statusLine.command.endsWith(` | ${before.statusLine.command}`));
+  assert.deepEqual({ ...after.statusLine, command: 0 }, { ...before.statusLine, command: 0 });
   assert.deepEqual(Object.keys(after).filter((k) => k !== 'hooks' && k !== 'autoContinueAtUsageLimit'), Object.keys(before).filter((k) => k !== 'hooks'));
   assert.equal(after.autoContinueAtUsageLimit, false);
   const text = fs.readFileSync(settingsPath(), 'utf8');

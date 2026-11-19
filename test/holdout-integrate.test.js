@@ -96,7 +96,11 @@ test('AC14 install: hooks swapped, everything else byte-identical when re-serial
   assert.ok(!text.includes('\r'), 'LF endings');
   const s = JSON.parse(text);
   assert.equal(text, JSON.stringify(s, null, 2) + '\n', 'canonical 2-space serialisation');
-  for (const k of Object.keys(OTHER)) assert.equal(JSON.stringify(s[k]), JSON.stringify(OTHER[k]), k + ' untouched');
+  for (const k of Object.keys(OTHER).filter((k) => k !== 'statusLine')) assert.equal(JSON.stringify(s[k]), JSON.stringify(OTHER[k]), k + ' untouched');
+  // statusLine only gains the usage-recorder prefix; its other keys are unchanged
+  assert.match(s.statusLine.command, /statusline-record \| /);
+  assert.ok(s.statusLine.command.endsWith(' | ' + OTHER.statusLine.command));
+  assert.deepEqual({ ...s.statusLine, command: 0 }, { ...OTHER.statusLine, command: 0 });
   assert.deepEqual(s.hooks.PreToolUse.find((e) => e.matcher === GUARD.matcher), GUARD, 'guardrails entry identical');
   assert.ok(!text.includes('.orca/agent-hooks'), 'orca entries removed');
   for (const ev of ['SessionStart', 'TeammateIdle', 'PostCompact']) assert.ok(!(ev in s.hooks), ev + ' key removed when left empty');

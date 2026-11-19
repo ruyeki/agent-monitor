@@ -49,7 +49,7 @@ npm run integrate -- uninstall
 
 `uninstall` removes the hooks, the MCP server and the startup file, and restores the four files from their oldest backup (Ryan's originals).
 
-`install` also adds the `UserPromptSubmit` and `StopFailure` hooks and sets `autoContinueAtUsageLimit` to `false` in `settings.json` (uninstall removes that key when it is `false`).
+`install` also puts the account-rotation usage recorder in front of your `statusLine` command in `settings.json` (see "Claude account rotation"). `install` also adds the `UserPromptSubmit` and `StopFailure` hooks and sets `autoContinueAtUsageLimit` to `false` in `settings.json` (uninstall removes that key when it is `false`).
 
 ## Codex fallback
 
@@ -66,6 +66,34 @@ Gate 2 (manual, once):
 3. Smoke test with a tiny prompt on the cheap model against a throwaway run, for example `echo "say hi" | codex exec --json -p agent-monitor-handoff -m gpt-5.6-luna -` (this is the only real Codex call; the tests use a stub).
 
 Test overrides: `--home`, `--codex-home`, `--agents-home`, `--startup`, `--claude`, `--port`.
+
+## Claude account rotation
+
+When a Claude account runs out of usage, Agent Monitor tries another saved Claude account first and hands over to Codex only when every account is out. With no saved accounts, nothing changes (Codex as above). Turn it off with `AGENT_MONITOR_ACCOUNTS=off`.
+
+Commands (`node bin/agent-monitor.js accounts ...`):
+
+- `accounts add <name> [--current] [--email <e>]`: save a login. `--current` saves the login Claude Code is signed in with now; otherwise a sign-in runs in a temp `CLAUDE_CONFIG_DIR` (your own login is untouched).
+- `accounts list`, `accounts use <name>`, `accounts remove <name>`, `accounts refresh [<name>]`.
+
+How usage is recorded: the statusline recorder (`npm run integrate` prefixes it onto your own `statusLine` command and passes stdin through unchanged; with no statusLine it adds a quiet one), the `rate_limit_event` lines of headless runs, and limit hits. "Left" = 100 minus the higher of the 5-hour and 7-day percentages; a window whose reset has passed counts 0; an account with no reading counts as full.
+
+State: non-secret JSON in `~/.claude/agent-monitor/accounts/` (registry and per-account usage). The logins themselves are encrypted in Windows Credential Manager as `agent-monitor/claude/*`. Saved logins are refreshed by Claude Code itself in a temp `CLAUDE_CONFIG_DIR`, so refresh tokens stay valid.
+
+Runs vs chats:
+
+- A tracked run that hits a limit is resumed headless on the next account with `claude --resume <session> --fork-session -p`; the switch is logged on the run timeline.
+- An interactive chat gets the login switched (the current login is saved back first) and a desktop notification; type "continue" in the chat.
+
+Gate 2 (manual, once):
+
+1. `npm run integrate -- --dry-run`, then `npm run integrate -- install`.
+2. Restart the Agent Monitor server.
+3. `node bin/agent-monitor.js accounts add ryan --current`, then `accounts add orders --email orders@persist-ai.com` and `accounts add lab --email lab@persist-ai.com`.
+4. `accounts list`.
+5. Check by hand whether an open chat picks up a switched login (`accounts use <name>`, then send a message in the open chat).
+
+`npm run integrate -- uninstall` removes the statusLine recorder prefix (restoring your original command exactly, or removing a statusLine that only held the recorder). Saved logins and state stay until `accounts remove <name>`.
 
 ## Wait for an answer
 

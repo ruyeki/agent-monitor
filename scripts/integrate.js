@@ -72,6 +72,27 @@ function stripHooks(hooks, drop) {
   return out;
 }
 
+// Any earlier install's recorder prefix (any node path / repo path).
+const RECORDER = /^"[^"]*" "[^"]*agent-monitor\.js" statusline-record/;
+const recorder = () => `"${process.execPath.replace(/\\/g, '/')}" "${path.join(REPO, 'bin', 'agent-monitor.js').replace(/\\/g, '/')}" statusline-record`;
+
+// Returns the statusLine to write, or undefined to remove the key.
+function statusLineWant(cur, uninstall) {
+  const cmd = cur?.command;
+  if (cur !== undefined && typeof cmd !== 'string') return cur; // not a command we understand: leave it
+  const m = cmd === undefined ? null : RECORDER.exec(cmd);
+  const rest = m ? cmd.slice(m[0].length) : null;
+  if (uninstall) {
+    if (!m) return cur;
+    if (rest === ' --quiet') return undefined;
+    if (rest.startsWith(' | ')) return { ...cur, command: rest.slice(3) };
+    return cur;
+  }
+  if (cur === undefined) return { type: 'command', command: `${recorder()} --quiet` };
+  if (!m) return { ...cur, command: `${recorder()} | ${cmd}` };
+  return { ...cur, command: `${recorder()}${rest}` };
+}
+
 function planSettings(o, uninstall) {
   const file = path.join(o.home, 'settings.json');
   const exists = fs.existsSync(file);
@@ -87,13 +108,17 @@ function planSettings(o, uninstall) {
   // Agent Monitor resumes the run in Codex at a usage limit, so Claude must not wait the limit out
   if (!uninstall) next.autoContinueAtUsageLimit = false;
   else if (next.autoContinueAtUsageLimit === false) delete next.autoContinueAtUsageLimit;
+  // statusline usage recorder: prefixed onto Ryan's own statusLine command (it passes stdin through)
+  const sl = statusLineWant(settings.statusLine, uninstall);
+  if (sl === undefined) delete next.statusLine;
+  else next.statusLine = sl;
   const out = JSON.stringify(next, null, 2).replace(/\n/g, eol) + eol;
   const orca = uninstall ? 0 : had(isOrca);
   return {
     file, text, out, changed: out !== text, exists,
     desc: uninstall
-      ? `settings.json: remove our hook entries (${had(isOurs)} found) and autoContinueAtUsageLimit if false`
-      : `settings.json: remove ${orca} Orca and ${had(isOurs)} old Agent Monitor hook entries, add ours for ${EVENTS.join(', ')} (timeout ${TIMEOUT}s), set autoContinueAtUsageLimit false`,
+      ? `settings.json: remove our hook entries (${had(isOurs)} found), autoContinueAtUsageLimit if false and the statusLine usage recorder`
+      : `settings.json: remove ${orca} Orca and ${had(isOurs)} old Agent Monitor hook entries, add ours for ${EVENTS.join(', ')} (timeout ${TIMEOUT}s), set autoContinueAtUsageLimit false, add the statusLine usage recorder (statusline-record)`,
   };
 }
 
