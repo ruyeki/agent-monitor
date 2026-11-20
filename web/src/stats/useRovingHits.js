@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 
 // Keyboard- and mouse-reachable hit rects for a per-day chart: one tab stop (roving tabindex), ArrowLeft/Right/Home/End
-// move focus, focus or hover shows the tooltip, Escape/blur hides it. `days` are the column days, `attr` the data
-// attribute that marks the hit rects (they must be the children of the element `hitsRef` is put on).
+// move focus, focus or hover shows the tooltip, Escape/blur hides it. `days` are the column days; the hit rects are
+// the children of the element `hitsRef` is put on.
 export function useRovingHits(days) {
   const [hover, setHover] = useState(null);
   const [active, setActive] = useState(null); // the day that holds tabindex 0
