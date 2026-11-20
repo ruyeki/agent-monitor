@@ -128,7 +128,7 @@ ok(await until(async () => (await get('/api/stats/usage')).indexer?.messages >= 
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 async function newPage({ theme = 'dark', width = 1300, height = 900, init } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme });
+  const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce' });
   await ctx.addInitScript((t) => { try { localStorage.setItem('agent-monitor-theme', t); } catch { /* */ } }, theme);
   if (init) await ctx.addInitScript(init);
   ctx.setDefaultTimeout(4000);

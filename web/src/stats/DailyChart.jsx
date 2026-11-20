@@ -3,6 +3,7 @@ import { formatCost, formatTokens } from '../lib/format.js';
 import { buildSeries, compactCost, dayLabel, maxSeriesValue, niceTicks, periodDelta, seriesColor, shareLabel } from './chart.js';
 import { LineMarks } from './LineMarks.jsx';
 import { Toggle } from './Toggle.jsx';
+import { useIntro } from './useIntro.js';
 import { useRovingHits } from './useRovingHits.js';
 import { useWidth } from './useWidth.js';
 
@@ -14,6 +15,7 @@ const PLOT_H = H - M.t - M.b;
 // `daily` covers 2 x `range` days (non-Codex rows); the earlier half only feeds the comparison.
 export function DailyChart({ daily, range, metric, slots, firstDay, ready = true }) {
   const [split, setSplit] = useState('model');
+  const intro = useIntro();
   const [wrapRef, W] = useWidth();
   const fmt = metric === 'cost' ? formatCost : formatTokens;
   const noun = metric === 'cost' ? 'cost' : 'tokens';
@@ -70,6 +72,7 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
             lines={[...series].reverse().map((s) => ({ key: s.key, color: seriesColor(s.slot), values: columns.map((c) => c.values[s.key]) }))}
             plot={{ left: M.l, step, top: M.t, height: PLOT_H, max }}
             hoverIdx={hoverIdx}
+            intro={intro}
           />
           <g ref={hitsRef}>
             {columns.map((c, i) => (

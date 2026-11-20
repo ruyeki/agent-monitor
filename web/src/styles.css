@@ -361,3 +361,13 @@ h4 { margin: 12px 0 4px; font-size: 13px; }
 }
 .badge.codex { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color: var(--link); }
 .codex-line { margin: 4px 0 0; }
+
+/* One-off intro of the Stats charts (useIntro): lines draw in, donuts sweep in. Only dashoffset and opacity move, so nothing shifts. */
+@media (prefers-reduced-motion: no-preference) {
+  .intro .series-line { stroke-dasharray: 1; animation: stats-draw 700ms ease-out both; }
+  .donut-wrap.intro mask circle { stroke-dasharray: 1; animation: stats-sweep 700ms ease-out both; }
+  .donut-wrap.intro .donut-centre { animation: stats-fade 400ms ease-out 200ms both; }
+  @keyframes stats-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes stats-sweep { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes stats-fade { from { opacity: 0; } to { opacity: 1; } }
+}

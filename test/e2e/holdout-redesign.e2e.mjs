@@ -79,7 +79,7 @@ await done(codexRun, 'frame');
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const requests = [];
 async function newPage(theme, width = 1400, height = 900, scheme) {
-  const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme || (theme === 'dark' ? 'dark' : 'light') });
+  const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme || (theme === 'dark' ? 'dark' : 'light'), reducedMotion: 'reduce' });
   if (theme === 'light' || theme === 'dark' || theme === 'system') await ctx.addInitScript((t) => { try { localStorage.setItem('agent-monitor-theme', t); } catch { /* */ } }, theme);
   const p = await ctx.newPage();
   p.on('request', (r) => requests.push([r.url(), r.resourceType()]));

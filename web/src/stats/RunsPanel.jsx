@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { formatDuration } from '../lib/format.js';
 import { dayLabel, niceTicks, summarizeRuns } from './chart.js';
 import { LineMarks } from './LineMarks.jsx';
+import { useIntro } from './useIntro.js';
 import { useRovingHits } from './useRovingHits.js';
 import { useWidth } from './useWidth.js';
 
@@ -19,6 +20,7 @@ const runsLabel = (d) => `${dayLabel(d.day)} · ${d.count} ${d.count === 1 ? 'ru
 // Runs started per day over the shown range, how they ended, and the typical finished run.
 export function RunsPanel({ runs, range }) {
   const s = useMemo(() => summarizeRuns(runs, range), [runs, range]);
+  const intro = useIntro();
   const [wrapRef, W] = useWidth(520, 200, 640);
   const ticks = niceTicks(Math.max(0, ...s.perDay.map((d) => d.count)), { integer: true });
   const max = ticks[ticks.length - 1];
@@ -50,7 +52,7 @@ export function RunsPanel({ runs, range }) {
                 </text>
               ) : null,
             )}
-            <LineMarks lines={[{ key: 'runs', color: 'var(--series-1)', values: s.perDay.map((d) => d.count) }]} plot={{ left: M.l, step, top: M.t, height: PLOT_H, max }} hoverIdx={hoverIdx} dotAlways />
+            <LineMarks lines={[{ key: 'runs', color: 'var(--series-1)', values: s.perDay.map((d) => d.count) }]} plot={{ left: M.l, step, top: M.t, height: PLOT_H, max }} hoverIdx={hoverIdx} dotAlways intro={intro} />
             <g ref={hitsRef}>
               {s.perDay.map((d, i) => (
                 <rect key={d.day} data-run-hit={d.day} x={M.l + i * step} y={M.t} width={step} height={PLOT_H} fill="transparent" aria-label={runsLabel(d)} {...hitProps(i)} />

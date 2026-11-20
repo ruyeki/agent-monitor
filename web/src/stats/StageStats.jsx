@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
 import { shareLabel, stageSlices } from './chart.js';
 import { Donut } from './Donut.jsx';
+import { useIntro } from './useIntro.js';
 
 // Where a finished run's tokens go, per workflow stage, for one published version (newest with finished runs by default).
 export function StageStats({ versions, metric }) {
   const [picked, setPicked] = useState(null);
+  const intro = useIntro();
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   const fallback = sorted.find((v) => v.finishedRuns > 0) ?? sorted[0];
   const version = sorted.find((v) => v.version === picked) ?? fallback;
@@ -63,6 +65,7 @@ export function StageStats({ versions, metric }) {
                 centre={{ value: fmt(total), label: 'per run' }}
                 legendLabel="Stages"
                 attr="data-stage"
+                intro={intro}
               />
             </>
           )}

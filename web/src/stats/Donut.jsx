@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { arcPath, shareLabel, sliceAngles } from './chart.js';
 
 const C = 100; // viewBox 200 x 200
@@ -9,7 +9,7 @@ const INNER = 64;
 // `row` is the legend row's content. A slice with value 0 has a legend row but no arc. Shares are of `total` (default: the sum).
 // `centre` = { value, label } shown while no slice is active; an active slice (hover or focus on it, or hover on its legend row)
 // replaces it with its own value, label and share and dims the others. `attr` names the legend row's data attribute.
-export function Donut({ title, totalText, slices, total, centre, legendLabel, attr }) {
+export function Donut({ title, totalText, slices, total, centre, legendLabel, attr, intro = false }) {
   const sum = total ?? slices.reduce((n, s) => n + (s.value > 0 ? s.value : 0), 0);
   const arcs = useMemo(() => {
     const angles = sliceAngles(slices.map((s) => s.value));
@@ -19,6 +19,7 @@ export function Donut({ title, totalText, slices, total, centre, legendLabel, at
   const [focus, setFocus] = useState(null);
   const [tab, setTab] = useState(null); // the slice that holds tabindex 0
   const ringRef = useRef(null);
+  const maskId = `donut-intro-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const activeKey = hover ?? focus;
   const active = arcs.find((s) => s.key === activeKey);
   const tabKey = arcs.some((s) => s.key === tab) ? tab : arcs[0]?.key;
@@ -39,10 +40,15 @@ export function Donut({ title, totalText, slices, total, centre, legendLabel, at
   const opacity = (key) => (active && active.key !== key ? 0.35 : 1);
 
   return (
-    <div className="donut-wrap">
+    <div className={`donut-wrap${intro ? ' intro' : ''}`}>
       <div className="donut">
         <svg viewBox={`0 0 ${2 * C} ${2 * C}`} role="group" aria-label={`${title}: ${totalText} in total. The list beside it has the numbers.`}>
-          <g ref={ringRef} onMouseLeave={() => setHover(null)}>
+          {intro && (
+            <mask id={maskId} data-intro="">
+              <circle cx={C} cy={C} r={(OUTER + INNER) / 2} fill="none" stroke="white" strokeWidth={OUTER - INNER + 4} pathLength="1" transform={`rotate(-90 ${C} ${C})`} />
+            </mask>
+          )}
+          <g ref={ringRef} mask={intro ? `url(#${maskId})` : undefined} onMouseLeave={() => setHover(null)}>
             {arcs.map((s, i) => (
               <path
                 key={s.key}

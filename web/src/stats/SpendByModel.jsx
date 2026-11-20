@@ -1,10 +1,12 @@
 import { formatCost, formatTokens } from '../lib/format.js';
 import { seriesColor, shareLabel, topModels } from './chart.js';
 import { Donut } from './Donut.jsx';
+import { useIntro } from './useIntro.js';
 
 // Models by the selected metric over the shown range, as a donut with a legend that carries the numbers.
 // Same models and colours as the daily chart (topModels).
 export function SpendByModel({ rows, metric, slots, range }) {
+  const intro = useIntro();
   const models = topModels(rows, metric, slots);
   const key = metric === 'cost' ? 'cost' : 'tokens';
   const total = models.reduce((n, t) => n + t[key], 0);
@@ -38,6 +40,7 @@ export function SpendByModel({ rows, metric, slots, range }) {
           centre={{ value: `${fmt(total)}${metric === 'cost' ? '' : ' tokens'}`, label: `in ${range} days` }}
           legendLabel={`Models ranked by ${metric}`}
           attr="data-model"
+          intro={intro}
         />
       )}
     </section>
