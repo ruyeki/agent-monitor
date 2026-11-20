@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
+import { shareLabel, stageSlices } from './chart.js';
+import { Donut } from './Donut.jsx';
 
 // Where a finished run's tokens go, per workflow stage, for one published version (newest with finished runs by default).
 export function StageStats({ versions, metric }) {
@@ -7,9 +9,26 @@ export function StageStats({ versions, metric }) {
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   const fallback = sorted.find((v) => v.finishedRuns > 0) ?? sorted[0];
   const version = sorted.find((v) => v.version === picked) ?? fallback;
-  const key = metric === 'cost' ? 'avgCost' : 'avgTokens';
-  const stages = (version?.nodes || []).filter((n) => n.runs > 0 && (n.avgTokens > 0 || n.avgDurationMs > 0));
-  const top = Math.max(0, ...stages.map((n) => n[key] || 0));
+  const fmt = (v) => (metric === 'cost' ? formatCost(v) : `${formatTokens(v)} tokens`);
+  const { total, slices } = version?.finishedRuns > 0 ? stageSlices(version, metric) : { total: 0, slices: [] };
+  const donutSlices = slices.map((s) => ({
+    key: s.key,
+    label: s.label,
+    value: s.value,
+    valueText: fmt(s.value),
+    color: s.color,
+    row: (
+      <>
+        <span className="legend-label">{s.label}</span>
+        <span className="legend-value">{fmt(s.value)}</span>
+        <span className="legend-share">{shareLabel(total ? (s.value / total) * 100 : 0)}</span>
+        <span className="legend-other muted">
+          {s.node ? formatDuration(s.node.avgDurationMs) : '-'}
+          {s.node && s.node.runs < version.finishedRuns && ` · ${s.node.runs} of ${version.finishedRuns} runs`}
+        </span>
+      </>
+    ),
+  }));
 
   return (
     <section className="panel" aria-label="Where a run's tokens go">
@@ -36,22 +55,15 @@ export function StageStats({ versions, metric }) {
               <p className="muted stage-summary">
                 {version.finishedRuns} finished {version.finishedRuns === 1 ? 'run' : 'runs'} · avg {formatTokens(version.avgTokens)} tokens · ≈ {formatCost(version.avgCost)} · {formatDuration(version.avgDurationMs)} per run
               </p>
-              <ol className="bar-list stage-list" aria-label="Stages">
-                {stages.map((n) => (
-                  <li key={n.id} data-stage={n.id} className="bar-row stage-row">
-                    <span className="bar-label">{n.name || n.id}</span>
-                    <span className="bar-track" aria-hidden="true">
-                      <span className="bar-fill" style={{ width: `${top ? ((n[key] || 0) / top) * 100 : 0}%`, background: 'var(--series-1)' }} />
-                    </span>
-                    <span className="bar-value">{metric === 'cost' ? `≈ ${formatCost(n.avgCost)}` : `${formatTokens(n.avgTokens)} tokens`}</span>
-                    <span className="bar-share">{metric === 'cost' ? `${formatTokens(n.avgTokens)} tokens` : `≈ ${formatCost(n.avgCost)}`}</span>
-                    <span className="bar-other muted">
-                      {formatDuration(n.avgDurationMs)}
-                      {n.runs < version.finishedRuns && ` · ${n.runs} of ${version.finishedRuns} runs`}
-                    </span>
-                  </li>
-                ))}
-              </ol>
+              <Donut
+                title="Where a run's tokens go"
+                totalText={fmt(total)}
+                slices={donutSlices}
+                total={total}
+                centre={{ value: fmt(total), label: 'per run' }}
+                legendLabel="Stages"
+                attr="data-stage"
+              />
             </>
           )}
           <div className="table-scroll">

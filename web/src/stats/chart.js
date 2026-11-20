@@ -65,8 +65,29 @@ export function modelSlots(daily) {
 // CSS colour of a series slot: --series-1..8, or --series-other for no slot / Other.
 export const seriesColor = (slot) => (slot === undefined || slot < 0 ? 'var(--series-other)' : `var(--series-${slot + 1})`);
 
+// The models shown by the line chart and the spend donut: top MAX_SERIES by the metric, best first, plus an 'Other' entry
+// (slot -1, `count` = folded models) when more than MAX_SERIES have data. A visible model with no slot takes the lowest free one.
+// -> [{ key, label, slot, cost, tokens, count? }]
+export function topModels(rows, metric, slots = modelSlots(rows)) {
+  const ranked = rankByMetric(totalsByModel(rows), metric);
+  const top = ranked.slice(0, MAX_SERIES);
+  const used = new Set(top.map((t) => slots.get(t.label)).filter((s) => s !== undefined));
+  const out = top.map((t) => {
+    let slot = slots.get(t.label);
+    if (slot === undefined) {
+      slot = 0;
+      while (used.has(slot)) slot++;
+      used.add(slot);
+    }
+    return { key: t.label, label: t.label, slot, cost: t.cost, tokens: t.tokens };
+  });
+  const rest = ranked.slice(MAX_SERIES);
+  if (rest.length) out.push({ key: 'Other', label: 'Other', slot: -1, count: rest.length, cost: rest.reduce((n, t) => n + t.cost, 0), tokens: rest.reduce((n, t) => n + t.tokens, 0) });
+  return out;
+}
+
 // Series of the daily chart for the last `days` days -> { series: [{key, label, slot}], columns: [{day, values, total}], total }
-// Stack order = rank order, rank 1 at the baseline; Other (slot -1) last. A visible model with no slot takes the lowest free one.
+// Series are in rank order, rank 1 first; Other (slot -1) last.
 export function buildSeries(daily, { split = 'model', metric = 'cost', days, slots = modelSlots(daily), now = new Date() }) {
   const shown = dayRange(days, now);
   const inRange = new Set(shown);
@@ -78,20 +99,9 @@ export function buildSeries(daily, { split = 'model', metric = 'cost', days, slo
     series = TYPE_SERIES.map((s, i) => ({ ...s, slot: i }));
     valueOf = (r, key) => (metric === 'cost' ? num(r.costs?.[key]) : num(r[key]));
   } else {
-    const ranked = rankByMetric(totalsByModel(rows), metric);
-    const top = ranked.slice(0, MAX_SERIES);
-    const used = new Set(top.map((t) => slots.get(t.label)).filter((s) => s !== undefined));
-    series = top.map((t) => {
-      let slot = slots.get(t.label);
-      if (slot === undefined) {
-        slot = 0;
-        while (used.has(slot)) slot++;
-        used.add(slot);
-      }
-      return { key: t.label, label: t.label, slot };
-    });
-    if (ranked.length > MAX_SERIES) series.push({ key: 'Other', label: 'Other', slot: -1 });
-    const known = new Set(top.map((t) => t.label));
+    const top = topModels(rows, metric, slots);
+    series = top.map(({ key, label, slot }) => ({ key, label, slot }));
+    const known = new Set(top.filter((t) => t.key !== 'Other').map((t) => t.key));
     keyOf = (r) => (known.has(modelLabel(r)) ? modelLabel(r) : 'Other');
     valueOf = (r) => metricValue(r, metric);
   }
@@ -106,6 +116,110 @@ export function buildSeries(daily, { split = 'model', metric = 'cost', days, slo
   }
   const columns = [...byDay.values()];
   return { series, columns, total: columns.reduce((n, c) => n + c.total, 0) };
+}
+
+// Largest single-series value on any day: lines are not stacked, so this sets the y axis.
+export const maxSeriesValue = (columns) => Math.max(0, ...columns.flatMap((c) => Object.values(c.values)));
+
+// One point per column centre; a day with no value is 0. `plot` = { left, step, top, height, max } (y grows downwards).
+export function linePoints(values, { left, step, top, height, max }) {
+  return values.map((v, i) => ({ x: left + (i + 0.5) * step, y: top + height - ((Number(v) || 0) / max) * height }));
+}
+
+// "M x y L x y ..." for a polyline
+export const linePath = (points) => points.map((p, i) => `${i ? 'L' : 'M'}${+p.x.toFixed(2)} ${+p.y.toFixed(2)}`).join(' ');
+
+// Slice angles in degrees, clockwise from 12 o'clock, for a donut. Zero values get no angle; a positive value never gets
+// less than `minDeg` (a sliver you can still hover) and the rest shrink so the angles still add up to 360.
+// -> [{ start, end }]
+export function sliceAngles(values, minDeg = 1) {
+  const vs = values.map((v) => (v > 0 ? v : 0));
+  const total = vs.reduce((n, v) => n + v, 0);
+  if (total <= 0) return vs.map(() => ({ start: 0, end: 0 }));
+  const small = vs.map((v) => v > 0 && (v / total) * 360 < minDeg);
+  const bigSum = vs.reduce((n, v, i) => (small[i] ? n : n + v), 0);
+  const room = 360 - small.filter(Boolean).length * minDeg;
+  let at = 0;
+  return vs.map((v, i) => {
+    const deg = small[i] ? minDeg : bigSum > 0 ? (v / bigSum) * room : 0;
+    const out = { start: at, end: at + deg };
+    at += deg;
+    return out;
+  });
+}
+
+// SVG path of a ring segment between two angles (degrees clockwise from 12 o'clock). A full circle takes two arcs per edge.
+export function arcPath(cx, cy, outer, inner, start, end) {
+  const pt = (r, deg) => {
+    const a = (deg * Math.PI) / 180;
+    return [+(cx + r * Math.sin(a)).toFixed(3), +(cy - r * Math.cos(a)).toFixed(3)];
+  };
+  const [ox0, oy0] = pt(outer, start);
+  const [ix0, iy0] = pt(inner, start);
+  if (end - start >= 359.999) {
+    const [ox1, oy1] = pt(outer, start + 180);
+    const [ix1, iy1] = pt(inner, start + 180);
+    return `M${ox0} ${oy0} A${outer} ${outer} 0 1 1 ${ox1} ${oy1} A${outer} ${outer} 0 1 1 ${ox0} ${oy0} Z M${ix0} ${iy0} A${inner} ${inner} 0 1 0 ${ix1} ${iy1} A${inner} ${inner} 0 1 0 ${ix0} ${iy0} Z`;
+  }
+  const [ox1, oy1] = pt(outer, end);
+  const [ix1, iy1] = pt(inner, end);
+  const large = end - start > 180 ? 1 : 0;
+  return `M${ox0} ${oy0} A${outer} ${outer} 0 ${large} 1 ${ox1} ${oy1} L${ix1} ${iy1} A${inner} ${inner} 0 ${large} 0 ${ix0} ${iy0} Z`;
+}
+
+export const MAX_STAGE_SLICES = 7; // stage slices on the tokens donut; the rest fold into "Other stages"
+const stageShown = (n) => n.runs > 0 && (n.avgTokens > 0 || n.avgDurationMs > 0);
+// what a stage costs one run of the version: its average over the runs that reached it, spread over every finished run
+const perRun = (n, key, v) => ((n[key] || 0) * n.runs) / v.finishedRuns;
+
+// Colour slot of each stage of a version: ranked by per-run cost (ties: per-run tokens, then workflow order) -> slots 0..7. id -> slot
+export function stageSlots(version) {
+  const nodes = (version?.nodes || []).filter(stageShown).map((n, i) => ({ n, i }));
+  nodes.sort((a, b) => perRun(b.n, 'avgCost', version) - perRun(a.n, 'avgCost', version) || perRun(b.n, 'avgTokens', version) - perRun(a.n, 'avgTokens', version) || a.i - b.i);
+  return new Map(nodes.slice(0, MAX_SLOTS).map(({ n }, i) => [n.id, i]));
+}
+
+// Slices of "Where a run's tokens go" for one version with finished runs -> { total, slices }
+// total = the version's average per run for the metric. Slices in workflow order: each shown stage's per-run contribution,
+// at most MAX_STAGE_SLICES of them (the largest MAX_STAGE_SLICES-1 plus "Other stages" after the last stage), then
+// "Not tied to a stage" (the rest of the average) when that is more than 0.5% of it. A stage with nothing in the metric
+// stays in the list with value 0 (no arc is drawn for it).
+// -> slice { key, label, value, cost, tokens, slot, color, node? }
+export function stageSlices(version, metric) {
+  const key = metric === 'cost' ? 'avgCost' : 'avgTokens';
+  const total = num(version?.[key]);
+  const slotOf = stageSlots(version);
+  const stages = (version?.nodes || []).filter(stageShown).map((n, i) => ({ n, i, value: perRun(n, key, version) }));
+  const live = stages.filter((s) => s.value > 0);
+  let folded = new Set();
+  if (live.length > MAX_STAGE_SLICES) {
+    const keep = [...live].sort((a, b) => b.value - a.value || a.i - b.i).slice(0, MAX_STAGE_SLICES - 1);
+    folded = new Set(live.filter((s) => !keep.includes(s)));
+  }
+  const taken = new Set(stages.filter((s) => !folded.has(s) && slotOf.has(s.n.id)).map((s) => slotOf.get(s.n.id)));
+  const slices = [];
+  for (const s of stages) {
+    if (folded.has(s)) continue;
+    let slot = slotOf.get(s.n.id);
+    if (slot === undefined) {
+      slot = 0;
+      while (taken.has(slot)) slot++;
+      taken.add(slot);
+      if (slot >= MAX_SLOTS) slot = -1; // more stages than colours: the neutral one
+    }
+    slices.push({ key: s.n.id, label: s.n.name || s.n.id, value: s.value, cost: perRun(s.n, 'avgCost', version), tokens: perRun(s.n, 'avgTokens', version), slot, color: seriesColor(slot), node: s.n });
+  }
+  if (folded.size) {
+    const f = [...folded];
+    slices.push({ key: 'other-stages', label: 'Other stages', value: f.reduce((n, s) => n + s.value, 0), cost: f.reduce((n, s) => n + perRun(s.n, 'avgCost', version), 0), tokens: f.reduce((n, s) => n + perRun(s.n, 'avgTokens', version), 0), slot: -1, color: seriesColor(-1), count: f.length });
+  }
+  const rest = total - stages.reduce((n, s) => n + s.value, 0);
+  if (total > 0 && rest > total * 0.005) {
+    const otherKey = metric === 'cost' ? 'avgTokens' : 'avgCost';
+    const restOther = Math.max(0, num(version?.[otherKey]) - stages.reduce((n, s) => n + perRun(s.n, otherKey, version), 0));
+    slices.push({ key: 'not-staged', label: 'Not tied to a stage', value: rest, cost: metric === 'cost' ? rest : restOther, tokens: metric === 'cost' ? restOther : rest, slot: -2, color: 'var(--border-strong)' });
+  }
+  return { total, slices };
 }
 
 // Axis ticks [0, s, ..., k*s] with k 3 or 4 (4-5 gridlines), s in {1, 2, 2.5, 5} x 10^n and k*s >= max; max <= 0 counts as 1.

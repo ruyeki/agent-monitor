@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { formatCost, formatTokens } from '../lib/format.js';
-import { buildSeries, compactCost, dayLabel, niceTicks, periodDelta, seriesColor, shareLabel } from './chart.js';
+import { buildSeries, compactCost, dayLabel, maxSeriesValue, niceTicks, periodDelta, seriesColor, shareLabel } from './chart.js';
+import { LineMarks } from './LineMarks.jsx';
 import { Toggle } from './Toggle.jsx';
 import { useRovingHits } from './useRovingHits.js';
 import { useWidth } from './useWidth.js';
@@ -8,9 +9,8 @@ import { useWidth } from './useWidth.js';
 const H = 240;
 const M = { l: 46, r: 8, t: 10, b: 24 };
 const PLOT_H = H - M.t - M.b;
-const GAP = 2; // surface gap between stacked segments
 
-// Daily stacked bars, hand-rolled SVG. A visually hidden table is the text alternative.
+// Daily lines (one per series, not stacked), hand-rolled SVG. A visually hidden table is the text alternative.
 // `daily` covers 2 x `range` days (non-Codex rows); the earlier half only feeds the comparison.
 export function DailyChart({ daily, range, metric, slots, firstDay, ready = true }) {
   const [split, setSplit] = useState('model');
@@ -19,12 +19,11 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
   const noun = metric === 'cost' ? 'cost' : 'tokens';
   const { series, columns, total } = useMemo(() => buildSeries(daily || [], { split, metric, days: range, slots }), [daily, split, metric, range, slots]);
   const delta = useMemo(() => periodDelta(daily || [], { metric, range, firstDay }), [daily, metric, range, firstDay]);
-  const ticks = niceTicks(Math.max(0, ...columns.map((c) => c.total)));
+  const ticks = niceTicks(maxSeriesValue(columns));
   const max = ticks[ticks.length - 1];
   const tickLabel = metric === 'cost' ? compactCost : formatTokens;
   const plotW = W - M.l - M.r;
   const step = plotW / columns.length;
-  const barW = Math.max(1, step - (step > 8 ? 2 : 1));
   const y = (v) => M.t + PLOT_H - (v / max) * PLOT_H;
   const every = Math.ceil(columns.length / Math.max(2, Math.floor(plotW / 64)));
   const { hitsRef, hoverIdx, hitProps, clearHover, tooltipStyle } = useRovingHits(columns.map((c) => c.day));
@@ -51,7 +50,7 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
         ))}
       </ul>
       <div className="chart-wrap" ref={wrapRef} onMouseLeave={clearHover}>
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Stacked bars of daily ${noun} over the last ${range} days, ${fmt(total)} in total. The table below has the numbers.`}>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Lines of daily ${noun} over the last ${range} days, ${fmt(total)} in total. The table below has the numbers.`}>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} className="grid" />
@@ -60,27 +59,18 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
               </text>
             </g>
           ))}
-          {columns.map((c, i) => {
-            const x = M.l + i * step + (step - barW) / 2;
-            const shown = series.filter((s) => c.values[s.key] > 0);
-            let acc = 0;
-            return (
-              <g key={c.day}>
-                {shown.map((s, j) => {
-                  const bottom = y(acc) - (j > 0 ? GAP : 0);
-                  const top = y(acc + c.values[s.key]);
-                  acc += c.values[s.key];
-                  const top1 = j === shown.length - 1;
-                  return <rect key={s.key} data-day={c.day} data-series={s.key} x={x} y={Math.min(top, bottom - 1)} width={barW} height={Math.max(1, bottom - top)} rx={top1 && barW > 3 ? 2 : 0} fill={seriesColor(s.slot)} />;
-                })}
-                {i % every === 0 && (
-                  <text x={x + barW / 2} y={H - 6} textAnchor="middle" className="axis">
-                    {dayLabel(c.day)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {columns.map((c, i) =>
+            i % every === 0 ? (
+              <text key={c.day} x={M.l + (i + 0.5) * step} y={H - 6} textAnchor="middle" className="axis">
+                {dayLabel(c.day)}
+              </text>
+            ) : null,
+          )}
+          <LineMarks
+            lines={[...series].reverse().map((s) => ({ key: s.key, color: seriesColor(s.slot), values: columns.map((c) => c.values[s.key]) }))}
+            plot={{ left: M.l, step, top: M.t, height: PLOT_H, max }}
+            hoverIdx={hoverIdx}
+          />
           <g ref={hitsRef}>
             {columns.map((c, i) => (
               <rect
@@ -101,7 +91,7 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
           <div className="tooltip" role="status" style={tooltipStyle}>
             <strong>{dayLabel(hovered.day)}</strong> · {fmt(hovered.total)}
             {metric === 'cost' ? '' : ' tokens'}
-            {series.filter((s) => hovered.values[s.key] > 0).map((s) => (
+            {series.filter((s) => hovered.values[s.key] > 0).sort((a, b) => hovered.values[b.key] - hovered.values[a.key]).map((s) => (
               <div key={s.key}>
                 <span className="swatch" style={{ background: seriesColor(s.slot) }} aria-hidden="true" /> {s.label}: {fmt(hovered.values[s.key])} ({shareLabel((hovered.values[s.key] / hovered.total) * 100)})
               </div>

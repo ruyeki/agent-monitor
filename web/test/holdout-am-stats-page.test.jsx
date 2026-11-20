@@ -111,7 +111,7 @@ const open = async (props = {}) => {
 const press = (name) => fireEvent.click(screen.getByRole('button', { name }));
 const pressed = (group, name) => within(screen.getByRole('group', { name: group })).getByRole('button', { name }).getAttribute('aria-pressed');
 const legend = () => within(screen.getByRole('list', { name: 'Legend' })).getAllByRole('listitem').map((li) => li.textContent.trim());
-const fillOf = (label) => { const r = document.querySelector(`rect[data-series="${label}"]`); return r && (r.getAttribute('fill') || r.style.fill); };
+const fillOf = (label) => { const r = document.querySelector(`.daily-chart path.series-line[data-series="${label}"]`); return r && (r.getAttribute('stroke') || r.style.stroke); };
 const tiles = () => Object.fromEntries([...document.querySelectorAll('section[aria-label="Usage summary"] .stat')].map((t) => [t.getAttribute('aria-label'), t]));
 const settle = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
 
@@ -235,7 +235,7 @@ describe('daily chart', () => {
     const costRank = rank(shown(30), 'cost').map(([l]) => l);
     expect(legend()).toEqual([...costRank.slice(0, 5), 'Other']);
     for (const l of legend()) expect(l).not.toMatch(/claude-|\d{8}/);
-    expect(new Set([...document.querySelectorAll('rect[data-series]')].map((r) => r.getAttribute('data-series'))).size).toBe(6);
+    expect(new Set([...document.querySelectorAll('.daily-chart path.series-line[data-series]')].map((r) => r.getAttribute('data-series'))).size).toBe(6);
     press('Tokens');
     const tokRank = rank(shown(30), 'tokens').map(([l]) => l);
     expect(legend()).toEqual([...tokRank.slice(0, 5), 'Other']);
@@ -275,7 +275,7 @@ describe('daily chart', () => {
     expect(document.querySelectorAll('.daily-chart svg line.grid').length).toBeGreaterThanOrEqual(4);
     press('By token type');
     expect(document.querySelectorAll('.daily-chart svg line.grid').length).toBeLessThanOrEqual(5);
-    expect(document.querySelectorAll('rect[data-day]').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.daily-chart path.series-line').length).toBeGreaterThan(0);
   });
 
   it('keyboard: one hit per shown day, a single tab stop that rovers with arrows/Home/End; tooltip with share percentages; Escape hides', async () => {
@@ -322,7 +322,7 @@ describe('daily chart', () => {
   it('text alternatives: svg role=img label with the total and an sr-only table of days with data', async () => {
     await open();
     const img = document.querySelector('.daily-chart svg[role="img"]');
-    expect(img.getAttribute('aria-label')).toMatch(/^Stacked bars of daily cost over the last 30 days, .+ in total\. The table below has the numbers\.$/);
+    expect(img.getAttribute('aria-label')).toMatch(/^Lines of daily cost over the last 30 days, .+ in total\. The table below has the numbers\.$/);
     const table = screen.getByRole('table', { name: 'Daily cost table' });
     const days = within(table).getAllByRole('row').slice(1).map((r) => r.cells[0].textContent);
     expect(days).toEqual([...new Set(shown(30).map((r) => r.day))].sort());
@@ -341,34 +341,41 @@ describe('daily chart', () => {
 });
 
 describe('Spend by model', () => {
-  it('ranked list of every model with data in the range, with short labels, bars, share and the other metric', async () => {
+  it('ranked list of the top 5 models plus Other (the daily chart members), with short labels, share and the other metric', async () => {
     await open();
     const sec = screen.getByRole('region', { name: 'Spend by model' });
     expect(within(sec).getByRole('heading', { level: 2, name: 'Spend by model' })).toBeTruthy();
     const list = within(sec).getByRole('list', { name: 'Models ranked by cost' });
     const items = [...list.querySelectorAll('li[data-model]')];
     const exp = rank(shown(30), 'cost');
-    expect(items.map((li) => li.getAttribute('data-model'))).toEqual(exp.map(([l]) => l));
-    expect(exp.length).toBe(7); // more than 5: the list is not capped
+    expect(exp.length).toBe(7); // more than 5: the rest folds into Other, as on the daily chart
+    expect(items.map((li) => li.getAttribute('data-model'))).toEqual([...exp.slice(0, 5).map(([l]) => l), 'Other']);
     const total = exp.reduce((a, [, v]) => a + v, 0);
-    exp.forEach(([l, v], i) => {
+    const tok = byLabel(shown(30), (r) => r.total);
+    const shareText = (v) => { const share = (v / total) * 100; return share < 1 ? `${share.toFixed(1)}%` : `${Math.round(share)}%`; };
+    exp.slice(0, 5).forEach(([l, v], i) => {
       const txt = items[i].textContent;
       expect(txt).toContain(formatCost(v));
-      const share = (v / total) * 100;
-      const want = share < 1 ? `${share.toFixed(1)}%` : `${Math.round(share)}%`;
-      expect(txt, `${l} share`).toContain(want);
-      expect(txt).toContain(formatTokens(byLabel(shown(30), (r) => r.total).get(l))); // the other metric
+      expect(txt, `${l} share`).toContain(shareText(v));
+      expect(txt).toContain(formatTokens(tok.get(l))); // the other metric
     });
+    const rest = exp.slice(5);
+    const other = items[5].textContent;
+    expect(other).toContain('Other (2 models)');
+    expect(other).toContain(formatCost(rest.reduce((a, [, v]) => a + v, 0)));
+    expect(other).toContain(shareText(rest.reduce((a, [, v]) => a + v, 0)));
+    expect(other).toContain(formatTokens(rest.reduce((a, [l]) => a + tok.get(l), 0)));
     expect(items.some((li) => li.textContent.includes('gpt'))).toBe(false); // codex rows are not Claude spend
     const tokens = (press('Tokens'), within(screen.getByRole('region', { name: 'Spend by model' })).getByRole('list', { name: 'Models ranked by tokens' }));
-    expect([...tokens.querySelectorAll('li[data-model]')].map((li) => li.getAttribute('data-model'))).toEqual(rank(shown(30), 'tokens').map(([l]) => l));
+    expect([...tokens.querySelectorAll('li[data-model]')].map((li) => li.getAttribute('data-model'))).toEqual([...rank(shown(30), 'tokens').slice(0, 5).map(([l]) => l), 'Other']);
   });
 
   it('uses a different range: 7 days only lists models seen in the last 7 days', async () => {
     await open();
     press('7 days'); await settle();
     const li = [...document.querySelectorAll('section[aria-label="Spend by model"] li[data-model]')].map((x) => x.getAttribute('data-model'));
-    expect(li.sort()).toEqual([...new Set(shown(7).map((r) => LABEL[r.model]))].sort());
+    const exp = rank(shown(7), 'cost').map(([l]) => l);
+    expect(li).toEqual(exp.length > 5 ? [...exp.slice(0, 5), 'Other'] : exp);
   });
 });
 
@@ -382,16 +389,16 @@ describe("Where a run's tokens go", () => {
     expect(within(group).getByRole('button', { name: 'v2' }).getAttribute('aria-pressed')).toBe('true');
     expect(sec().textContent).toContain(`5 finished runs · avg ${formatTokens(150_000)} tokens · ≈ ${formatCost(2.5)} · ${formatDuration(600_000)} per run`);
     const rows = [...sec().querySelectorAll('li[data-stage]')];
-    expect(rows.map((r) => r.getAttribute('data-stage'))).toEqual(['frame', 'plan', 'verify']); // parallel (nothing recorded) and join (0 runs) are skipped
+    expect(rows.map((r) => r.getAttribute('data-stage'))).toEqual(['frame', 'plan', 'verify', 'not-staged']); // parallel (nothing recorded) and join (0 runs) are skipped; the rest of the average is "Not tied to a stage"
     expect(rows[1].textContent).toContain('Plan');
-    expect(rows[1].textContent).toContain(`${formatTokens(50_000)} tokens`);
-    expect(rows[1].textContent).toContain(`≈ ${formatCost(0.9)}`);
+    expect(rows[1].textContent).toContain(formatCost(0.9)); // cost mode: the per-run value in $, no tokens line any more
     expect(rows[1].textContent).toContain(formatDuration(120_000));
     expect(rows[1].textContent).not.toMatch(/of \d+ runs/);
     expect(rows[2].textContent).toContain('3 of 5 runs');
     expect(rows[2].textContent).toContain(formatDuration(3_600_000));
-    press('Tokens'); // bars follow the metric but the numbers stay
-    expect([...sec().querySelectorAll('li[data-stage]')].map((r) => r.getAttribute('data-stage'))).toEqual(['frame', 'plan', 'verify']);
+    press('Tokens'); // the donut follows the metric
+    expect([...sec().querySelectorAll('li[data-stage]')].map((r) => r.getAttribute('data-stage'))).toEqual(['frame', 'plan', 'verify', 'not-staged']);
+    expect(sec().querySelector('li[data-stage="plan"]').textContent).toContain(`${formatTokens(50_000)} tokens`);
   });
 
   it('switching version redraws; a version without finished runs says so', async () => {
@@ -436,7 +443,8 @@ describe('Runs panel', () => {
     expect(within(sec()).getByRole('heading', { level: 2, name: 'Runs' })).toBeTruthy();
     const img = sec().querySelector('svg[role="img"]');
     expect(img.getAttribute('aria-label')).toBe('Runs started per day over the last 30 days, 6 in total'); // r7 started 45 days ago
-    const days = [...sec().querySelectorAll('rect[data-run-day]')].map((r) => r.getAttribute('data-run-day')).sort();
+    expect(sec().querySelector('path.series-line[data-series="runs"]')).toBeTruthy(); // a line, not bars
+    const days = [...sec().querySelectorAll('rect[data-run-hit]')].filter((r) => !/ · 0 runs$/.test(r.getAttribute('aria-label'))).map((r) => r.getAttribute('data-run-hit')).sort();
     expect(days).toEqual([dayStr(0), dayStr(1), dayStr(2), dayStr(3)].sort());
     const table = within(sec()).getByRole('table', { name: 'Runs per day table' });
     expect(table).toBeTruthy();

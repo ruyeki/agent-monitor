@@ -185,7 +185,7 @@ for (const theme of ['light', 'dark']) {
     ok(/^0 8px 24px/.test(got['--elev-2']), `--elev-2 ${got['--elev-2']}`);
   });
   await check(`[${theme}] series tokens unchanged`, async () => {
-    const S = theme === 'light' ? ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948', '#8a93a3'] : ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767', '#7b8494'];
+    const S = theme === 'light' ? ['#2a78d6', '#eb6834', '#0f8c7e', '#9c7400', '#c44f7c', '#008300', '#6250d6', '#e34948', '#8a93a3'] : ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767', '#7b8494'];
     const names = [...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => `--series-${i}`), '--series-other'];
     const got = await p.evaluate(readVars, names);
     const diff = names.filter((n, i) => got[n] !== S[i]);

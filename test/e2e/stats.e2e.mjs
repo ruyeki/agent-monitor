@@ -105,8 +105,8 @@ await check('KPI strip: four tiles show cost first with tokens beneath, the Toke
 });
 
 await check('the daily chart is hand-rolled SVG; the 7 / 30 / 90 days toggle changes what is drawn', async () => {
-  const svg = page.locator('svg').filter({ has: page.locator('rect') });
-  ok(await svg.count() > 0, 'no SVG chart with bars');
+  const svg = page.locator('svg').filter({ has: page.locator('path.series-line') });
+  ok(await svg.count() > 0, 'no SVG chart with lines');
   const hits = () => page.locator('rect[data-hit]').count();
   const range = (n) => page.getByRole('group', { name: 'Range' }).getByRole('button', { name: `${n} days` }).click();
   for (const n of [90, 7, 30]) {

@@ -81,14 +81,13 @@ afterEach(() => {
 });
 
 const legend = () => within(screen.getByRole('list', { name: 'Legend' })).getAllByRole('listitem').map((li) => li.textContent.trim());
-const barSeries = () => [...new Set([...document.querySelectorAll('rect[data-series]')].map((r) => r.getAttribute('data-series')))];
+const lineSeries = () => [...document.querySelectorAll('.daily-chart path.series-line')].map((p) => p.getAttribute('data-series'));
+const slices = (section) => [...section.querySelectorAll('path[data-slice]')];
 const usageUrls = () => fetchMock.mock.calls.map(([u]) => u).filter((u) => u.startsWith('/api/stats/usage'));
 const tile = (name) => within(screen.getByRole('region', { name: 'Usage summary' })).getByRole('group', { name });
 const press = (group, name) => fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name }));
 const pressed = (group, name) => within(screen.getByRole('group', { name: group })).getByRole('button', { name }).getAttribute('aria-pressed');
 const loaded = () => screen.findByRole('list', { name: 'Legend' });
-const widthOf = (el) => parseFloat(el.style.width);
-const styleOf = (el) => el.getAttribute('style');
 
 describe('formatters and route', () => {
   it('formats cost and routes #/stats', () => {
@@ -196,16 +195,17 @@ describe('KPI strip', () => {
 });
 
 describe('daily chart', () => {
-  it('stacks the selected metric by model with short labels and no Codex', async () => {
+  it('draws the selected metric as one line per model with short labels and no Codex', async () => {
     render(<StatsPage />);
     await loaded();
     expect(screen.getByRole('heading', { name: 'Daily cost' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Daily cost' })).toBeTruthy();
     expect(legend()).toEqual(['Opus 5.5', 'Sonnet 5']);
-    expect(barSeries().sort()).toEqual(['Opus 5.5', 'Sonnet 5']);
-    expect(document.querySelector('rect[data-day="2026-10-27"][data-series="gpt-5"]')).toBeNull();
+    expect(lineSeries()).toEqual(['Sonnet 5', 'Opus 5.5']); // drawn Other first, rank 1 last (on top)
+    expect(document.querySelector('path[data-series="gpt-5"]')).toBeNull();
+    expect(document.querySelector('rect[data-series]')).toBeNull(); // no stacked bars any more
     expect(document.querySelector('.range-total').textContent).toBe('$3.43 in 30 days');
-    expect(screen.getByRole('img', { name: /Stacked bars of daily cost over the last 30 days, \$3\.43 in total\. The table below has the numbers\./ })).toBeTruthy();
+    expect(screen.getByRole('img', { name: /Lines of daily cost over the last 30 days, \$3\.43 in total\. The table below has the numbers\./ })).toBeTruthy();
     expect(document.querySelector('.daily-chart .grid')).toBeTruthy();
     const labels = [...document.querySelectorAll('.daily-chart svg text.axis')].map((t) => t.textContent);
     expect(labels).toContain('$0');
@@ -255,11 +255,10 @@ describe('daily chart', () => {
     await loaded();
     press('Split', 'By token type');
     expect(legend()).toEqual(['Input', 'Output', 'Cache write', 'Cache read']);
-    expect(barSeries().sort()).toEqual(['cacheRead', 'cacheWrite', 'input', 'output']);
-    const segs = [...document.querySelectorAll('rect[data-day="2026-10-27"]')];
-    expect(segs).toHaveLength(4);
-    const heights = Object.fromEntries(segs.map((r) => [r.getAttribute('data-series'), Number(r.getAttribute('height'))]));
-    expect(heights.output).toBeGreaterThan(heights.input); // $1 against $0.50 + $0.40 of the sonnet row (input only): 0.9 < 1
+    expect(lineSeries().sort()).toEqual(['cacheRead', 'cacheWrite', 'input', 'output']);
+    // today's points: output $1 is higher (smaller y) than input $0.90 ($0.50 + $0.40 of the sonnet row)
+    const lastY = (key) => Number(document.querySelector(`path[data-series="${key}"]`).getAttribute('d').split(' L').pop().split(' ').pop());
+    expect(lastY('output')).toBeLessThan(lastY('input'));
     press('Split', 'By model');
     expect(legend()).toEqual(['Opus 5.5', 'Sonnet 5']);
   });
@@ -273,8 +272,50 @@ describe('daily chart', () => {
     expect(tip.textContent).toContain('Oct 27 · $3.40');
     expect(tip.textContent).toContain('Opus 5.5: $3.00 (88%)');
     expect(tip.textContent).toContain('Sonnet 5: $0.40 (12%)');
+    expect(tip.textContent.indexOf('Opus 5.5:')).toBeLessThan(tip.textContent.indexOf('Sonnet 5:')); // biggest first
+    expect(document.querySelectorAll('.daily-chart line.guide')).toHaveLength(1);
+    expect(document.querySelector('.daily-chart line.guide').getAttribute('stroke')).toBe('var(--border-strong)');
+    const dots = [...document.querySelectorAll('.daily-chart circle.dot')];
+    expect(dots.map((d) => d.getAttribute('data-dot')).sort()).toEqual(['Opus 5.5', 'Sonnet 5']);
+    expect(dots[0].getAttribute('r')).toBe('4');
+    expect(dots[0].getAttribute('stroke')).toBe('var(--surface)');
+    expect(dots[0].getAttribute('stroke-width')).toBe('2');
     fireEvent.mouseLeave(document.querySelector('.chart-wrap'));
     expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.daily-chart line.guide')).toBeNull();
+    expect(document.querySelector('.daily-chart circle.dot')).toBeNull();
+  });
+
+  it('omits series with no value that day from the tooltip and the dots', async () => {
+    render(<StatsPage />);
+    await loaded();
+    fireEvent.mouseEnter(document.querySelector('[data-hit="2026-10-20"]'));
+    expect(screen.getByRole('status').textContent).not.toContain('Sonnet 5');
+    expect([...document.querySelectorAll('.daily-chart circle.dot')].map((d) => d.getAttribute('data-dot'))).toEqual(['Opus 5.5']);
+  });
+
+  it('lets the keyboard drive the guide line and dots', async () => {
+    render(<StatsPage />);
+    await loaded();
+    const hits = () => [...document.querySelectorAll('rect[data-hit]')];
+    act(() => hits().at(-1).focus());
+    const x = () => document.querySelector('.daily-chart line.guide').getAttribute('x1');
+    const x27 = x();
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' });
+    expect(Number(x())).toBeLessThan(Number(x27));
+    expect(screen.getByRole('status').textContent).toContain('Oct 26');
+    fireEvent.keyDown(document.activeElement, { key: 'End' });
+    expect(x()).toBe(x27);
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' });
+    expect(document.querySelector('.daily-chart line.guide')).toBeNull();
+  });
+
+  it('scales the y axis to the largest single series, not the stacked total', async () => {
+    render(<StatsPage />);
+    await loaded();
+    // Opus $3.00 today is the largest series value; stacked it would be $3.40. Ticks 0, 1, 2, 3 (k*s >= 3, k = 3)
+    const labels = [...document.querySelectorAll('.daily-chart svg text.axis')].map((t) => t.textContent).filter((t) => t.startsWith('$'));
+    expect(labels).toEqual(['$0', '$1', '$2', '$3']);
   });
 
   it('has one tab stop that moves with the arrow keys, Home and End; Escape hides the tooltip', async () => {
@@ -318,6 +359,8 @@ describe('runs chart keyboard access', () => {
     const last = hits().at(-1);
     act(() => last.focus());
     expect(screen.getByRole('status').textContent).toBe('Oct 27 · 1 run');
+    expect(document.querySelectorAll('.runs-chart line.guide')).toHaveLength(1);
+    expect(document.querySelectorAll('.runs-chart circle.dot')).toHaveLength(1);
     fireEvent.keyDown(last, { key: 'ArrowLeft' });
     expect(stops()).toEqual(['2026-10-26']);
     expect(document.activeElement.getAttribute('data-run-hit')).toBe('2026-10-26');
@@ -337,9 +380,17 @@ describe('runs chart keyboard access', () => {
 });
 
 describe('spend by model', () => {
-  it('lists the shown range ranked by cost with value, share and the other metric', async () => {
+  const sec = () => screen.getByRole('region', { name: 'Spend by model' });
+  const centre = () => sec().querySelector('.donut-centre').textContent;
+
+  it('draws the shown range as a donut with a legend of value, share and the other metric', async () => {
     render(<StatsPage />);
     await loaded();
+    expect(sec().querySelector('rect')).toBeNull();
+    expect(slices(sec()).map((p) => p.getAttribute('data-slice'))).toEqual(['Opus 5.5', 'Sonnet 5']);
+    expect(slices(sec()).map((p) => p.getAttribute('fill'))).toEqual(['var(--series-1)', 'var(--series-2)']);
+    expect(screen.getByRole('group', { name: 'Spend by model: $3.43 in total. The list beside it has the numbers.' })).toBeTruthy();
+    expect(slices(sec())[0].getAttribute('aria-label')).toBe('Opus 5.5: $3.03 (88%)');
     const list = screen.getByRole('list', { name: 'Models ranked by cost' });
     const items = within(list).getAllByRole('listitem');
     expect(items.map((li) => li.getAttribute('data-model'))).toEqual(['Opus 5.5', 'Sonnet 5']);
@@ -347,12 +398,59 @@ describe('spend by model', () => {
     expect(items[0].textContent).toContain('88%'); // 3.03 / 3.43
     expect(items[0].textContent).toContain('1.0k tokens');
     expect(items[1].textContent).toContain('$0.40');
-    expect(widthOf(items[1].querySelector('.bar-fill'))).toBeCloseTo((0.4 / 3.03) * 100, 5);
-    expect(widthOf(items[0].querySelector('.bar-fill'))).toBe(100);
-    expect(styleOf(items[0].querySelector('.bar-fill'))).toContain('var(--series-1)');
-    expect(styleOf(items[1].querySelector('.bar-fill'))).toContain('var(--series-2)');
-    // earlier than the shown range: not counted
-    expect(items[0].textContent).not.toContain('$3.23');
+    expect(items[0].textContent).not.toContain('$3.23'); // earlier than the shown range: not counted
+    expect(centre()).toBe('$3.43in 30 days');
+  });
+
+  it('highlights a slice on hover, focus and legend hover and puts it in the centre', async () => {
+    render(<StatsPage />);
+    await loaded();
+    const [opus, sonnet] = slices(sec());
+    const row = (m) => sec().querySelector(`li[data-model="${m}"]`);
+    fireEvent.mouseEnter(sonnet);
+    expect(centre()).toBe('$0.40Sonnet 512%');
+    expect(opus.style.opacity).toBe('0.35');
+    expect(sonnet.style.opacity).toBe('1');
+    expect(row('Sonnet 5').className).toContain('active');
+    expect(row('Opus 5.5').className).not.toContain('active');
+    fireEvent.mouseLeave(sonnet.parentNode);
+    expect(centre()).toBe('$3.43in 30 days');
+    expect(opus.style.opacity).toBe('1');
+    fireEvent.mouseEnter(row('Opus 5.5'));
+    expect(centre()).toBe('$3.03Opus 5.588%');
+    expect(sonnet.style.opacity).toBe('0.35');
+    expect(row('Opus 5.5').className).toContain('active');
+    fireEvent.mouseLeave(row('Opus 5.5'));
+    expect(centre()).toBe('$3.43in 30 days');
+    act(() => sonnet.focus());
+    expect(centre()).toBe('$0.40Sonnet 512%');
+    act(() => sonnet.blur());
+    expect(centre()).toBe('$3.43in 30 days');
+  });
+
+  it('has one tab stop on the slices; arrows, Home and End move it and Escape clears the highlight', async () => {
+    render(<StatsPage />);
+    await loaded();
+    const ps = () => slices(sec());
+    const stops = () => ps().filter((p) => p.getAttribute('tabindex') === '0').map((p) => p.getAttribute('data-slice'));
+    expect(stops()).toEqual(['Opus 5.5']);
+    act(() => ps()[0].focus());
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowRight' });
+    expect(stops()).toEqual(['Sonnet 5']);
+    expect(document.activeElement.getAttribute('data-slice')).toBe('Sonnet 5');
+    expect(centre()).toContain('Sonnet 5');
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' });
+    expect(stops()).toEqual(['Opus 5.5']);
+    fireEvent.keyDown(document.activeElement, { key: 'End' });
+    expect(stops()).toEqual(['Sonnet 5']);
+    fireEvent.keyDown(document.activeElement, { key: 'Home' });
+    expect(stops()).toEqual(['Opus 5.5']);
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowDown' });
+    expect(stops()).toEqual(['Sonnet 5']);
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowUp' });
+    expect(stops()).toEqual(['Opus 5.5']);
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' });
+    expect(centre()).toBe('$3.43in 30 days');
   });
 
   it('re-ranks by tokens and keeps each model colour', async () => {
@@ -364,7 +462,23 @@ describe('spend by model', () => {
     expect(items[0].getAttribute('data-model')).toBe('Opus 5.5');
     expect(items[0].textContent).toContain('1.0k');
     expect(items[0].textContent).toContain('≈ $3.03');
-    expect(styleOf(items[0].querySelector('.bar-fill'))).toContain('var(--series-1)');
+    expect(slices(sec())[0].getAttribute('fill')).toBe('var(--series-1)');
+    expect(centre()).toBe('1.1k tokensin 30 days');
+  });
+
+  it('folds models beyond the fifth into Other, sharing members and colours with the line chart', async () => {
+    const u = usage();
+    const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    u.daily = names.map((n, i) => row('2026-10-27', `claude-${n}-1`, 1, 1, 1, 1, 10 - i));
+    fetchMock.mockImplementation((url) => (url.startsWith('/api/stats/usage') ? res(u) : url === '/api/stats/versions' ? res([]) : url === '/api/runs' ? res([]) : res(prices())));
+    render(<StatsPage />);
+    await loaded();
+    const keys = slices(sec()).map((p) => p.getAttribute('data-slice'));
+    expect(keys).toEqual(['A 1', 'B 1', 'C 1', 'D 1', 'E 1', 'Other']);
+    expect(sec().querySelector('li[data-model="Other"]').textContent).toContain('Other (2 models)');
+    expect(slices(sec()).at(-1).getAttribute('fill')).toBe('var(--series-other)');
+    expect(legend()).toEqual(keys); // the daily chart legend lists the same members, same order
+    expect(lineSeries().sort()).toEqual([...keys].sort());
   });
 
   it('writes under 1% with one decimal', async () => {
@@ -374,6 +488,7 @@ describe('spend by model', () => {
     render(<StatsPage />);
     await loaded();
     expect(document.querySelector('[data-model="Sonnet 5"]').textContent).toContain('0.4%');
+    expect(slices(sec()).map((p) => p.getAttribute('data-slice'))).toContain('Sonnet 5'); // a sliver, still there
   });
 });
 
@@ -388,15 +503,21 @@ describe("where a run's tokens go", () => {
     expect(within(screen.getByRole('group', { name: 'Version' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['v4', 'v3', 'v2']);
     expect(panel().querySelector('.stage-summary').textContent).toBe('4 finished runs · avg 150k tokens · ≈ $2.50 · 10m 0s per run');
     const rows = [...panel().querySelectorAll('li[data-stage]')];
-    expect(rows.map((r) => r.getAttribute('data-stage'))).toEqual(['plan', 'verify']); // idle (0 runs) and gate (nothing) are skipped
+    // idle (0 runs) and gate (nothing) are skipped; the rest of the average is "Not tied to a stage"
+    expect(rows.map((r) => r.getAttribute('data-stage'))).toEqual(['plan', 'verify', 'not-staged']);
+    expect(slices(panel()).map((p) => p.getAttribute('data-slice'))).toEqual(['plan', 'verify', 'not-staged']);
     expect(rows[0].textContent).toContain('PLAN');
-    expect(rows[0].querySelector('.bar-value').textContent).toBe('≈ $1.25'); // cost mode: the bold value is the bar's metric
-    expect(rows[0].querySelector('.bar-share').textContent).toBe('50k tokens');
+    expect(rows[0].querySelector('.legend-value').textContent).toBe('$1.25'); // per-run contribution: 1.25 x 4 / 4
+    expect(rows[0].querySelector('.legend-share').textContent).toBe('50%'); // of the $2.50 average
     expect(rows[0].textContent).toContain('2m 0s');
     expect(rows[0].textContent).not.toContain(' of ');
+    expect(rows[1].querySelector('.legend-value').textContent).toBe('$0.38'); // 0.5 x 3 / 4
     expect(rows[1].textContent).toContain('3 of 4 runs');
-    expect(widthOf(rows[0].querySelector('.bar-fill'))).toBe(100); // cost mode: 1.25 is the top
-    expect(widthOf(rows[1].querySelector('.bar-fill'))).toBeCloseTo(40, 5);
+    expect(rows[2].textContent).toContain('Not tied to a stage');
+    expect(rows[2].querySelector('.legend-value').textContent).toBe('$0.88'); // 2.50 - 1.25 - 0.375
+    expect(slices(panel()).map((p) => p.getAttribute('fill'))).toEqual(['var(--series-1)', 'var(--series-2)', 'var(--border-strong)']);
+    expect(panel().querySelector('.donut-centre').textContent).toBe('$2.50per run'); // the slices add up to the centre
+    expect(panel().querySelector('rect')).toBeNull();
     const table = within(panel()).getByRole('table', { name: 'Workflow versions' });
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Version', 'Finished runs', 'Avg tokens', 'Avg cost', 'Avg duration']);
     const body = within(table).getAllByRole('row').slice(1);
@@ -405,15 +526,28 @@ describe("where a run's tokens go", () => {
     expect(within(panel()).queryByRole('button', { name: /nodes of/ })).toBeNull();
   });
 
-  it('scales the bars by tokens in Tokens mode', async () => {
+  it('switches the donut to tokens per run in Tokens mode', async () => {
     render(<StatsPage />);
     await screen.findByRole('region', { name: "Where a run's tokens go" });
     press('Metric', 'Tokens');
     const rows = [...panel().querySelectorAll('li[data-stage]')];
-    expect(widthOf(rows[0].querySelector('.bar-fill'))).toBe(100);
-    expect(widthOf(rows[1].querySelector('.bar-fill'))).toBeCloseTo(40, 5); // 20k / 50k
-    expect(rows[0].querySelector('.bar-value').textContent).toBe('50k tokens'); // tokens mode: tokens are the bold value
-    expect(rows[0].querySelector('.bar-share').textContent).toBe('≈ $1.25');
+    expect(rows.map((r) => r.querySelector('.legend-value').textContent)).toEqual(['50k tokens', '15k tokens', '85k tokens']); // 20k x 3 / 4 = 15k
+    expect(panel().querySelector('.donut-centre').textContent).toBe('150k tokensper run');
+    expect(slices(panel())[0].getAttribute('aria-label')).toBe('PLAN: 50k tokens (33%)');
+  });
+
+  it('highlights a stage on hover and moves between stages with the arrow keys', async () => {
+    render(<StatsPage />);
+    await screen.findByRole('region', { name: "Where a run's tokens go" });
+    const ps = () => slices(panel());
+    fireEvent.mouseEnter(ps()[1]);
+    expect(panel().querySelector('.donut-centre').textContent).toBe('$0.38VERIFY15%');
+    expect(ps()[0].style.opacity).toBe('0.35');
+    expect(panel().querySelector('li[data-stage="verify"]').className).toContain('active');
+    fireEvent.mouseLeave(ps()[1].parentNode);
+    act(() => ps()[0].focus());
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowRight' });
+    expect(document.activeElement.getAttribute('data-slice')).toBe('verify');
   });
 
   it('says "1 finished run" for a single run', async () => {
@@ -471,7 +605,11 @@ describe('runs', () => {
     expect(panel().textContent).toContain('Avg fix rounds');
     expect(panel().textContent).toContain('1.5'); // (1 + 2) / 2; the run from June is outside the range
     expect(screen.getByRole('img', { name: 'Runs started per day over the last 30 days, 5 in total' })).toBeTruthy();
-    expect([...document.querySelectorAll('rect[data-run-day]')].map((r) => r.getAttribute('data-run-day'))).toEqual(['2026-10-25', '2026-10-26', '2026-10-27']);
+    const line = document.querySelector('.runs-chart path.series-line[data-series="runs"]');
+    expect(line.getAttribute('stroke')).toBe('var(--series-1)');
+    expect(line.getAttribute('stroke-width')).toBe('2');
+    expect(line.getAttribute('d').split(' L')).toHaveLength(30); // a point per day, zero days included
+    expect(document.querySelector('rect[data-run-day]')).toBeNull();
     expect(document.querySelector('rect[data-run-hit="2026-10-26"]').getAttribute('aria-label')).toBe('Oct 26 · 2 runs');
     const table = screen.getByRole('table', { name: 'Runs per day table' });
     expect(within(table).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual(['2026-10-252', '2026-10-262', '2026-10-271']);

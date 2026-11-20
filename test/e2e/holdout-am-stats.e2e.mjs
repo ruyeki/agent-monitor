@@ -140,7 +140,7 @@ async function newPage({ theme = 'dark', width = 1300, height = 900, init } = {}
 const openStats = async (p) => { try { await p.goto(`${base}/#/stats`); await p.locator('section[aria-label="Usage summary"]').waitFor({ timeout: 8000 }); await p.locator('rect[data-hit]').first().waitFor({ timeout: 4000 }); await p.waitForTimeout(300); } catch (e) { notes.push('openStats: ' + String(e.message).split(String.fromCharCode(10))[0]); } };
 const pressed = (group, name) => page.getByRole('group', { name: group }).getByRole('button', { name }).getAttribute('aria-pressed');
 const legend = () => page.locator('ul.legend[aria-label="Legend"] li').allInnerTexts().then((a) => a.map((t) => t.trim()));
-const fillOf = (label) => page.evaluate((l) => { const r = document.querySelector(`rect[data-series="${l}"]`); return r ? getComputedStyle(r).fill : null; }, label);
+const fillOf = (label) => page.evaluate((l) => { const r = document.querySelector(`.daily-chart path.series-line[data-series="${l}"]`); return r ? getComputedStyle(r).stroke : null; }, label);
 const bodyText = () => page.locator('body').innerText();
 
 let { ctx, p } = await newPage({ theme: 'dark' });
@@ -183,7 +183,7 @@ await check('chart: <= 5 models + Other, short labels, ranked by metric, colours
   ok(lg.every((l) => !/claude-|\d{8}/.test(l)), `long labels in legend: ${lg.join(' | ')}`);
   ok(lg.some((l) => /^(Opus|Sonnet|Haiku|Fable) \d/.test(l)), `no short family labels: ${lg.join(' | ')}`);
   const before = Object.fromEntries(await Promise.all(lg.filter((l) => l !== 'Other').map(async (l) => [l, await fillOf(l)])));
-  ok(Object.values(before).every(Boolean), 'a legend series has no bars');
+  ok(Object.values(before).every(Boolean), 'a legend series has no line');
   ok(new Set(Object.values(before)).size === 5, 'series colours repeat');
   await page.getByRole('group', { name: 'Metric' }).getByRole('button', { name: 'Tokens' }).click();
   const lg2 = await legend();
@@ -204,7 +204,7 @@ await check('chart: 4-5 gridlines with labels, delta and range total in the head
   const delta = await page.locator('.delta[aria-label="Change vs previous period"]').innerText();
   ok(/^(▲|▼) \d+% vs previous 30 days$|^No change vs previous 30 days$/.test(delta.trim()), `delta: ${delta}`);
   ok(/^\$/.test((await page.locator('.range-total').innerText()).trim()) || /\$/.test(await page.locator('.range-total').innerText()), 'range total is not a cost');
-  ok(/^Stacked bars of daily cost over the last 30 days, .+ in total\. The table below has the numbers\.$/.test(await page.locator('section.daily-chart svg[role="img"]').getAttribute('aria-label')), 'svg aria-label');
+  ok(/^Lines of daily cost over the last 30 days, .+ in total\. The table below has the numbers\.$/.test(await page.locator('section.daily-chart svg[role="img"]').getAttribute('aria-label')), 'svg aria-label');
   ok(await page.getByRole('table', { name: 'Daily cost table' }).count() === 1, 'no sr-only table');
   ok(await page.getByRole('heading', { level: 2, name: 'Daily cost' }).count() === 1, 'no Daily cost heading');
 });
@@ -238,27 +238,27 @@ await check('keyboard: Tab reaches the chart, arrows move through days, tooltip 
   ok(await page.locator('.tooltip').count() === 1, 'hover shows no tooltip');
 });
 
-await check('Spend by model: all 7 models ranked by cost with bar, value, share and the other metric; follows the metric switch', async () => {
+await check('Spend by model: top 5 models + Other ranked by cost as a donut legend with value, share and the other metric; follows the metric switch', async () => {
   const sec = page.getByRole('region', { name: 'Spend by model' });
   ok(await sec.getByRole('heading', { level: 2, name: 'Spend by model' }).count() === 1, 'no heading');
   const items = sec.locator('ol[aria-label="Models ranked by cost"] li[data-model]');
-  ok(await items.count() === 7, `${await items.count()} models`);
+  ok(await items.count() === 6, `${await items.count()} models`); // 7 models: 5 + Other
   const txt = await items.allInnerTexts();
   ok(txt.every((t) => /\$/.test(t) && /\d+(\.\d)?%/.test(t)), 'a row misses cost or share');
   const costs = txt.map((t) => Number(/\$([\d,]+\.\d\d)/.exec(t)?.[1].replace(/,/g, '') ?? NaN));
-  ok(costs.every((c, i) => i === 0 || costs[i - 1] >= c), `not sorted by cost: ${costs.join(' ')}`);
+  ok(costs.slice(0, 5).every((c, i) => i === 0 || costs[i - 1] >= c), `not sorted by cost: ${costs.join(' ')}`); // Other is last and may be bigger than the fifth
   const shares = txt.map((t) => Number(/(\d+(?:\.\d)?)%/.exec(t)[1]));
   ok(Math.abs(shares.reduce((a, b) => a + b, 0) - 100) <= 4, `shares add up to ${shares.reduce((a, b) => a + b, 0)}`);
   ok(await items.evaluateAll((els) => els.every((e) => /^[A-Z]/.test(e.getAttribute('data-model')))), 'data-model is not the short label');
   await page.getByRole('group', { name: 'Metric' }).getByRole('button', { name: 'Tokens' }).click();
-  ok(await sec.locator('ol[aria-label="Models ranked by tokens"] li[data-model]').count() === 7, 'tokens list');
+  ok(await sec.locator('ol[aria-label="Models ranked by tokens"] li[data-model]').count() === 6, 'tokens list');
   await page.getByRole('group', { name: 'Metric' }).getByRole('button', { name: 'Cost' }).click();
 });
 
-await check("Where a run's tokens go: per-stage bars for the version with finished runs, in workflow order, skipping empty stages; compact version table", async () => {
+await check("Where a run's tokens go: per-stage donut for the version with finished runs, in workflow order, skipping empty stages; compact version table", async () => {
   const sec = page.getByRole('region', { name: "Where a run's tokens go" });
   await sec.waitFor({ timeout: 8000 });
-  const stages = await sec.locator('li[data-stage]').evaluateAll((e) => e.map((x) => x.getAttribute('data-stage')));
+  const stages = (await sec.locator('li[data-stage]').evaluateAll((e) => e.map((x) => x.getAttribute('data-stage')))).filter((x) => x !== 'not-staged' && x !== 'other-stages'); // the synthetic rows come after the stages
   ok(stages.length >= 1 && stages[0] === 'frame', `stages: ${stages.join(',')}`);
   const wf = (await get('/api/stats/versions'))[0].nodes.map((x) => x.id);
   ok(stages.every((s, i) => i === 0 || wf.indexOf(stages[i - 1]) < wf.indexOf(s)), `not in workflow order: ${stages.join(',')}`);
@@ -269,12 +269,13 @@ await check("Where a run's tokens go: per-stage bars for the version with finish
   ok(await sec.getByRole('group', { name: 'Version' }).count() === 0, 'version selector with a single version');
 });
 
-await check('Runs panel: per-day column chart, outcome counts, median duration, average fix rounds', async () => {
+await check('Runs panel: per-day line chart, outcome counts, median duration, average fix rounds', async () => {
   const sec = page.getByRole('region', { name: 'Runs' });
   ok(await sec.getByRole('heading', { level: 2, name: 'Runs' }).count() === 1, 'no heading');
   const aria = await sec.locator('svg[role="img"]').getAttribute('aria-label');
   ok(/^Runs started per day over the last 30 days, 3 in total$/.test(aria), aria);
-  ok(await sec.locator('rect[data-run-day]').count() === 1, 'bars per day with runs'); // all three runs started today
+  ok(await sec.locator('path.series-line[data-series="runs"]').count() === 1, 'no runs line');
+  ok(await sec.locator('rect[data-run-hit]').evaluateAll((e) => e.filter((x) => !/ · 0 runs$/.test(x.getAttribute('aria-label'))).length) === 1, 'days with runs'); // all three runs started today
   ok(await sec.getByRole('table', { name: 'Runs per day table' }).count() === 1, 'no sr-only table');
   const o = async (k) => (await sec.locator(`[data-outcome="${k}"]`).innerText());
   ok(/finished/i.test(await o('finished')) && /1/.test(await o('finished')), `finished: ${await o('finished')}`);
@@ -371,7 +372,7 @@ for (const theme of ['dark', 'light']) {
   });
   await check(`[${theme}] series are distinguishable and visible against the panel`, async () => {
     await page.evaluate(helpers);
-    const info = await page.evaluate(() => { const out = []; for (const li of document.querySelectorAll('ul.legend li')) { const lab = li.textContent.trim(); const r = document.querySelector(`rect[data-series="${lab}"]`); if (!r) continue; out.push([lab, getComputedStyle(r).fill, window.__ratio(window.__rgba(getComputedStyle(r).fill), window.__bgOf(r))]); } return out; });
+    const info = await page.evaluate(() => { const out = []; for (const li of document.querySelectorAll('ul.legend li')) { const lab = li.textContent.trim(); const r = document.querySelector(`.daily-chart path.series-line[data-series="${lab}"]`); if (!r) continue; out.push([lab, getComputedStyle(r).stroke, window.__ratio(window.__rgba(getComputedStyle(r).stroke), window.__bgOf(r))]); } return out; });
     ok(info.length >= 5, `${info.length} series found`);
     ok(new Set(info.map((x) => x[1])).size === info.length, 'two series share a colour');
     const weak = info.filter((x) => x[0] !== 'Other' && x[2] < 3);

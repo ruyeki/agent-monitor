@@ -78,7 +78,7 @@ export function StatsPage({ tick = 0 }) {
               </p>
             )}
             <DailyChart daily={daily} range={range} metric={metric} slots={slots} firstDay={usage.firstDay} ready={usageFor === range} />
-            <SpendByModel rows={shownRows} metric={metric} slots={slots} />
+            <SpendByModel rows={shownRows} metric={metric} slots={slots} range={range} />
           </>
         )}
         {versions && <StageStats versions={versions} metric={metric} />}

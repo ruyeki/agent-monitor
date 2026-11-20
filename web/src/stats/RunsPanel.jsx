@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { formatDuration } from '../lib/format.js';
 import { dayLabel, niceTicks, summarizeRuns } from './chart.js';
+import { LineMarks } from './LineMarks.jsx';
 import { useRovingHits } from './useRovingHits.js';
 import { useWidth } from './useWidth.js';
 
@@ -23,7 +24,6 @@ export function RunsPanel({ runs, range }) {
   const max = ticks[ticks.length - 1];
   const plotW = W - M.l - M.r;
   const step = plotW / s.perDay.length;
-  const barW = Math.max(1, step - (step > 8 ? 2 : 1));
   const y = (v) => M.t + PLOT_H - (v / max) * PLOT_H;
   const every = Math.ceil(s.perDay.length / Math.max(2, Math.floor(plotW / 64)));
   const { hitsRef, hoverIdx, hitProps, clearHover, tooltipStyle } = useRovingHits(s.perDay.map((d) => d.day));
@@ -43,21 +43,14 @@ export function RunsPanel({ runs, range }) {
                 </text>
               </g>
             ))}
-            {s.perDay.map((d, i) => {
-              const x = M.l + i * step + (step - barW) / 2;
-              return (
-                <g key={d.day}>
-                  {d.count > 0 && (
-                    <rect data-run-day={d.day} x={x} y={y(d.count)} width={barW} height={Math.max(1, y(0) - y(d.count))} rx={barW > 3 ? 2 : 0} fill="var(--series-1)" />
-                  )}
-                  {i % every === 0 && (
-                    <text x={x + barW / 2} y={H - 6} textAnchor="middle" className="axis">
-                      {dayLabel(d.day)}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
+            {s.perDay.map((d, i) =>
+              i % every === 0 ? (
+                <text key={d.day} x={M.l + (i + 0.5) * step} y={H - 6} textAnchor="middle" className="axis">
+                  {dayLabel(d.day)}
+                </text>
+              ) : null,
+            )}
+            <LineMarks lines={[{ key: 'runs', color: 'var(--series-1)', values: s.perDay.map((d) => d.count) }]} plot={{ left: M.l, step, top: M.t, height: PLOT_H, max }} hoverIdx={hoverIdx} dotAlways />
             <g ref={hitsRef}>
               {s.perDay.map((d, i) => (
                 <rect key={d.day} data-run-hit={d.day} x={M.l + i * step} y={M.t} width={step} height={PLOT_H} fill="transparent" aria-label={runsLabel(d)} {...hitProps(i)} />
