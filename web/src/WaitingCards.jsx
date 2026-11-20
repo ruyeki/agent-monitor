@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { respond } from './api.js';
 import { Ago } from './Ago.jsx';
-import { CodexTag } from './RunsTable.jsx';
+import { CodexTag } from './RunList.jsx';
 import { parseAsk, splitCode } from './lib/ask.js';
 
 function Code({ text }) {
@@ -28,7 +28,8 @@ function Ask({ text }) {
   );
 }
 
-export function WaitingCard({ run, onDone }) {
+// `pane`: inside the Monitor answer pane (meta line is shown by the pane; first action is primary). `footer` goes after the buttons.
+export function WaitingCard({ run, onDone, pane = false, footer = null }) {
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState(null);
@@ -51,9 +52,11 @@ export function WaitingCard({ run, onDone }) {
     <article className="card waiting-card" aria-label={`Waiting on you: ${run.title}`}>
       <header className="card-head">
         <h3>{run.title}<CodexTag run={run} /></h3>
-        <span className="muted">
-          {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
-        </span>
+        {!pane && (
+          <span className="muted">
+            {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
+          </span>
+        )}
       </header>
       <Ask text={run.ask} />
       {run.textField && (
@@ -67,11 +70,12 @@ export function WaitingCard({ run, onDone }) {
         />
       )}
       <div className="actions">
-        {(run.actions || []).map((a) => (
-          <button key={a.label} type="button" disabled={posting} onClick={() => send(a.label)}>
+        {(run.actions || []).map((a, i) => (
+          <button key={a.label} type="button" className={pane && i === 0 ? 'primary' : undefined} disabled={posting} onClick={() => send(a.label)}>
             {a.label}
           </button>
         ))}
+        {footer}
       </div>
       {error && (
         <p className="error" role="alert">
@@ -79,19 +83,5 @@ export function WaitingCard({ run, onDone }) {
         </p>
       )}
     </article>
-  );
-}
-
-export function WaitingCards({ runs, onDone }) {
-  return (
-    <section aria-labelledby="waiting-h">
-      <h2 id="waiting-h">Waiting on you ({runs.length})</h2>
-      {runs.length === 0 && <p className="muted">Nothing is waiting on you.</p>}
-      <div className="cards">
-        {runs.map((r) => (
-          <WaitingCard key={r.id} run={r} onDone={onDone} />
-        ))}
-      </div>
-    </section>
   );
 }

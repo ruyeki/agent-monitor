@@ -57,6 +57,7 @@ const toStop = await start('Run to stop');
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, colorScheme: 'light' });
+await ctx.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
 page = await ctx.newPage();
 page.on('dialog', async (d) => { dialogs.push(`${d.type()}: ${d.message()}`); await d.dismiss(); });
 const pageErrors = [];
@@ -64,9 +65,10 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto(`${base}/#/`);
 
 // ---- Monitor
-await check('waiting tab: the waiting card responds', async () => {
-  await page.goto(`${base}/#/waiting`);
-  const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
+await check('monitor: the waiting run is in the Waiting on you group and its answer-pane card responds', async () => {
+  await page.goto(`${base}/#/`);
+  await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Waiting for Ryan/ }).click();
+  const card = page.getByRole('complementary', { name: 'Selected run' }).getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 5000 });
   ok(/solution/i.test(await card.innerText()), 'card does not show the gate question');
   await card.getByRole('textbox').fill('looks good, agreed');
@@ -78,7 +80,7 @@ await check('waiting tab: the waiting card responds', async () => {
 });
 
 await check('monitor: a run row opens #/runs/<id>; Stop confirm flow ends the run', async () => {
-  await page.getByRole('row', { name: /Run to stop/ }).first().click();
+  await page.getByRole('link', { name: /Run to stop/ }).first().click();
   await page.waitForURL(new RegExp(`#/runs/${toStop}$`));
   await page.getByRole('region', { name: `Run ${toStop}` }).waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: /^stop$/i }).click();
@@ -124,7 +126,7 @@ await check('run view: side panel shows the ask, totals and timeline; responding
 await check('stats: nav has Stats; the page shows period cards, the chart, versions and prices', async () => {
   await page.goto(`${base}/#/`);
   const nav = page.getByRole('navigation', { name: 'Sections' });
-  ok(/^Monitor,Waiting \(\d+\),Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).join()), 'nav is not Monitor,Waiting (n),Workflow,Stats');
+  ok(/^Monitor\d*,Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).map((t) => t.replace(/\s+/g, '')).join()), 'nav is not Monitor (n),Workflow,Stats');
   await nav.getByRole('link', { name: 'Stats' }).click();
   await page.waitForURL(/#\/stats$/);
   await page.getByRole('region', { name: 'Usage statistics' }).waitFor({ timeout: 8000 });
@@ -144,7 +146,7 @@ await check('stats: nav has Stats; the page shows period cards, the chart, versi
 await check('stats: no horizontal page scroll at 390 px wide', async () => {
   await page.setViewportSize({ width: 390, height: 800 });
   try {
-    for (const hash of ['#/stats', '#/waiting', '#/']) {
+    for (const hash of ['#/stats', '#/']) {
       await page.goto(`${base}/${hash}`);
       await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 3000 });
       await page.waitForTimeout(500);
@@ -358,6 +360,7 @@ await check('no uncaught page errors', async () => ok(pageErrors.length === 0, p
 await check('dark theme renders with readable text', async () => {
   await ctx.close();
   const dctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, colorScheme: 'dark' });
+  await dctx.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
   page = await dctx.newPage();
   await page.goto(`${base}/#/workflow`);
   await page.getByRole('button', { name: /^publish$/i }).waitFor({ timeout: 8000 });

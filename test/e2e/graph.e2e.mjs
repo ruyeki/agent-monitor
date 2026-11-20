@@ -42,6 +42,7 @@ await call('complete_stage', { run: waiting, stage: 'frame', outcome: 'done' });
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, colorScheme: 'light' });
+await ctx.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
 page = await ctx.newPage();
 page.on('dialog', async (d) => { dialogs.push(`${d.type()}: ${d.message()}`); await d.dismiss(); });
 page.on('pageerror', (e) => pageErrors.push(String(e)));
@@ -54,9 +55,10 @@ await check('header nav has Monitor, Workflow and Stats', async () => {
   }
 });
 
-await check('Waiting tab: the waiting card responds', async () => {
-  await page.goto(base + '/#/waiting');
-  const card = page.getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
+await check('Monitor: the waiting card in the answer pane responds', async () => {
+  await page.goto(base + '/#/');
+  await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Waiting for Ryan/ }).click();
+  const card = page.getByRole('complementary', { name: 'Selected run' }).getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
   await card.waitFor({ timeout: 6000 });
   await card.getByRole('textbox').fill('agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();
@@ -65,7 +67,7 @@ await check('Waiting tab: the waiting card responds', async () => {
 });
 
 await check('clicking a run row opens #/runs/<id> with the pinned graph', async () => {
-  await page.getByRole('row', { name: /Parallel run/ }).first().click();
+  await page.getByRole('link', { name: /Parallel run/ }).first().click();
   await page.waitForURL(new RegExp(`#/runs/${parallel}`), { timeout: 4000 });
   await page.getByText(/Verifier prep/).first().waitFor({ timeout: 6000 });
   ok(await page.getByText(/implement/i).count() > 0, 'Implement node is not shown');
@@ -186,6 +188,7 @@ await check('Publish a valid draft creates the next version; the Versions list s
 await check('dark theme: editor and run view render readable text', async () => {
   await ctx.close();
   const d = await browser.newContext({ viewport: { width: 1500, height: 950 }, colorScheme: 'dark' });
+  await d.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
   page = await d.newPage();
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   await page.goto(`${base}/#/workflow`);

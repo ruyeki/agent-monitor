@@ -51,18 +51,21 @@ describe('baseline card and app', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(globalThis.fetch.mock.calls[0][0]).toBe('/api/runs/w1/respond');
   });
-  it('Monitor keeps Runs table, Finished section and the Workflow/Stats tabs', async () => {
+  it('Monitor keeps the run list, Finished group and the Workflow/Stats nav links', async () => {
     render(<App />);
     await screen.findByText('Busy run');
-    expect(screen.getByText('Finished runs (1)')).toBeTruthy();
+    const fin = document.querySelector('section[aria-labelledby="group-finished"]');
+    expect(within(fin).getByRole('heading', { name: /Finished/ }).textContent).toBe('Finished1');
+    expect(fin.querySelector('details.finished')).toBeTruthy();
     const nav = within(screen.getByRole('navigation', { name: 'Sections' }));
     expect(nav.getByRole('link', { name: 'Workflow' }).getAttribute('href')).toBe('#/workflow');
     expect(nav.getByRole('link', { name: 'Stats' }).getAttribute('href')).toBe('#/stats');
-    expect(nav.getByRole('link', { name: 'Monitor' }).getAttribute('aria-current')).toBe('page');
+    expect(nav.getByRole('link', { name: /^Monitor/ }).getAttribute('aria-current')).toBe('page');
   });
-  it('clicking an active run row opens its run view route', async () => {
+  it('an active run row is a link that opens its run view route', async () => {
     render(<App />);
-    fireEvent.click(await screen.findByText('Busy run'));
-    expect(window.location.hash).toBe('#/runs/act');
+    const row = (await screen.findByText('Busy run')).closest('a');
+    expect(row.getAttribute('href')).toBe('#/runs/act'); // a real anchor: the browser navigates, no click handler needed
+    expect(row.classList.contains('run-row')).toBe(true);
   });
 });

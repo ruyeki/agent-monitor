@@ -34,6 +34,10 @@ export function StatsPage({ tick = 0 }) {
 
   const st = usage?.indexer;
   return (
+    <>
+    <header className="page-head">
+      <h1>Stats</h1>
+    </header>
     <section className="stats-page" aria-label="Usage statistics">
       <h2>Usage</h2>
       {[usageError, versionsError, pricesError].filter(Boolean).map((m) => (
@@ -61,5 +65,6 @@ export function StatsPage({ tick = 0 }) {
       {versions && <VersionStats versions={versions} />}
       {prices && <PriceTable prices={prices} onSaved={setPrices} />}
     </section>
+    </>
   );
 }

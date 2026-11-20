@@ -67,6 +67,7 @@ const detailA = async () => get(`/api/runs/${runA}`);
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, colorScheme: 'light' });
+await ctx.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
 page = await ctx.newPage();
 page.on('dialog', async (d) => { dialogs.push(`${d.type()}: ${d.message()}`); await d.dismiss(); });
 page.on('pageerror', (e) => pageErrors.push(String(e)));
@@ -193,6 +194,7 @@ await check('editor Versions list shows each version stats (finished runs, avg t
 await check('dark theme: Stats renders without page errors', async () => {
   await ctx.close();
   const d = await browser.newContext({ viewport: { width: 1400, height: 1000 }, colorScheme: 'dark' });
+  await d.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
   page = await d.newPage();
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   await page.goto(`${base}/#/stats`);

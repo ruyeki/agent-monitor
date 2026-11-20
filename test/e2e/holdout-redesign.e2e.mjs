@@ -80,7 +80,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true }
 const requests = [];
 async function newPage(theme, width = 1400, height = 900, scheme) {
   const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme || (theme === 'dark' ? 'dark' : 'light') });
-  if (theme === 'light' || theme === 'dark') await ctx.addInitScript((t) => { try { localStorage.setItem('agent-monitor-theme', t); } catch { /* */ } }, theme);
+  if (theme === 'light' || theme === 'dark' || theme === 'system') await ctx.addInitScript((t) => { try { localStorage.setItem('agent-monitor-theme', t); } catch { /* */ } }, theme);
   const p = await ctx.newPage();
   p.on('request', (r) => requests.push([r.url(), r.resourceType()]));
   p.on('pageerror', (e) => notes.push('pageerror ' + e));
@@ -140,7 +140,7 @@ async function contrast(p) {
 }
 
 const PAGES = [
-  ['monitor', '#/'], ['waiting', '#/waiting'], ['workflow', '#/workflow'], ['stats', '#/stats'],
+  ['monitor', '#/'], ['workflow', '#/workflow'], ['stats', '#/stats'],
   ['run-waiting', `#/runs/${RB}`], ['run-decision', `#/runs/${RC}`], ['run-running', `#/runs/${RD}`], ['run-done', `#/runs/${RA}`], ['run-stopped', `#/runs/${RE}`], ['run-codex', `#/runs/${codexRun}`],
 ];
 async function go(p, hash, name) {
@@ -148,8 +148,8 @@ async function go(p, hash, name) {
   if (name.startsWith('run-')) { await p.getByRole('group', { name: 'Run graph' }).waitFor({ timeout: 8000 }); await p.locator('.fnode[data-node="frame"]').waitFor({ timeout: 8000 }); }
   else if (name === 'workflow') await p.locator('.fnode[data-node="frame"]').waitFor({ timeout: 10000 });
   else if (name === 'stats') await p.locator('.period-card').first().waitFor({ timeout: 10000 });
-  else if (name === 'waiting') await p.locator('.waiting-card').first().waitFor({ timeout: 8000 });
-  else await p.locator('.runs, .muted').first().waitFor({ timeout: 8000 });
+  else await p.locator('.run-rows, .muted').first().waitFor({ timeout: 8000 });
+  if (name === 'monitor') await p.locator('.answer-pane').waitFor({ timeout: 8000 });
   await p.waitForTimeout(900);
 }
 
@@ -191,46 +191,60 @@ for (const theme of ['light', 'dark']) {
     const diff = names.filter((n, i) => got[n] !== S[i]);
     ok(!diff.length, diff.map((n) => `${n}=${got[n]}`).join('; '));
   });
-  await check(`[${theme}] base: body font 14px Inter-first, smoothing, bg = --bg`, async () => {
+  await check(`[${theme}] base: body font 13px Inter-first, smoothing, bg = --bg`, async () => {
     const r = await p.evaluate(() => { const cs = getComputedStyle(document.body); return { ff: cs.fontFamily, fs: cs.fontSize, sm: cs.webkitFontSmoothing, bg: cs.backgroundColor, h1: getComputedStyle(document.querySelector('h1')).fontWeight }; });
     ok(/^"?inter/i.test(r.ff), `font-family ${r.ff}`);
-    ok(r.fs === '14px', `font-size ${r.fs}`);
+    ok(r.fs === '13px', `font-size ${r.fs}`);
     ok(parseInt(r.h1, 10) >= 600, `h1 weight ${r.h1}`);
     const bg = await p.evaluate((c) => window.__rgba ? window.__rgba(c) : null, r.bg);
     if (theme === 'dark') ok(/rgb\(1, 1, 2\)/.test(r.bg), `body bg ${r.bg}`);
   });
-  await check(`[${theme}] nav: active tab is a surface lift, not an accent fill; pill radius; header ~52px`, async () => {
+  await check(`[${theme}] sidebar: active nav link is a surface lift (--surface-3), not an accent fill; sidebar on --surface with a hairline; ~232px wide`, async () => {
     const r = await p.evaluate(() => {
-      const a = document.querySelector('.tabs a.active'), i = document.querySelector('.tabs a:not(.active)'), h = document.querySelector('.app-head');
+      const a = document.querySelector('.side-nav a[aria-current="page"]'), i = document.querySelector('.side-nav a:not([aria-current])'), sb = document.querySelector('aside.sidebar');
       const root = getComputedStyle(document.documentElement);
-      return { act: getComputedStyle(a).backgroundColor, inact: getComputedStyle(i).backgroundColor, rad: getComputedStyle(a).borderTopLeftRadius, hh: h.getBoundingClientRect().height, s2: root.getPropertyValue('--surface-2').trim(), acc: root.getPropertyValue('--accent').trim(), hb: getComputedStyle(h).borderBottomWidth, hbg: getComputedStyle(h).backgroundColor };
+      return { act: getComputedStyle(a).backgroundColor, inact: getComputedStyle(i).backgroundColor, rad: getComputedStyle(a).borderTopLeftRadius, w: sb.getBoundingClientRect().width, s3: root.getPropertyValue('--surface-3').trim(), s1: root.getPropertyValue('--surface').trim(), acc: root.getPropertyValue('--accent').trim(), bw: getComputedStyle(sb).borderRightWidth, sbg: getComputedStyle(sb).backgroundColor, links: [...document.querySelectorAll('nav[aria-label="Sections"] a')].length };
     });
     await p.evaluate(helpers);
-    const [act, acc, s2, hbg] = await p.evaluate(({ a, c, d, e }) => [window.__rgba(a), window.__rgba(c), window.__rgba(d), window.__rgba(e)], { a: r.act, c: r.acc, d: r.s2, e: r.hbg });
-    ok(JSON.stringify(act.slice(0, 3)) !== JSON.stringify(acc.slice(0, 3)), 'active tab has the accent fill');
-    ok(JSON.stringify(act.slice(0, 3)) === JSON.stringify(s2.slice(0, 3)), `active tab bg ${r.act} != --surface-2 ${r.s2}`);
-    ok(parseFloat(r.rad) >= 100 || r.rad === '9999px', `tab radius ${r.rad}`);
-    ok(r.hh >= 46 && r.hh <= 58, `header height ${r.hh}`);
-    ok(r.hb === '1px', `header bottom border ${r.hb}`);
-    const bgTok = await p.evaluate(() => window.__rgba(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()));
-    ok(JSON.stringify(hbg.slice(0, 3)) === JSON.stringify(bgTok.slice(0, 3)), `header bg ${r.hbg} != --bg`);
+    const [act, acc, s3, s1, sbg] = await p.evaluate(({ a, c, d, e, f }) => [window.__rgba(a), window.__rgba(c), window.__rgba(d), window.__rgba(e), window.__rgba(f)], { a: r.act, c: r.acc, d: r.s3, e: r.s1, f: r.sbg });
+    const rgb = (c) => JSON.stringify(c.slice(0, 3));
+    ok(rgb(act) !== rgb(acc), 'active nav link has the accent fill');
+    ok(rgb(act) === rgb(s3), `active nav link bg ${r.act} != --surface-3 ${r.s3}`);
+    ok(r.inact === 'rgba(0, 0, 0, 0)', `inactive nav link bg ${r.inact}`);
+    ok(parseFloat(r.rad) >= 4 && parseFloat(r.rad) <= 8, `nav link radius ${r.rad}`);
+    ok(r.w >= 220 && r.w <= 245, `sidebar width ${r.w}`);
+    ok(r.bw === '1px', `sidebar right border ${r.bw}`);
+    ok(rgb(sbg) === rgb(s1), `sidebar bg ${r.sbg} != --surface ${r.s1}`);
+    ok(r.links === 3, `nav links ${r.links}`);
   });
-  await check(`[${theme}] nav: brand mark pseudo-element on h1 in accent`, async () => {
-    const r = await p.evaluate(() => { const cs = getComputedStyle(document.querySelector('.app-head h1'), '::before'); const a = getComputedStyle(document.querySelector('.app-head h1'), '::after'); const pick = (c) => ({ content: c.content, w: c.width, bg: c.backgroundColor }); return [pick(cs), pick(a)]; });
-    ok(r.some((x) => x.content && x.content !== 'none' && x.content !== 'normal'), `no brand pseudo-element ${JSON.stringify(r)}`);
+  await check(`[${theme}] sidebar: brand mark is an accent-family svg next to the text; no h1 in the sidebar`, async () => {
+    const r = await p.evaluate(() => { const b = document.querySelector('aside.sidebar .brand'); const svg = b && b.querySelector('svg'); return { text: b && b.textContent.trim(), hidden: svg && svg.getAttribute('aria-hidden'), col: svg && getComputedStyle(svg).color, link: getComputedStyle(document.documentElement).getPropertyValue('--link').trim(), h1: document.querySelectorAll('aside.sidebar h1').length }; });
+    ok(r.text === 'Agent Monitor', `brand text ${r.text}`);
+    ok(r.hidden === 'true', 'brand svg is not aria-hidden');
+    ok(r.h1 === 0, 'h1 in the sidebar');
+    await p.evaluate(helpers);
+    const [c, l] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: r.col, b: r.link });
+    ok(JSON.stringify(c.slice(0, 3)) === JSON.stringify(l.slice(0, 3)), `brand mark colour ${r.col} != --link ${r.link}`);
   });
-  await check(`[${theme}] controls: buttons radius 8px, not pill, bg --surface, text weight 500; theme toggle works (3 states)`, async () => {
-    const r = await p.evaluate(() => { const b = document.querySelector('.app-head button'); const cs = getComputedStyle(b); return { rad: cs.borderTopLeftRadius, fw: cs.fontWeight, bw: cs.borderTopWidth }; });
+  await check(`[${theme}] controls: buttons radius 8px, not pill, text weight 500+ (answer pane action)`, async () => {
+    const r = await p.evaluate(() => { const b = document.querySelector('.answer-pane .actions button'); const cs = getComputedStyle(b); return { rad: cs.borderTopLeftRadius, fw: cs.fontWeight, bw: cs.borderTopWidth }; });
     ok(r.rad === '8px', `button radius ${r.rad}`);
     ok(parseInt(r.fw, 10) >= 500, `button weight ${r.fw}`);
   });
-  await check(`[${theme}] monitor: table container radius 12px, hairline border, th muted 12px`, async () => {
+  await check(`[${theme}] monitor: stat strip (4 tiles, 22px/600 values, 12px muted labels), run rows as a list, stage pill`, async () => {
     await go(p, '#/', 'monitor');
-    const r = await p.evaluate(() => { const t = document.querySelector('table.runs'); if (!t) return null; const th = t.querySelector('th'); return { rad: getComputedStyle(t).borderTopLeftRadius, bw: getComputedStyle(t).borderTopWidth, fs: getComputedStyle(th).fontSize, fw: getComputedStyle(th).fontWeight, sp: getComputedStyle(t).borderCollapse }; });
-    ok(r, 'no runs table');
-    ok(r.rad === '12px', `table radius ${r.rad}`);
-    ok(r.fs === '12px', `th size ${r.fs}`);
-    ok(r.sp === 'separate', `border-collapse ${r.sp}`);
+    const r = await p.evaluate(() => {
+      const t = document.querySelector('.stat-strip'); const v = t && t.querySelector('.stat-value'); const l = t && t.querySelector('.stat-label');
+      const rows = document.querySelector('ul.run-rows'); const pill = document.querySelector('.run-row .stage-pill');
+      return t && { n: t.querySelectorAll('.stat').length, vfs: getComputedStyle(v).fontSize, vfw: getComputedStyle(v).fontWeight, lfs: getComputedStyle(l).fontSize, ls: rows && getComputedStyle(rows).listStyleType, prad: pill && getComputedStyle(pill).borderTopLeftRadius, tables: document.querySelectorAll('table').length };
+    });
+    ok(r, 'no stat strip');
+    ok(r.n === 4, `stat tiles ${r.n}`);
+    ok(r.vfs === '22px' && r.vfw === '600', `stat value ${r.vfs}/${r.vfw}`);
+    ok(r.lfs === '12px', `stat label size ${r.lfs}`);
+    ok(r.ls === 'none', `run list style ${r.ls}`);
+    ok(r.prad && parseFloat(r.prad) >= 100, `stage pill radius ${r.prad}`);
+    ok(r.tables === 0, 'a table is on the Monitor page');
   });
   await check(`[${theme}] badges: pill, codex badge tinted not solid accent, status colours`, async () => {
     await go(p, '#/runs/' + codexRun, 'run-codex');
@@ -245,9 +259,9 @@ for (const theme of ['light', 'dark']) {
     ok(JSON.stringify(bg.slice(0, 3)) !== JSON.stringify(acc.slice(0, 3)), 'codex badge is a solid accent fill');
     ok(/^1[12]px$/.test(r.fs), `badge font ${r.fs}`);
   });
-  await check(`[${theme}] waiting cards: radius 12px, 3px warn left edge, padding 16px, full width`, async () => {
-    await go(p, '#/waiting', 'waiting');
-    const r = await p.evaluate(() => { const c = document.querySelector('.waiting-card'); const cs = getComputedStyle(c); return { rad: cs.borderTopLeftRadius, lw: cs.borderLeftWidth, lc: cs.borderLeftColor, warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(), pad: cs.paddingTop, tw: c.getBoundingClientRect().width, pw: c.parentElement.getBoundingClientRect().width, shadow: cs.boxShadow }; });
+  await check(`[${theme}] waiting cards (run view; frameless in the answer pane): radius 12px, 3px warn left edge, padding 16px, full width`, async () => {
+    await go(p, `#/runs/${RB}`, 'run-waiting');
+    const r = await p.evaluate(() => { const c = document.querySelector('.run-side .waiting-card'); const cs = getComputedStyle(c); return { rad: cs.borderTopLeftRadius, lw: cs.borderLeftWidth, lc: cs.borderLeftColor, warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(), pad: cs.paddingTop, tw: c.getBoundingClientRect().width, pw: (() => { const pe = c.parentElement, pcs = getComputedStyle(pe); return pe.clientWidth - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight); })(), shadow: cs.boxShadow }; });
     ok(r.rad === '12px', `card radius ${r.rad}`);
     ok(r.lw === '3px', `left edge ${r.lw}`);
     ok(r.pad === '16px', `padding ${r.pad}`);
@@ -256,14 +270,14 @@ for (const theme of ['light', 'dark']) {
     const [lc, w] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: r.lc, b: r.warn });
     ok(JSON.stringify(lc.slice(0, 3)) === JSON.stringify(w.slice(0, 3)), `left edge colour ${r.lc} != --warn ${r.warn}`);
     ok(r.shadow && r.shadow !== 'none', 'no elevation on card');
-    await p.screenshot({ path: path.join(SHOTS, `waiting-${theme}.png`) });
+    await p.screenshot({ path: path.join(SHOTS, `waiting-card-${theme}.png`) });
   });
   await check(`[${theme}] inputs: radius 8px, 1px --border-strong, focus = --focus border + ring`, async () => {
-    await go(p, '#/waiting', 'waiting');
-    const ta = p.locator('.waiting-card textarea').first();
+    await go(p, '#/', 'monitor');
+    const ta = p.locator('.answer-pane .waiting-card textarea').first();
     ok(await ta.count(), 'no textarea on waiting card');
     await ta.focus();
-    const r = await p.evaluate(() => { const t = document.querySelector('.waiting-card textarea'); const cs = getComputedStyle(t); const root = getComputedStyle(document.documentElement); return { rad: cs.borderTopLeftRadius, bc: cs.borderTopColor, bw: cs.borderTopWidth, shadow: cs.boxShadow, outline: cs.outlineStyle + ' ' + cs.outlineWidth, focus: root.getPropertyValue('--focus').trim() }; });
+    const r = await p.evaluate(() => { const t = document.querySelector('.answer-pane .waiting-card textarea'); const cs = getComputedStyle(t); const root = getComputedStyle(document.documentElement); return { rad: cs.borderTopLeftRadius, bc: cs.borderTopColor, bw: cs.borderTopWidth, shadow: cs.boxShadow, outline: cs.outlineStyle + ' ' + cs.outlineWidth, focus: root.getPropertyValue('--focus').trim() }; });
     ok(r.rad === '8px', `textarea radius ${r.rad}`);
     ok(r.bw === '1px', `border ${r.bw}`);
     await p.evaluate(helpers);
@@ -406,13 +420,18 @@ await check('three theme blocks in sync: system-dark computed vars equal forced-
   ok(!un.length, 'declared but empty in a theme: ' + un.join(','));
   ok(JSON.stringify(sysDark.v) !== JSON.stringify(sysLight.v), 'dark equals light');
 });
-await check('theme toggle cycles system -> light -> dark -> system and applies', async () => {
-  const { ctx, p } = await newPage('system', 1200, 800, 'dark');
+await check('theme: default is dark even when the system is light; toggle cycles dark -> light -> system -> dark and applies', async () => {
+  const { ctx, p } = await newPage('default', 1200, 800, 'light');
   await p.goto(`${base}/#/`); await p.waitForTimeout(400);
+  const first = await p.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  const label = async () => (await p.getByRole('button', { name: /^Theme:/ }).innerText()).trim();
+  const labels = [await label()];
   const attrs = [];
-  for (let i = 0; i < 3; i++) { await p.getByRole('button', { name: /^Theme:/ }).click(); await p.waitForTimeout(150); attrs.push(await p.evaluate(() => document.documentElement.getAttribute('data-theme'))); }
+  for (let i = 0; i < 3; i++) { await p.getByRole('button', { name: /^Theme:/ }).click(); await p.waitForTimeout(150); attrs.push(await p.evaluate(() => document.documentElement.getAttribute('data-theme'))); labels.push(await label()); }
   await ctx.close();
-  ok(JSON.stringify(attrs) === JSON.stringify(['light', 'dark', null]), JSON.stringify(attrs));
+  ok(first === 'dark', `default theme attr ${first}`);
+  ok(JSON.stringify(labels) === JSON.stringify(['Dark', 'Light', 'System', 'Dark']), JSON.stringify(labels));
+  ok(JSON.stringify(attrs) === JSON.stringify(['light', null, 'dark']), JSON.stringify(attrs));
 });
 
 // ---------- 390 px layouts, both themes, all pages

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RunsTable } from '../src/RunsTable.jsx';
+import { RunList } from '../src/RunList.jsx';
 import { RunView } from '../src/run/RunView.jsx';
 import { PeriodCards } from '../src/stats/PeriodCards.jsx';
 import { WaitingCard } from '../src/WaitingCards.jsx';
@@ -63,9 +63,9 @@ describe('Codex runs in the run view', () => {
 });
 
 describe('Codex tags and stats', () => {
-  it('tags Codex runs in the table and the waiting card', () => {
-    render(<RunsTable runs={[{ ...claudeRun, provider: 'codex' }, { ...claudeRun, id: 'r2', title: 'R two' }]} onSelect={() => {}} caption="c" />);
-    const rows = screen.getAllByRole('row').slice(1);
+  it('tags Codex runs in the run list and the waiting card', () => {
+    render(<RunList runs={[{ ...claudeRun, provider: 'codex' }, { ...claudeRun, id: 'r2', title: 'R two' }]} />);
+    const rows = screen.getAllByRole('listitem');
     expect(within(rows[0]).getByText('Codex')).toBeTruthy();
     expect(within(rows[1]).queryByText('Codex')).toBeNull();
     render(<WaitingCard run={{ ...claudeRun, status: 'waiting', ask: 'ok?', provider: 'codex' }} />);

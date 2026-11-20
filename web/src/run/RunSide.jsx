@@ -1,6 +1,6 @@
 import { Ago, Idle } from '../Ago.jsx';
 import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
-import { StatusBadge } from '../RunsTable.jsx';
+import { StatusBadge } from '../RunList.jsx';
 import { StopButton } from '../StopButton.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // EventSource with manual reconnect; calls onChange (debounced) on every event and on (re)open.
 export function useLive(onChange, { debounce = 250, retry = 2000 } = {}) {
@@ -44,12 +44,12 @@ const KEY = 'agent-monitor-theme';
 export function useTheme() {
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem(KEY) || 'system';
+      return localStorage.getItem(KEY) || 'dark';
     } catch {
-      return 'system';
+      return 'dark';
     }
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = document.documentElement;
     if (theme === 'system') el.removeAttribute('data-theme');
     else el.setAttribute('data-theme', theme);
@@ -59,6 +59,6 @@ export function useTheme() {
       /* storage blocked */
     }
   }, [theme]);
-  const cycle = useCallback(() => setTheme((t) => (t === 'system' ? 'light' : t === 'light' ? 'dark' : 'system')), []);
+  const cycle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : t === 'light' ? 'system' : 'dark')), []);
   return [theme, cycle];
 }

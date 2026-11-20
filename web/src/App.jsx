@@ -1,77 +1,37 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRuns } from './api.js';
 import { useLive, useTheme } from './hooks.js';
 import { splitRuns } from './lib/format.js';
-import { runHref, useRoute } from './lib/route.js';
+import { useRoute } from './lib/route.js';
 import { WorkflowEditor } from './editor/WorkflowEditor.jsx';
 import { StatsPage } from './stats/StatsPage.jsx';
-import { RunsTable } from './RunsTable.jsx';
+import { Monitor } from './Monitor.jsx';
 import { RunView } from './run/RunView.jsx';
-import { WaitingCards } from './WaitingCards.jsx';
-
-const LIVE_LABEL = { live: 'Live', connecting: 'Connecting', reconnecting: 'Reconnecting' };
-const NAV = [
-  ['monitor', '#/', 'Monitor'],
-  ['waiting', '#/waiting', 'Waiting'],
-  ['workflow', '#/workflow', 'Workflow'],
-  ['stats', '#/stats', 'Stats'],
-];
-
-const openRun = (id) => {
-  window.location.hash = runHref(id);
-};
-
-function LoadError({ message }) {
-  return (
-    message && (
-      <p className="error" role="alert">
-        Could not load runs: {message}
-      </p>
-    )
-  );
-}
-
-function Monitor({ waiting, live, finished, loadError }) {
-  return (
-    <>
-      <LoadError message={loadError} />
-      {waiting.length > 0 && (
-        <p>
-          <a href="#/waiting">
-            {waiting.length} run{waiting.length === 1 ? '' : 's'} waiting on you →
-          </a>
-        </p>
-      )}
-      <section aria-labelledby="runs-h">
-        <h2 id="runs-h">Runs ({live.length})</h2>
-        <RunsTable runs={live} onSelect={openRun} caption="Active runs" />
-      </section>
-      <details className="finished">
-        <summary>Finished runs ({finished.length})</summary>
-        <RunsTable runs={finished} onSelect={openRun} caption="Finished runs" />
-      </details>
-    </>
-  );
-}
+import { Sidebar } from './Sidebar.jsx';
 
 export default function App() {
   const route = useRoute();
   const [runs, setRuns] = useState([]);
   const [loadError, setLoadError] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
   const [theme, cycleTheme] = useTheme();
   const [tick, setTick] = useState(0);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState(null); // null | 'waiting' | 'active' | 'finished'
+  const searchRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try {
       setRuns(await getRuns());
       setLoadError(null);
+      setUpdatedAt(new Date().toISOString());
     } catch (e) {
       setLoadError(e.message);
     }
   }, []);
   const refreshAll = useCallback(() => {
     refresh();
-    setTick((t) => t + 1); // the run view and the editor refetch on this
+    setTick((t) => t + 1); // the run view, the editor, stats and the usage tiles refetch on this
   }, [refresh]);
 
   const connection = useLive(refreshAll);
@@ -79,38 +39,62 @@ export default function App() {
     refresh();
   }, [refresh]);
 
+  // Ctrl+K / Cmd+K focuses the search from anywhere.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const { waiting, live, finished } = splitRuns(runs);
   const current = route.name === 'run' ? 'monitor' : route.name;
+  const goMonitor = () => {
+    if (route.name !== 'monitor') window.location.hash = '#/';
+  };
+
   return (
-    <>
-      <header className="app-head">
-        <h1>Agent Monitor</h1>
-        <nav className="tabs" aria-label="Sections">
-          {NAV.map(([id, href, label]) => (
-            <a key={id} href={href} className={current === id ? 'active' : ''} aria-current={current === id ? 'page' : undefined}>
-              {id === 'waiting' ? `${label} (${waiting.length})` : label}
-            </a>
-          ))}
-        </nav>
-        <span className={`conn conn-${connection}`} role="status">
-          <span className="dot" aria-hidden="true" /> {LIVE_LABEL[connection]}
-        </span>
-        <button type="button" onClick={cycleTheme} aria-label={`Theme: ${theme}. Click to change.`}>
-          Theme: {theme}
-        </button>
-      </header>
-      <main className={['monitor', 'waiting', 'stats'].includes(route.name) ? '' : 'full'}>
+    <div className="shell">
+      <Sidebar
+        current={current}
+        openCount={waiting.length + live.length}
+        counts={{ waiting: waiting.length, active: live.length, finished: finished.length }}
+        query={query}
+        onQuery={(v) => {
+          setQuery(v);
+          goMonitor();
+        }}
+        searchRef={searchRef}
+        view={view}
+        onView={(v) => {
+          setView((prev) => (prev === v ? null : v));
+          goMonitor();
+        }}
+        connection={connection}
+        theme={theme}
+        onTheme={cycleTheme}
+      />
+      <main className={route.name === 'workflow' || route.name === 'run' ? 'full' : ''}>
         {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
         {route.name === 'stats' && <StatsPage tick={tick} />}
         {route.name === 'run' && <RunView key={route.id} id={route.id} tick={tick} />}
-        {route.name === 'monitor' && <Monitor waiting={waiting} live={live} finished={finished} loadError={loadError} />}
-        {route.name === 'waiting' && (
-          <>
-            <LoadError message={loadError} />
-            <WaitingCards runs={waiting} onDone={refreshAll} />
-          </>
+        {route.name === 'monitor' && (
+          <Monitor
+            groups={{ waiting, active: live, finished }}
+            query={query}
+            view={view}
+            loadError={loadError}
+            updatedAt={updatedAt}
+            tick={tick}
+            onDone={refreshAll}
+          />
         )}
       </main>
-    </>
+    </div>
   );
 }

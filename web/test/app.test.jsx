@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { Idle } from '../src/Ago.jsx';
-import { RunsTable } from '../src/RunsTable.jsx';
+import { RunList } from '../src/RunList.jsx';
 import { WaitingCard } from '../src/WaitingCards.jsx';
 
 const now = Date.parse('2026-10-23T12:00:00Z');
@@ -61,17 +61,31 @@ describe('WaitingCard', () => {
   });
 });
 
-describe('RunsTable', () => {
-  it('shows rounds n/max, verdict and selects by click and keyboard', () => {
+describe('RunList', () => {
+  it('shows rounds n/max, stage label and age; a waiting row is a button that selects', () => {
     const onSelect = vi.fn();
-    render(<RunsTable runs={[run]} onSelect={onSelect} caption="c" />);
+    render(<RunList runs={[run]} onSelect={onSelect} />);
     expect(screen.getByText('2/5')).toBeTruthy();
-    expect(screen.getByText('pass')).toBeTruthy();
+    expect(screen.getByText('Your solution')).toBeTruthy();
     expect(screen.getByText('1m ago')).toBeTruthy();
-    const row = screen.getByText('My run').closest('tr');
+    const row = screen.getByRole('button', { name: /My run/ });
+    expect(row.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(row);
-    fireEvent.keyDown(row, { key: 'Enter' });
-    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenCalledWith('my-run');
+  });
+
+  it('marks the selected waiting row and joins parallel active stages', () => {
+    const par = { ...run, id: 'p', title: 'Par run', status: 'active', active: [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }] };
+    render(<RunList runs={[run, par]} selectedId="my-run" />);
+    expect(screen.getByRole('button', { name: /My run/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Alpha + Beta')).toBeTruthy();
+  });
+
+  it('active and finished rows are links to the run view', () => {
+    render(<RunList runs={[{ ...run, id: 'a b', title: 'Busy', status: 'active' }, { ...run, id: 'd', title: 'Done', status: 'done' }]} />);
+    expect(screen.getByRole('link', { name: /Busy/ }).getAttribute('href')).toBe('#/runs/a%20b');
+    expect(screen.getByRole('link', { name: /Done/ }).getAttribute('href')).toBe('#/runs/d');
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });
 

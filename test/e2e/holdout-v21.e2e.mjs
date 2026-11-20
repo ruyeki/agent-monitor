@@ -54,6 +54,7 @@ await done(RB, 'frame');
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const newPage = async (scheme) => {
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, colorScheme: scheme });
+  await ctx.addInitScript(() => { try { localStorage.setItem('agent-monitor-theme', 'system'); } catch { /* ignore */ } }); // the app defaults to dark; 'system' lets the emulated colour scheme apply
   const p = await ctx.newPage();
   p.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
   p.on('pageerror', (e) => pageErrors.push(String(e)));

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getRun } from '../api.js';
-import { CodexTag, StatusBadge } from '../RunsTable.jsx';
+import { CodexTag, StatusBadge, stageLabel } from '../RunList.jsx';
 import { RunGraph } from './RunGraph.jsx';
 import { RunSide } from './RunSide.jsx';
 
@@ -33,21 +33,21 @@ export function RunView({ id, tick = 0 }) {
   const { run } = detail;
   return (
     <section className="run-view" aria-label={`Run ${run.id}`}>
-      <header className="run-head">
-        <a href="#/">Back to monitor</a>
-        <h2>{run.title}</h2>
-        <span className="muted mono">{run.id}</span> <StatusBadge status={run.status} />
+      <header className="page-head run-head">
+        <a className="crumb" href="#/">Back to monitor</a>
+        <h1>{run.title}</h1>
+        <span className="muted mono">{run.id}</span>
+        <StatusBadge status={run.status} />
+        <span className="stage-pill">{stageLabel(run)}</span>
         <CodexTag run={run} />
         {run.repo && (
           <span className="muted">
-            {' '}
             · {run.repo}
             {run.branch ? ` @ ${run.branch}` : ''}
           </span>
         )}
         {error && (
           <span className="error" role="alert">
-            {' '}
             Out of date: {error}
           </span>
         )}

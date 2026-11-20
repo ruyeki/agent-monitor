@@ -6,7 +6,8 @@ const STATUS_TEXT = { saved: 'Draft — saved', unsaved: 'Draft — unsaved', sa
 export function TopBar({ published, status, versions, onPublish, onDiscard, onLoadVersion, onLayout }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="topbar">
+    <header className="page-head topbar">
+      <h1>Workflow</h1>
       <strong>{published ? `Published v${published.version}` : 'Not published'}</strong>
       <span role="status">{STATUS_TEXT[status]}</span>
       <span className="spacer" />
@@ -56,6 +57,6 @@ export function TopBar({ published, status, versions, onPublish, onDiscard, onLo
           </table>
         </section>
       )}
-    </div>
+    </header>
   );
 }
