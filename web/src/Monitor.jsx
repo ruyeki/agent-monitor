@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getUsageStats } from './api.js';
+import { useThrottledTick } from './hooks.js';
 import { Ago } from './Ago.jsx';
 import { formatCost, formatTokens } from './lib/format.js';
 import { runHref } from './lib/route.js';
@@ -14,7 +15,8 @@ const GROUPS = [
 const DASH = '–';
 
 // Today's tokens and cost, from the 30-day usage stats. `tick` changes on every live event.
-function useToday(tick) {
+function useToday(liveTick) {
+  const tick = useThrottledTick(liveTick); // usage is re-read at most every 30 s
   const [today, setToday] = useState(null);
   useEffect(() => {
     let stale = false;

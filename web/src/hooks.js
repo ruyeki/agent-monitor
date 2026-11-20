@@ -62,3 +62,42 @@ export function useTheme() {
   const cycle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : t === 'light' ? 'system' : 'dark')), []);
   return [theme, cycle];
 }
+
+// Follows `tick` at most once per `ms`. Mounting starts the first period (as if a value had just passed), so the
+// page's own first load is not repeated by the first live event. A change inside a period coalesces into one trailing
+// update when it ends; the first change after a quiet period passes at once. Timer-only; cleared on unmount.
+export function useThrottledTick(tick, ms = 30000) {
+  const [value, setValue] = useState(tick);
+  const s = useRef({ shown: tick, latest: tick, cooling: false, pending: false, timer: null, pass: null });
+  useEffect(() => {
+    const st = s.current;
+    const cool = () => {
+      st.cooling = true;
+      st.timer = setTimeout(() => {
+        if (st.pending) {
+          st.pending = false;
+          st.pass(st.latest);
+        } else st.cooling = false;
+      }, ms);
+    };
+    st.pass = (t) => {
+      st.shown = t;
+      setValue(t);
+      cool();
+    };
+    cool();
+    return () => {
+      clearTimeout(st.timer);
+      st.cooling = false;
+      st.pending = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const st = s.current;
+    st.latest = tick;
+    if (tick === st.shown) st.pending = false;
+    else if (st.cooling) st.pending = true;
+    else st.pass(tick);
+  }, [tick]);
+  return value;
+}
