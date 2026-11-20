@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunList } from '../src/RunList.jsx';
 import { RunView } from '../src/run/RunView.jsx';
-import { PeriodCards } from '../src/stats/PeriodCards.jsx';
+import { KpiStrip } from '../src/stats/KpiStrip.jsx';
 import { WaitingCard } from '../src/WaitingCards.jsx';
 import { sample } from './fixtures.js';
 
@@ -72,17 +72,17 @@ describe('Codex tags and stats', () => {
     expect(within(screen.getByRole('article', { name: /Waiting on you/ })).getByText('Codex')).toBeTruthy();
   });
 
-  it('period cards add a separate Codex line and leave the Claude headline alone', () => {
+  it('KPI tiles add a separate Codex line and leave the Claude headline alone', () => {
     const periods = { today: tk(1000, 2), week: tk(0), month: tk(0), avg30: tk(0) };
-    render(<PeriodCards periods={periods} codex={{ today: tk(5000), week: tk(0), month: tk(0) }} />);
-    const today = screen.getByRole('article', { name: 'Today' });
-    expect(today.querySelector('.big').textContent).toBe('1.0k');
+    render(<KpiStrip periods={periods} codex={{ today: tk(5000), week: tk(0), month: tk(0) }} metric="tokens" />);
+    const today = screen.getByRole('group', { name: 'Today' });
+    expect(today.querySelector('.stat-value').textContent).toBe('1.0k');
     expect(within(today).getByLabelText('Codex Today').textContent).toBe('Codex: 5.0k tokens');
-    expect(screen.queryByLabelText('Codex Daily average (last 30 days with data)')).toBeNull();
+    expect(screen.queryByLabelText('Codex Daily average (30 d)')).toBeNull();
   });
 
   it('shows no Codex line when the server has none', () => {
-    render(<PeriodCards periods={{ today: tk(1) }} />);
+    render(<KpiStrip periods={{ today: tk(1) }} metric="tokens" />);
     expect(screen.queryByText(/Codex:/)).toBeNull();
   });
 });

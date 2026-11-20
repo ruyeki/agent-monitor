@@ -85,28 +85,34 @@ await check('header nav shows Monitor, Workflow and Stats, and Stats opens #/sta
   await page.getByText(/today/i).first().waitFor({ timeout: 8000 });
 });
 
-await check('four period cards: Today, This week, This month, Daily average, each with a total, a breakdown and an API-equivalent estimate', async () => {
-  const text = await bodyText();
-  for (const t of [/today/i, /this week/i, /this month/i, /daily average/i]) ok(t.test(text), `no card ${t}`);
+await check('KPI strip: four tiles show cost first with tokens beneath, the Tokens toggle flips them, and costs are labelled API-equivalent estimates', async () => {
+  const strip = page.getByRole('region', { name: 'Usage summary' });
+  const tile = (n) => strip.getByRole('group', { name: n });
+  for (const n of ['Today', 'This week', 'This month', 'Daily average (30 d)']) ok(await tile(n).count() === 1, `no tile ${n}`);
   const tt = (await get('/api/stats/usage')).periods.today.total;
-  const forms = [tt.toLocaleString('en-US'), String(tt), tt < 1e6 ? `${(tt / 1000).toFixed(tt < 1e4 ? 1 : 0)}k` : `${(tt / 1e6).toFixed(1)}M`, tt < 1e6 ? `${(tt / 1000).toFixed(1)}k` : `${(tt / 1e6).toFixed(2)}M`];
-  ok(tt >= 123456 && forms.some((f) => text.includes(f)), `the Today headline (${tt}) is not on the page as ${forms.join(' | ')}`);
-  for (const t of [/input/i, /output/i, /cache write/i, /cache read/i]) ok(t.test(text), `breakdown ${t} missing`);
-  ok((text.match(/≈\s*\$/g) || []).length >= 4, 'each card needs an "≈ $" estimate line');
+  const forms = [tt.toLocaleString('en-US'), String(tt), tt < 1e6 ? `${(tt / 1000).toFixed(tt < 1e4 ? 1 : 0)}k` : `${(tt / 1e6).toFixed(1)}M`];
+  ok(tt >= 123456, `fixture today total ${tt}`);
+  let t = await tile('Today').innerText();
+  ok(/\$/.test(t) && forms.some((f) => t.includes(`${f} tokens`)), `cost mode: Today tile "${t.replace(/\n/g, ' | ')}" needs a $ figure and "<tokens> tokens"`);
+  await page.getByRole('group', { name: 'Metric' }).getByRole('button', { name: 'Tokens' }).click();
+  t = await tile('Today').innerText();
+  ok(forms.some((f) => t.includes(f)) && /≈\s*\$/.test(t), `tokens mode: Today tile "${t.replace(/\n/g, ' | ')}" needs the token count and "≈ $"`);
+  await page.getByRole('group', { name: 'Metric' }).getByRole('button', { name: 'Cost' }).click();
+  const text = await bodyText();
   ok(/API-equivalent/i.test(text) && /estimate/i.test(text), 'estimate is not labelled');
+  ok(!/cache write/i.test(await strip.innerText()), 'the tiles still carry a token-type breakdown');
   await page.screenshot({ path: path.join(SHOTS, 'stats-light.png'), fullPage: true });
 });
 
-await check('the daily chart is hand-rolled SVG; the 30 / 90 days toggle changes what is drawn', async () => {
+await check('the daily chart is hand-rolled SVG; the 7 / 30 / 90 days toggle changes what is drawn', async () => {
   const svg = page.locator('svg').filter({ has: page.locator('rect') });
   ok(await svg.count() > 0, 'no SVG chart with bars');
-  await clickAny(/^\s*90\s*(d|days)/i);
-  await page.waitForTimeout(400);
-  const n90 = await page.locator('svg rect').count();
-  await clickAny(/^\s*30\s*(d|days)/i);
-  await page.waitForTimeout(400);
-  const n30 = await page.locator('svg rect').count();
-  ok(n90 > n30, `90 days draws ${n90} rects, 30 days ${n30}`);
+  const hits = () => page.locator('rect[data-hit]').count();
+  const range = (n) => page.getByRole('group', { name: 'Range' }).getByRole('button', { name: `${n} days` }).click();
+  for (const n of [90, 7, 30]) {
+    await range(n);
+    ok(await until(async () => (await hits()) === n, 5000, 100), `${n} days draws ${await hits()} columns`);
+  }
   ok(!(await page.evaluate(() => !!window.Chart || !!window.d3 || !!window.Recharts)), 'a chart library is loaded');
 });
 
@@ -126,7 +132,7 @@ await check('the indexer status line shows the indexed message and file counts',
   ok(text.includes(String(st.messages)) || text.includes(st.messages.toLocaleString('en-US')), `message count ${st.messages} not on the page`);
 });
 
-await check('the per-version table shows finished runs, avg tokens and avg duration, and expands to per-node rows', async () => {
+await check('the per-stage panel shows the newest version with finished runs, its stage rows and a compact version table', async () => {
   for (const s of ['frame']) await step(s);
   await app.api('POST', `/api/runs/${runA}/respond`, { body: { action: 'Agree spec', text: 'x' } });
   for (const s of ['plan', 'implement', 'prep']) await step(s);
@@ -137,18 +143,20 @@ await check('the per-version table shows finished runs, avg tokens and avg durat
   ok((await detailA()).run.status === 'done', 'fixture run did not finish');
   await page.reload();
   await page.getByText(/this week/i).first().waitFor({ timeout: 8000 });
-  const text = await bodyText();
-  ok(/finished/i.test(text) && /avg|average/i.test(text) && /duration/i.test(text), 'version table headings missing');
-  const verRow = page.locator('table').filter({ hasText: /finished runs/i }).getByRole('row').filter({ hasText: /v1/ }).first();
+  const panel = page.getByRole('region', { name: "Where a run's tokens go" });
+  await panel.waitFor({ timeout: 8000 });
+  ok(/1 finished runs? · avg .* tokens · ≈ \$.* per run/.test(await panel.innerText()), 'no per-run summary line');
+  await panel.locator('li[data-stage="frame"]').waitFor({ timeout: 6000 });
+  ok(await panel.getByRole('button', { name: /^(Show|Hide) nodes/ }).count() === 0, 'expand buttons are gone');
+  const verRow = panel.getByRole('table', { name: 'Workflow versions' }).getByRole('row').filter({ hasText: /v1/ }).first();
   await verRow.waitFor({ timeout: 6000 });
-  const before = (await bodyText()).length;
-  const toggle = verRow.getByRole('button').first();
-  if (await toggle.count()) await toggle.click(); else await verRow.click();
-  ok(await until(async () => /Verifier prep/.test(await bodyText()) || (await bodyText()).length > before + 40, 4000), 'the row did not expand to per-node rows');
-  ok(/Verifier prep|Implement|Frame/.test(await bodyText()), 'no node names in the expanded rows');
+  ok(/Verifier prep|Implement|Frame/.test(await panel.innerText()), 'no stage names');
 });
 
 await check('the price table is editable, notes its source and saves with PUT /api/prices', async () => {
+  const details = page.locator('details.prices');
+  ok(await details.evaluate((d) => !d.open), 'the price table should start closed');
+  await details.locator('summary').click();
   const text = await bodyText();
   ok(/claude-api skill, 2026-10-06; estimates only/i.test(text), 'price source note missing');
   const idx = await page.evaluate(() => [...document.querySelectorAll('tr')].findIndex((tr) => /claude-opus-5-5$/.test(tr.innerText.trim().split(/\s+/)[0] || '') || [...tr.querySelectorAll('input')].some((i) => i.value === 'claude-opus-5-5')));
@@ -163,10 +171,10 @@ await check('the price table is editable, notes its source and saves with PUT /a
   ok(await until(async () => (await get('/api/prices')).find((r) => r.model === 'claude-opus-5-5')?.input === 4.5, 5000), 'the edit did not reach /api/prices');
 });
 
-await check('Stats refreshes by itself when new usage is indexed (SSE)', async () => {
+await check('Stats refreshes by itself when new usage is indexed (SSE, throttled to one refresh per 30 s)', async () => {
   const before = await bodyText();
   wr(statsFile, [tline({ id: 's-live', ts: Date.now(), session: 'sess-stats', model: 'claude-opus-5-5-20261001', input: 900000 })], true);
-  ok(await until(async () => (await bodyText()) !== before, 14000, 200), 'the page did not change after new transcript data');
+  ok(await until(async () => (await bodyText()) !== before, 40000, 250), 'the page did not change within 40 s after new transcript data');
   ok(/1\.0\d\s?M|1,0\d\d,\d{3}|1\.02\s?M|1\.0\s?M/.test(await bodyText()) || (await bodyText()) !== before, 'Today did not grow');
 });
 

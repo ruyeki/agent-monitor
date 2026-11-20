@@ -32,9 +32,9 @@ export function PriceTable({ prices, onSaved }) {
   };
 
   return (
-    <section aria-label="Prices">
-      <h2>Prices ($ per million tokens)</h2>
-      <p className="muted">Source: claude-api skill, 2026-10-06; estimates only. Costs are API-equivalent, not what a subscription bills.</p>
+    <details className="panel prices" aria-label="Prices">
+      <summary>Prices ($ per million tokens)</summary>
+      <p className="muted">Source: claude-api skill, 2026-10-06; estimates only.</p>
       <div className="table-scroll">
       <table>
         <thead>
@@ -48,7 +48,7 @@ export function PriceTable({ prices, onSaved }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.model}>
-              <td className="mono">{r.model}</td>
+              <td className="mono model-id">{r.model}</td>
               {FIELDS.map(([f, label]) => (
                 <td key={f}>
                   <input type="number" min="0" step="any" aria-label={`${r.model} ${label}`} value={r[f] ?? ''} onChange={(e) => edit(r.model, f, e.target.value)} />
@@ -70,6 +70,6 @@ export function PriceTable({ prices, onSaved }) {
           Could not save prices: {error}
         </p>
       )}
-    </section>
+    </details>
   );
 }

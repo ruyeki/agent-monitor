@@ -147,7 +147,7 @@ async function go(p, hash, name) {
   await p.goto(`${base}/${hash}`);
   if (name.startsWith('run-')) { await p.getByRole('group', { name: 'Run graph' }).waitFor({ timeout: 8000 }); await p.locator('.fnode[data-node="frame"]').waitFor({ timeout: 8000 }); }
   else if (name === 'workflow') await p.locator('.fnode[data-node="frame"]').waitFor({ timeout: 10000 });
-  else if (name === 'stats') await p.locator('.period-card').first().waitFor({ timeout: 10000 });
+  else if (name === 'stats') await p.locator('.stats-page .panel').first().waitFor({ timeout: 10000 });
   else await p.locator('.run-rows, .muted').first().waitFor({ timeout: 8000 });
   if (name === 'monitor') await p.locator('.answer-pane').waitFor({ timeout: 8000 });
   await p.waitForTimeout(900);
@@ -327,15 +327,15 @@ for (const theme of ['light', 'dark']) {
     ok(/^220px/.test(r.cols), `columns ${r.cols}`);
     ok(r.edge, 'no --xy-edge-stroke');
   });
-  await check(`[${theme}] stats: card radius 12px, big number 28/600, toggle on = surface-3 (not accent), chart-wrap radius 12`, async () => {
+  await check(`[${theme}] stats: panel radius 12px, KPI figure 22/600, toggle on = surface-3 (not accent), chart-wrap radius 12`, async () => {
     await go(p, '#/stats', 'stats');
     const r = await p.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
-      const card = document.querySelector('.period-card'); const big = document.querySelector('.period-card .big'); const on = document.querySelector('.toggle button.on'); const cw = document.querySelector('.chart-wrap');
+      const card = document.querySelector('.stats-page .panel'); const big = document.querySelector('.stat-strip .stat-value'); const on = document.querySelector('.toggle button.on'); const cw = document.querySelector('.chart-wrap');
       return { crad: getComputedStyle(card).borderTopLeftRadius, bfs: getComputedStyle(big).fontSize, bfw: getComputedStyle(big).fontWeight, btn: getComputedStyle(big).fontVariantNumeric, onbg: on && getComputedStyle(on).backgroundColor, s3: root.getPropertyValue('--surface-3').trim(), acc: root.getPropertyValue('--accent').trim(), cwr: cw && getComputedStyle(cw).borderTopLeftRadius, tgl: getComputedStyle(document.querySelector('.toggle')).borderTopWidth };
     });
-    ok(r.crad === '12px', `period card radius ${r.crad}`);
-    ok(r.bfs === '28px' && r.bfw === '600', `big ${r.bfs}/${r.bfw}`);
+    ok(r.crad === '12px', `panel radius ${r.crad}`);
+    ok(r.bfs === '22px' && r.bfw === '600', `KPI figure ${r.bfs}/${r.bfw}`);
     ok(/tabular/.test(r.btn), `tabular-nums missing (${r.btn})`);
     ok(r.cwr === '12px', `chart-wrap radius ${r.cwr}`);
     await p.evaluate(helpers);
