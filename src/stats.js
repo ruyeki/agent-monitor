@@ -9,6 +9,19 @@ const COUNTS = ['input', 'output', 'cacheWrite', 'cacheRead'];
 
 export const sum = (rows, prices) => { const a = emptyAcc(); for (const r of rows) add(a, r, priceFor(prices, r.model)); return toTokens(a); };
 
+// USD per token type for one row (both cache-write tiers in cacheWrite); all 0 without a price. Sums to the row's cost.
+function costParts(r, price) {
+  if (!price) return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+  const n = (v) => Number(v) || 0;
+  const w1h = n(r.cacheWrite1h);
+  return {
+    input: (n(r.input) * price.input) / 1e6,
+    output: (n(r.output) * price.output) / 1e6,
+    cacheWrite: ((n(r.cacheWrite) - w1h) * price.cacheWrite + w1h * price.cacheWrite1h) / 1e6,
+    cacheRead: (n(r.cacheRead) * price.cacheRead) / 1e6,
+  };
+}
+
 // Dashboard numbers: today, Monday-start week, calendar month and the average of the latest 30 days with data.
 export function usageStats({ usage, prices, now = new Date(), days = 90 }) {
   const today = localDay(now);
@@ -33,14 +46,15 @@ export function usageStats({ usage, prices, now = new Date(), days = 90 }) {
   const windowRows = all.filter((r) => r.day >= windowFrom && r.day <= today);
   const daily = windowRows.map((r) => {
     const t = sum([r], prices);
-    return { day: r.day, provider: r.provider, model: r.model, input: r.input, output: r.output, cacheWrite: r.cacheWrite, cacheRead: r.cacheRead, total: t.total, cost: t.cost };
+    return { day: r.day, provider: r.provider, model: r.model, input: r.input, output: r.output, cacheWrite: r.cacheWrite, cacheRead: r.cacheRead, total: t.total, cost: t.cost, costs: costParts(r, priceFor(prices, r.model)) };
   });
+  const firstDay = rows.reduce((min, r) => (min === null || r.day < min ? r.day : min), null);
   const unpricedModels = [...new Set(windowRows.filter((r) => r.provider !== 'codex' && r.model && !priceFor(prices, r.model)).map((r) => r.model))].sort();
   return {
     indexer: usage.status(),
     codex: { today: sum(codexRows.filter((r) => r.day === today), prices), week: sum(codexRows.filter((r) => r.day >= weekStart && r.day <= today), prices), month: sum(codexRows.filter((r) => r.day >= monthStart && r.day <= today), prices) },
     periods: { today: sum(inRange(today), prices), week: sum(inRange(weekStart), prices), month: sum(inRange(monthStart), prices), avg30: avg },
-    daily, unpricedModels,
+    daily, unpricedModels, firstDay,
   };
 }
 
@@ -93,10 +107,10 @@ export function versionStats(store, usage, now = Date.now()) {
     const runs = byVersion.get(version) ?? [];
     const wf = store.version(version);
     return {
-      version, publishedAt, finishedRuns: runs.length, avgTokens: mean(runs.map((r) => r.tokens)), avgDurationMs: mean(runs.map((r) => r.durationMs)),
+      version, publishedAt, finishedRuns: runs.length, avgTokens: mean(runs.map((r) => r.tokens)), avgCost: mean(runs.map((r) => r.att.total.cost)), avgDurationMs: mean(runs.map((r) => r.durationMs)),
       nodes: wf.nodes.map((n) => {
         const seen = runs.filter((r) => r.perNode.has(n.id));
-        return { id: n.id, name: n.name, runs: seen.length, avgTokens: mean(seen.map((r) => r.att.nodes[n.id]?.total ?? 0)), avgDurationMs: mean(seen.map((r) => r.perNode.get(n.id))) };
+        return { id: n.id, name: n.name, runs: seen.length, avgTokens: mean(seen.map((r) => r.att.nodes[n.id]?.total ?? 0)), avgCost: mean(seen.map((r) => r.att.nodes[n.id]?.cost ?? 0)), avgDurationMs: mean(seen.map((r) => r.perNode.get(n.id))) };
       }),
     };
   });

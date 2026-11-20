@@ -167,7 +167,8 @@ export async function startServer({
       return d ? send(res, 200, d) : send(res, 404, { error: 'No such version.' });
     }
     if (method === 'GET' && url.pathname === '/api/stats/usage') {
-      const days = url.searchParams.get('days') === '30' ? 30 : 90;
+      const n = url.searchParams.get('days');
+      const days = /^\d{1,3}$/.test(n ?? '') && Number(n) >= 1 && Number(n) <= 366 ? Number(n) : 90;
       return send(res, 200, usageStats({ usage, prices: usage.prices(), days }));
     }
     if (method === 'GET' && url.pathname === '/api/stats/versions') return send(res, 200, versionStats(store, usage));

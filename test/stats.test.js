@@ -32,7 +32,7 @@ test('periods: today, Monday-start week, calendar month, and the average over da
   assert.equal(s.unpricedModels.join(), 'mystery-1');
   assert.equal(s.daily.length, 7); // 90-day window: from 2026-07-24, today included, tomorrow's row excluded
   assert.ok(s.daily.every((d) => d.day >= '2026-07-24' && d.day <= '2026-10-21'));
-  assert.deepEqual(Object.keys(s.daily[0]).sort(), ['cacheRead', 'cacheWrite', 'cost', 'day', 'input', 'model', 'output', 'provider', 'total']);
+  assert.deepEqual(Object.keys(s.daily[0]).sort(), ['cacheRead', 'cacheWrite', 'cost', 'costs', 'day', 'input', 'model', 'output', 'provider', 'total']);
   const d30 = usageStats({ usage: stub(rows), prices: SEED_PRICES, now, days: 30 });
   assert.equal(d30.daily.length, 6); // 2026-08-15 drops out
   assert.equal(s.periods.avg30.days, 8); // 05-01, 08-15, 09-30, 10-02, 10-18, 10-19, 10-20, 10-21 (tomorrow excluded)
@@ -124,6 +124,61 @@ test('version stats: finished runs only, newest version first, per-node means', 
   assert.equal(v1.nodes.find((n) => n.id === 'verify').avgDurationMs, (stage(a) + stage(b)) / 2);
   assert.equal(v[0].nodes.find((n) => n.id === 'frame').name, 'Frame it');
   store.close();
+});
+
+test('version stats: avgCost per version and node is the mean USD over the same runs as avgTokens', () => {
+  const store = openStore(tmp());
+  const mk = (title, session) => {
+    const id = store.startRun({ title }).run.id;
+    finish(store, id);
+    store.createAgent({ id: `main:${session}`, runId: id, sessionId: session, type: 'main' });
+    return id;
+  };
+  const a = mk('Run a', 'SA');
+  const b = mk('Run b', 'SB');
+  store.createAgent({ id: 'subA', runId: a, sessionId: 'SA', type: 'general-purpose' });
+  store.reportNode('subA', 'frame');
+  const m = (id, agentId, sessionId, ts, input) => ({ id, ts, day: ts.slice(0, 10), sessionId, agentId, model: 'claude-opus-5', input, output: 0, cacheWrite: 0, cacheWrite1h: 0, cacheRead: 0 });
+  const usage = fakeUsage([m('1', 'subA', 'SA', store.getRun(a).created_at, 1e6), m('3', null, 'SB', store.getRun(b).created_at, 2e6)]);
+  const [v] = versionStats(store, usage);
+  assert.equal(v.avgCost, (5 + 10) / 2); // $5 per M input: run a 1M, run b 2M
+  const frame = v.nodes.find((n) => n.id === 'frame');
+  assert.deepEqual([frame.runs, frame.avgTokens, frame.avgCost], [2, 5e5, 2.5]);
+  assert.equal(v.nodes.find((n) => n.id === 'verify').avgCost, 0);
+  store.close();
+  const empty = openStore(tmp());
+  assert.equal(versionStats(empty, fakeUsage([]))[0].avgCost, 0);
+  assert.ok(versionStats(empty, fakeUsage([]))[0].nodes.every((n) => n.avgCost === 0));
+  empty.close();
+});
+
+test('daily rows carry costs per token type that sum to the row cost; unpriced models are all 0', () => {
+  const rows = [
+    row('2026-10-21', 'claude-opus-5', { input: 1e6, output: 1e6, cacheWrite: 2e6, cacheWrite1h: 1e6, cacheRead: 1e6 }),
+    row('2026-10-21', 'mystery-1', { input: 1000 }),
+  ];
+  const s = usageStats({ usage: stub(rows), prices: SEED_PRICES, now });
+  const [opus, mystery] = s.daily;
+  const p = SEED_PRICES.find((x) => x.model === 'claude-opus-5');
+  assert.deepEqual(Object.keys(opus.costs).sort(), ['cacheRead', 'cacheWrite', 'input', 'output']);
+  assert.equal(opus.costs.input, p.input);
+  assert.equal(opus.costs.output, p.output);
+  assert.equal(opus.costs.cacheWrite, p.cacheWrite + p.cacheWrite1h); // 1M at the 5m rate plus 1M at the 1h rate
+  assert.equal(opus.costs.cacheRead, p.cacheRead);
+  assert.ok(Math.abs(Object.values(opus.costs).reduce((a, b) => a + b, 0) - opus.cost) < 1e-9);
+  assert.deepEqual(mystery.costs, { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 });
+  assert.equal(mystery.cost, 0);
+});
+
+test('firstDay is the earliest non-Codex day of all time, null without usage', () => {
+  const rows = [
+    row('2026-10-02', 'claude-opus-5', { input: 1 }),
+    row('2025-01-09', 'claude-opus-5', { input: 1 }), // far outside the daily window, still counts
+    row('2024-01-01', 'gpt-5', { input: 1, provider: 'codex' }), // Codex never counts
+  ];
+  assert.equal(usageStats({ usage: stub(rows), prices: SEED_PRICES, now, days: 7 }).firstDay, '2025-01-09');
+  assert.equal(usageStats({ usage: stub([]), prices: SEED_PRICES, now }).firstDay, null);
+  assert.equal(usageStats({ usage: stub([rows[2]]), prices: SEED_PRICES, now }).firstDay, null);
 });
 
 test('runAttribution is memoised: repeat calls do not recompute, a new indexer generation does; a long-ended run is frozen', () => {

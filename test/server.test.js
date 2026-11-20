@@ -410,7 +410,7 @@ test('REST: usage stats, version stats and prices', async () => {
     fs.writeFileSync(main, tline('m1', { session: 'sess1', input: 1e6, output: 1e6 }) + tline('m2', { session: 'sess1', input: 100, model: 'mystery-1' }));
     await rescan(s);
     const u = (await call(s, 'GET', '/api/stats/usage')).body;
-    assert.deepEqual(Object.keys(u).sort(), ['codex', 'daily', 'indexer', 'periods', 'unpricedModels']);
+    assert.deepEqual(Object.keys(u).sort(), ['codex', 'daily', 'firstDay', 'indexer', 'periods', 'unpricedModels']);
     assert.equal(u.indexer.messages, 2);
     assert.deepEqual(Object.keys(u.periods).sort(), ['avg30', 'month', 'today', 'week']);
     assert.equal(u.periods.today.total, 2e6 + 100);
@@ -420,6 +420,15 @@ test('REST: usage stats, version stats and prices', async () => {
     assert.deepEqual(u.unpricedModels, ['mystery-1']);
     assert.equal(u.daily.length, 2);
     assert.equal((await call(s, 'GET', '/api/stats/usage?days=30')).body.daily.length, 2);
+    assert.equal(u.firstDay, u.daily[0].day);
+    for (const d of u.daily) assert.ok(Math.abs(Object.values(d.costs).reduce((a, b) => a + b, 0) - d.cost) < 1e-9);
+    // any whole number of days 1..366 is accepted; anything else falls back to 90 and never fails
+    for (const days of ['7', '14', '60', '180']) assert.equal((await call(s, 'GET', `/api/stats/usage?days=${days}`)).status, 200);
+    for (const days of ['0', '367', '-5', 'abc', '30.5', '1e2', '', ' 7']) {
+      const r = await call(s, 'GET', `/api/stats/usage?days=${encodeURIComponent(days)}`);
+      assert.equal(r.status, 200, days);
+      assert.equal(r.body.daily.length, 2, days);
+    }
 
     // a finished run shows up in the version stats
     const id2 = s.store.startRun({ title: 'Finished' }).run.id;
@@ -430,7 +439,8 @@ test('REST: usage stats, version stats and prices', async () => {
     }
     const v = (await call(s, 'GET', '/api/stats/versions')).body;
     assert.deepEqual([v.length, v[0].version, v[0].finishedRuns, v[0].avgTokens, v[0].nodes.length], [1, 1, 1, 0, 18]);
-    assert.deepEqual(Object.keys(v[0].nodes[0]).sort(), ['avgDurationMs', 'avgTokens', 'id', 'name', 'runs']);
+    assert.deepEqual([v[0].avgCost, v[0].nodes[0].avgCost], [0, 0]);
+    assert.deepEqual(Object.keys(v[0].nodes[0]).sort(), ['avgCost', 'avgDurationMs', 'avgTokens', 'id', 'name', 'runs']);
     const wv = (await call(s, 'GET', '/api/workflow/versions')).body;
     assert.deepEqual(wv[0].stats, { finishedRuns: 1, avgTokens: 0, avgDurationMs: v[0].avgDurationMs });
 
