@@ -20,13 +20,16 @@ export function RunGraph({ detail }) {
     return toFlow(detail.workflow, { runInfo: runState(detail), codex });
   }, [detail]);
   return (
-    <div className="run-graph-wrap">
-      <div className="run-legend" role="group" aria-label="Colour legend">
-        {LEGEND.map(([state, glyph, label]) => (
-          <span key={state} className={`legend-item run-${state}`}>
-            <span aria-hidden="true">{glyph}</span> {label}
-          </span>
-        ))}
+    <div className="card run-graph-wrap">
+      <div className="cardhead">
+        <h2>Stages</h2>
+        <div className="run-legend" role="group" aria-label="Colour legend">
+          {LEGEND.map(([state, glyph, label]) => (
+            <span key={state} className={`legend-item run-${state}`}>
+              <span aria-hidden="true">{glyph}</span> {label}
+            </span>
+          ))}
+        </div>
       </div>
       <div className="canvas run-graph" role="group" aria-label="Run graph">
       <ReactFlow

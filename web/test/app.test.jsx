@@ -62,11 +62,11 @@ describe('WaitingCard', () => {
 });
 
 describe('RunList', () => {
-  it('shows rounds n/max, stage label and age; the row is a link to the run view (waiting runs are answered in the inbox)', () => {
-    render(<RunList runs={[run]} />);
+  it('shows rounds n/max, stage label and run time; the row is a link to the run view (waiting runs are answered in the inbox)', () => {
+    render(<RunList runs={[{ ...run, createdAt: iso(now - 125_000) }]} />);
     expect(screen.getByText('2/5')).toBeTruthy();
     expect(screen.getByText('Your solution')).toBeTruthy();
-    expect(screen.getByText('1m ago')).toBeTruthy();
+    expect(screen.getByText('2m')).toBeTruthy();
     expect(screen.getByRole('link', { name: /My run/ }).getAttribute('href')).toBe('#/runs/my-run');
     expect(screen.queryByRole('button')).toBeNull();
   });

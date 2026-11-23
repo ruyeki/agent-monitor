@@ -1,12 +1,11 @@
-import { roundsLabel } from './lib/format.js';
+import { useEffect, useState } from 'react';
+import { formatCost, isEnded, roundsLabel } from './lib/format.js';
+import { nowWorking } from './lib/crew.js';
 import { runHref } from './lib/route.js';
-import { Ago } from './Ago.jsx';
+import { Elapsed } from './Ago.jsx';
+import { Avatars } from './RunBits.jsx';
 
 export const CodexTag = ({ run }) => (run?.provider === 'codex' ? <span className="badge codex">Codex</span> : null);
-
-export function StatusBadge({ status }) {
-  return <span className={`badge status-${status}`}>{status}</span>;
-}
 
 export const stageLabel = (r) => (r.active?.length > 1 ? r.active.map((a) => a.name || a.id).join(' + ') : r.stageName || r.stage);
 
@@ -21,7 +20,7 @@ const ICONS = {
   stopped: { label: 'Stopped', cls: 'si-stopped', paths: [<circle key="c" cx="12" cy="12" r="9" />, <path key="p" d="m9 9 6 6M15 9l-6 6" />] },
 };
 
-// Status as icon + accessible name; the colour is a second cue, never the only one.
+// Status as icon + accessible name; the colour is a second cue, never the only one. The running arc turns (not when reduced motion is asked for).
 export function StatusIcon({ status, size = 16 }) {
   const i = ICONS[ICONS[status] ? status : 'running'];
   return (
@@ -31,18 +30,64 @@ export function StatusIcon({ status, size = 16 }) {
   );
 }
 
-function RowBody({ run }) {
+// A clock for the "is this agent working" rules of the working pill.
+function useNow(every) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), every);
+    return () => clearInterval(t);
+  }, [every]);
+  return now;
+}
+
+function Working({ detail }) {
+  const w = nowWorking(detail, useNow(10000));
+  if (!w) return null;
+  return (
+    <span className="working">
+      <span className="ring" aria-hidden="true" />
+      <span className="working-text">
+        {w.name} · {w.call}
+      </span>
+    </span>
+  );
+}
+
+const ENDED_LABEL = { done: 'Done', stopped: 'Stopped' };
+
+function RowBody({ run, detail }) {
+  const ended = isEnded(run);
+  const cost = detail?.tokens?.total ? formatCost(detail.tokens.total.cost) : '–';
   return (
     <>
       <StatusIcon status={run.status} />
-      <span className="run-title">{run.title}</span>
-      <span className="row-meta">
-        <CodexTag run={run} />
-        <span className="mono">{run.id}</span>
-        <span className="stage-pill">{stageLabel(run)}</span>
-        <span className="run-rounds">{roundsLabel(run)}</span>
+      <span className="run-main">
+        <span className="run-title">
+          {run.title}
+          <CodexTag run={run} />
+        </span>
+        <span className="row-meta">
+          <span className="mono">{run.id}</span>
+          <span className="stage-pill">{stageLabel(run)}</span>
+          <span className="run-rounds">
+            round <span>{roundsLabel(run)}</span>
+          </span>
+        </span>
+      </span>
+      {ended ? (
+        <span className={`pill ${run.status === 'done' ? 'done' : 'idle'}`} aria-hidden="true">
+          {ENDED_LABEL[run.status]}
+        </span>
+      ) : (
+        <>
+          {detail && <Working detail={detail} />}
+          {detail && <Avatars agents={detail.agents} />}
+        </>
+      )}
+      <span className="row-end">
+        <strong className="run-cost">{cost}</strong>
         <span className="run-age">
-          <Ago at={run.updatedAt} />
+          <Elapsed from={run.createdAt} to={ended ? run.endedAt || run.updatedAt : null} />
         </span>
       </span>
     </>
@@ -50,13 +95,14 @@ function RowBody({ run }) {
 }
 
 // Every row opens the run view (waiting runs are answered in the Monitor's decision inbox, not listed here).
-export function RunList({ runs }) {
+// detailOf(id) gives the run's detail (agents, cost, activity) once fetched.
+export function RunList({ runs, detailOf }) {
   return (
     <ul className="run-rows">
       {runs.map((r) => (
         <li key={r.id}>
           <a className="run-row" href={runHref(r.id)}>
-            <RowBody run={r} />
+            <RowBody run={r} detail={detailOf?.(r.id) ?? null} />
           </a>
         </li>
       ))}

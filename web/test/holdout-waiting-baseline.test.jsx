@@ -15,7 +15,7 @@ describe('baseline lib', () => {
   it('parseRoute', () => {
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
     expect(parseRoute('#/stats')).toEqual({ name: 'stats' });
-    expect(parseRoute('#/runs/x%2Fy')).toEqual({ name: 'run', id: 'x/y' });
+    expect(parseRoute('#/runs/x%2Fy')).toEqual({ name: 'run', id: 'x/y', tab: 'stages' });
     expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/nope')).toEqual({ name: 'monitor' });
   });

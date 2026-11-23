@@ -50,8 +50,8 @@ describe('parseRoute', () => {
     expect(parseRoute('#/')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
     expect(parseRoute('#/waiting')).toEqual({ name: 'monitor' }); // the Waiting page is gone; it lands on the Monitor
-    expect(parseRoute('#/runs/my-run')).toEqual({ name: 'run', id: 'my-run' });
-    expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
+    expect(parseRoute('#/runs/my-run')).toEqual({ name: 'run', id: 'my-run', tab: 'stages' });
+    expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b', tab: 'stages' });
     expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/nope')).toEqual({ name: 'monitor' });
     expect(runHref('a b')).toBe('#/runs/a%20b');

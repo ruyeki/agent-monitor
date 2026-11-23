@@ -28,11 +28,13 @@ const tmpDirs = [];
 const tmp = (p) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), p)); tmpDirs.push(d); return d; };
 
 // ---------- static checks on the built CSS (AC4)
-await check('built CSS: no @font-face, no external url(), no @import of http', async () => {
+await check('built CSS: only the self-hosted Inter @font-face (same-origin file), no external url(), no @import of http', async () => {
   const dir = path.join(webDir, 'assets');
   const css = fs.readdirSync(dir).filter((f) => f.endsWith('.css')).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
   ok(css.length > 1000, 'no css found');
-  ok(!/@font-face/i.test(css), '@font-face present');
+  ok((css.match(/@font-face/gi) || []).length === 1, 'want exactly one @font-face (Inter)');
+  const font = /url\(\s*["']?\/?assets\/(InterVariable-[\w-]+\.woff2)/.exec(css);
+  ok(font && fs.existsSync(path.join(dir, font[1])), 'the @font-face does not point at the bundled InterVariable woff2');
   ok(!/url\(\s*["']?(https?:)?\/\//i.test(css), 'external url() in css');
   ok(!/@import[^;]*(https?:)?\/\//i.test(css), '@import external');
   const html = fs.readFileSync(path.join(webDir, 'index.html'), 'utf8');
@@ -154,8 +156,11 @@ async function go(p, hash, name) {
 }
 
 // ---------- per theme
-const LIGHT = { '--bg': '#f5f6f7', '--surface': '#ffffff', '--surface-2': '#f0f1f3', '--surface-3': '#e6e8eb', '--raised': '#ffffff', '--text': '#141516', '--text-2': '#3c3f45', '--muted': '#5f636b', '--faint': '#8a8f98', '--border': '#e3e5e8', '--border-strong': '#cfd2d7', '--accent': '#5e6ad2', '--accent-hover': '#4f5ac4', '--accent-text': '#ffffff', '--link': '#4652bb', '--focus': '#5e6ad2', '--danger': '#b42a24', '--ok': '#16703a', '--warn': '#7d5300', '--warn-bg': '#fcf1d2', '--edge': '#7e838c', '--run-run': '#4652bb', '--run-idle': '#5f636b' };
-const DARK = { '--bg': '#010102', '--surface': '#0f1011', '--surface-2': '#141516', '--surface-3': '#18191a', '--raised': '#141516', '--text': '#f7f8f8', '--text-2': '#d0d6e0', '--muted': '#8a8f98', '--faint': '#62666d', '--border': '#23252a', '--border-strong': '#34343a', '--accent': '#5e6ad2', '--accent-hover': '#4f5ac4', '--accent-text': '#ffffff', '--link': '#828fff', '--focus': '#5e69d1', '--danger': '#f07272', '--ok': '#27a644', '--warn': '#f2c94c', '--warn-bg': '#2a2312', '--edge': '#6b6f76', '--run-run': '#828fff', '--run-idle': '#8a8f98' };
+// The affectUI palette agreed for #2289 (mockups' aui-am.css), mapped onto the AM token names.
+const LIGHT = { '--bg': '#f7f7f8', '--surface': '#ffffff', '--surface-2': '#f3f3f5', '--surface-3': '#ebebee', '--raised': '#ffffff', '--text': '#1d1d1f', '--text-2': '#3a3a3e', '--muted': '#5b5b60', '--faint': '#68686d', '--border': 'rgba(0,0,0,.07)', '--border-strong': 'rgba(0,0,0,.13)', '--accent': '#1d1d1f', '--accent-hover': '#3a3a3e', '--accent-text': '#ffffff', '--link': '#0b63c9', '--focus': '#3b7ddd', '--danger': '#bf271a', '--ok': '#1a7240', '--warn': '#994800', '--warn-bg': '#fff0dd', '--edge': '#86868c', '--run-run': '#0b63c9', '--run-idle': '#5b5b60' };
+const DARK = { '--bg': '#111113', '--surface': '#1c1c1f', '--surface-2': '#242427', '--surface-3': '#2c2c30', '--raised': '#1c1c1f', '--text': '#ededef', '--text-2': '#c8c8cd', '--muted': '#a7a7ad', '--faint': '#94949a', '--border': 'rgba(255,255,255,.08)', '--border-strong': 'rgba(255,255,255,.15)', '--accent': '#ededef', '--accent-hover': '#d4d4d8', '--accent-text': '#111113', '--link': '#78bbff', '--focus': '#5b9bff', '--danger': '#ff8e80', '--ok': '#66d597', '--warn': '#ffb067', '--warn-bg': '#3e2e22', '--edge': '#76767d', '--run-run': '#78bbff', '--run-idle': '#a7a7ad' };
+// The minifier may drop spaces and leading zeros inside custom property values.
+const norm = (v) => String(v).replace(/\s+/g, '').replace(/([(,])0\./g, '$1.');
 const THEME_FREE = { '--r-xs': '4px', '--r-sm': '6px', '--r-md': '8px', '--r-lg': '12px', '--r-xl': '16px', '--r-pill': '9999px', '--sp-1': '4px', '--sp-2': '8px', '--sp-3': '12px', '--sp-4': '16px', '--sp-5': '24px', '--sp-6': '32px', '--sp-7': '48px' };
 const readVars = (names) => { const cs = getComputedStyle(document.documentElement); return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(n).trim().toLowerCase()])); };
 const allVarNames = () => { const out = new Set(); for (const sh of document.styleSheets) for (const r of sh.cssRules) { const walk = (rule) => { if (rule.style) for (const p of rule.style) if (p.startsWith('--')) out.add(p); if (rule.cssRules) for (const x of rule.cssRules) walk(x); }; walk(r); } return [...out]; };
@@ -168,7 +173,7 @@ for (const theme of ['light', 'dark']) {
 
   await check(`[${theme}] tokens: palette values match the agreed table`, async () => {
     const got = await p.evaluate(readVars, Object.keys(want));
-    const diff = Object.keys(want).filter((k) => got[k] !== want[k]).map((k) => `${k}=${got[k] || '(unset)'} want ${want[k]}`);
+    const diff = Object.keys(want).filter((k) => norm(got[k]) !== norm(want[k])).map((k) => `${k}=${got[k] || '(unset)'} want ${want[k]}`);
     ok(!diff.length, diff.join('; '));
   });
   await check(`[${theme}] tokens: radius and spacing scale, fonts, tint, elevation exist`, async () => {
@@ -180,9 +185,10 @@ for (const theme of ['light', 'dark']) {
     ok(/jetbrains mono/i.test(got['--font-mono']), `--font-mono ${got['--font-mono']}`);
     ok(got['--tint'] === (theme === 'light' ? '10%' : '14%'), `--tint ${got['--tint']}`);
     ok(got['--elev-1'] && got['--elev-2'], 'elevation tokens missing');
-    if (theme === 'dark') ok(/inset 0 1px 0 rgba\(255, ?255, ?255, ?0?\.03\)/.test(got['--elev-1']), `--elev-1 ${got['--elev-1']}`);
-    else ok(/rgba\(15, ?16, ?17, ?0?\.05\)/.test(got['--elev-1']), `--elev-1 ${got['--elev-1']}`);
-    ok(/^0 8px 24px/.test(got['--elev-2']), `--elev-2 ${got['--elev-2']}`);
+    // affectUI elevation: a 0.5px hairline ring plus a soft drop shadow
+    if (theme === 'dark') ok(/rgba\(255, ?255, ?255, ?0?\.09\)/.test(got['--elev-1']) && /0 2px 10px/.test(got['--elev-1']), `--elev-1 ${got['--elev-1']}`);
+    else ok(/rgba\(0, ?0, ?0, ?0?\.08\)/.test(got['--elev-1']) && /0 3px 12px/.test(got['--elev-1']), `--elev-1 ${got['--elev-1']}`);
+    ok(theme === 'dark' ? /0 10px 30px/.test(got['--elev-2']) : /0 6px 24px/.test(got['--elev-2']), `--elev-2 ${got['--elev-2']}`);
   });
   await check(`[${theme}] series tokens unchanged`, async () => {
     const S = theme === 'light' ? ['#2a78d6', '#eb6834', '#0f8c7e', '#9c7400', '#c44f7c', '#008300', '#6250d6', '#e34948', '#8a93a3'] : ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767', '#7b8494'];
@@ -197,24 +203,24 @@ for (const theme of ['light', 'dark']) {
     ok(r.fs === '13px', `font-size ${r.fs}`);
     ok(parseInt(r.h1, 10) >= 600, `h1 weight ${r.h1}`);
     const bg = await p.evaluate((c) => window.__rgba ? window.__rgba(c) : null, r.bg);
-    if (theme === 'dark') ok(/rgb\(1, 1, 2\)/.test(r.bg), `body bg ${r.bg}`);
+    if (theme === 'dark') ok(/rgb\(17, 17, 19\)/.test(r.bg), `body bg ${r.bg}`);
   });
-  await check(`[${theme}] sidebar: active nav link is a surface lift (--surface-3), not an accent fill; sidebar on --surface with a hairline; ~232px wide`, async () => {
+  await check(`[${theme}] sidebar: active nav link is a surface lift (--surface card on the --side rail), not an accent fill; hairline; ~232px wide`, async () => {
     const r = await p.evaluate(() => {
       const a = document.querySelector('.side-nav a[aria-current="page"]'), i = document.querySelector('.side-nav a:not([aria-current])'), sb = document.querySelector('aside.sidebar');
       const root = getComputedStyle(document.documentElement);
-      return { act: getComputedStyle(a).backgroundColor, inact: getComputedStyle(i).backgroundColor, rad: getComputedStyle(a).borderTopLeftRadius, w: sb.getBoundingClientRect().width, s3: root.getPropertyValue('--surface-3').trim(), s1: root.getPropertyValue('--surface').trim(), acc: root.getPropertyValue('--accent').trim(), bw: getComputedStyle(sb).borderRightWidth, sbg: getComputedStyle(sb).backgroundColor, links: [...document.querySelectorAll('nav[aria-label="Sections"] a')].length };
+      return { act: getComputedStyle(a).backgroundColor, inact: getComputedStyle(i).backgroundColor, rad: getComputedStyle(a).borderTopLeftRadius, w: sb.getBoundingClientRect().width, s3: root.getPropertyValue('--surface').trim(), s1: root.getPropertyValue('--side').trim(), acc: root.getPropertyValue('--accent').trim(), bw: getComputedStyle(sb).borderRightWidth, sbg: getComputedStyle(sb).backgroundColor, links: [...document.querySelectorAll('nav[aria-label="Sections"] a')].length };
     });
     await p.evaluate(helpers);
     const [act, acc, s3, s1, sbg] = await p.evaluate(({ a, c, d, e, f }) => [window.__rgba(a), window.__rgba(c), window.__rgba(d), window.__rgba(e), window.__rgba(f)], { a: r.act, c: r.acc, d: r.s3, e: r.s1, f: r.sbg });
     const rgb = (c) => JSON.stringify(c.slice(0, 3));
     ok(rgb(act) !== rgb(acc), 'active nav link has the accent fill');
-    ok(rgb(act) === rgb(s3), `active nav link bg ${r.act} != --surface-3 ${r.s3}`);
+    ok(rgb(act) === rgb(s3), `active nav link bg ${r.act} != --surface ${r.s3}`);
     ok(r.inact === 'rgba(0, 0, 0, 0)', `inactive nav link bg ${r.inact}`);
     ok(parseFloat(r.rad) >= 4 && parseFloat(r.rad) <= 8, `nav link radius ${r.rad}`);
     ok(r.w >= 220 && r.w <= 245, `sidebar width ${r.w}`);
     ok(r.bw === '1px', `sidebar right border ${r.bw}`);
-    ok(rgb(sbg) === rgb(s1), `sidebar bg ${r.sbg} != --surface ${r.s1}`);
+    ok(rgb(sbg) === rgb(s1), `sidebar bg ${r.sbg} != --side ${r.s1}`);
     ok(r.links === 3, `nav links ${r.links}`);
   });
   await check(`[${theme}] sidebar: brand mark is an accent-family svg next to the text; no h1 in the sidebar`, async () => {
@@ -243,7 +249,7 @@ for (const theme of ['light', 'dark']) {
     ok(r.vfs === '22px' && r.vfw === '600', `stat value ${r.vfs}/${r.vfw}`);
     ok(r.lfs === '12px', `stat label size ${r.lfs}`);
     ok(r.ls === 'none', `run list style ${r.ls}`);
-    ok(r.prad && parseFloat(r.prad) >= 100, `stage pill radius ${r.prad}`);
+    ok(r.prad && parseFloat(r.prad) >= 4 && parseFloat(r.prad) <= 6, `stage chip radius ${r.prad}`); // affectUI chip: 5px
     ok(r.tables === 0, 'a table is on the Monitor page');
   });
   await check(`[${theme}] badges: pill, codex badge tinted not solid accent, status colours`, async () => {
@@ -253,16 +259,16 @@ for (const theme of ['light', 'dark']) {
       return { rad: cs.borderTopLeftRadius, bg: cs.backgroundColor, col: cs.color, acc: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), fs: cs.fontSize };
     });
     ok(r, 'no codex badge in run view');
-    ok(parseFloat(r.rad) >= 100, `badge radius ${r.rad}`);
+    ok(parseFloat(r.rad) >= 4 && parseFloat(r.rad) <= 6, `badge radius ${r.rad}`); // affectUI tag: 5px
     await p.evaluate(helpers);
     const [bg, acc] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: r.bg, b: r.acc });
     ok(JSON.stringify(bg.slice(0, 3)) !== JSON.stringify(acc.slice(0, 3)), 'codex badge is a solid accent fill');
-    ok(/^1[12]px$/.test(r.fs), `badge font ${r.fs}`);
+    ok(/^1[12](\.5)?px$/.test(r.fs), `badge font ${r.fs}`);
   });
-  await check(`[${theme}] waiting cards (run view; frameless in the answer pane): radius 12px, 3px warn left edge, padding 16px, full width`, async () => {
+  await check(`[${theme}] waiting cards (run view; frameless in the answer pane): radius 10px, 3px warn left edge, padding 16px, full width`, async () => {
     await go(p, `#/runs/${RB}`, 'run-waiting');
     const r = await p.evaluate(() => { const c = document.querySelector('.run-side .waiting-card'); const cs = getComputedStyle(c); return { rad: cs.borderTopLeftRadius, lw: cs.borderLeftWidth, lc: cs.borderLeftColor, warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(), pad: cs.paddingTop, tw: c.getBoundingClientRect().width, pw: (() => { const pe = c.parentElement, pcs = getComputedStyle(pe); return pe.clientWidth - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight); })(), shadow: cs.boxShadow }; });
-    ok(r.rad === '12px', `card radius ${r.rad}`);
+    ok(r.rad === '10px', `card radius ${r.rad}`); // affectUI card radius
     ok(r.lw === '3px', `left edge ${r.lw}`);
     ok(r.pad === '16px', `padding ${r.pad}`);
     ok(Math.abs(r.tw - r.pw) < 2, 'card not full width');
@@ -294,7 +300,7 @@ for (const theme of ['light', 'dark']) {
     ok((r.os === 'solid' && parseFloat(r.ow) >= 2) || (r.sh && r.sh !== 'none'), `no ring on ${r.tag}: ${JSON.stringify(r)}`);
     if (r.os === 'solid') { await p.evaluate(helpers); const c = await p.evaluate((x) => window.__rgba(x), r.oc); ok(c[3] === 1, `focus ring alpha ${c[3]}`); }
   });
-  await check(`[${theme}] editor: primary button accent bg + white text; hover = --accent-hover; danger uses --danger; node card radius 8 / 4px stripe / --raised; selected = accent border`, async () => {
+  await check(`[${theme}] editor: primary button accent bg + accent text; hover = --accent-hover; node card radius 10 / icon tile, no stripe / --raised; selected = --link border`, async () => {
     await go(p, '#/workflow', 'workflow');
     const r = await p.evaluate(() => {
       const pb = document.querySelector('button.primary'); const cs = getComputedStyle(pb); const root = getComputedStyle(document.documentElement);
@@ -306,12 +312,12 @@ for (const theme of ['light', 'dark']) {
     ok(q.pbg === q.acc, `primary bg ${r.pbg} != accent ${r.acc}`);
     ok(q.pcol === q.at, `primary text ${r.pcol}`);
     ok(r.prad === '8px', `primary radius ${r.prad}`);
-    ok(r.nrad === '8px', `node radius ${r.nrad}`);
-    ok(r.nlw === '4px', `node stripe ${r.nlw}`);
+    ok(r.nrad === '10px', `node radius ${r.nrad}`);
+    ok(r.nlw === '1px', `node edge ${r.nlw}`); // the type colour moved from a 4px stripe to the icon tile
     ok(q.nbg === q.raised, `node bg ${r.nbg} != --raised ${r.raised}`);
     { const pt = await p.evaluate(() => { for (const n of document.querySelectorAll('.fnode')) { const r = n.getBoundingClientRect(); const x = r.x + r.width / 2, y = r.y + r.height / 2; if (y > 110 && y < innerHeight - 10 && x > 240 && x < innerWidth - 400) { const e = document.elementFromPoint(x, y); if (n.contains(e)) return [x, y]; } } return null; }); ok(pt, 'no node visible in the canvas viewport'); await p.mouse.click(pt[0], pt[1]); }
     await p.waitForTimeout(300);
-    const s = await p.evaluate(() => { const n = document.querySelector('.fnode.selected'); if (!n) return null; const cs = getComputedStyle(n); return { bc: cs.borderTopColor, sh: cs.boxShadow, acc: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() }; });
+    const s = await p.evaluate(() => { const n = document.querySelector('.fnode.selected'); if (!n) return null; const cs = getComputedStyle(n); return { bc: cs.borderTopColor, sh: cs.boxShadow, acc: getComputedStyle(document.documentElement).getPropertyValue('--link').trim() }; });
     ok(s, 'no selected node');
     const [bc, a] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: s.bc, b: s.acc });
     ok(JSON.stringify(bc.slice(0, 3)) === JSON.stringify(a.slice(0, 3)), `selected border ${s.bc}`);
@@ -328,21 +334,21 @@ for (const theme of ['light', 'dark']) {
     ok(/^220px/.test(r.cols), `columns ${r.cols}`);
     ok(r.edge, 'no --xy-edge-stroke');
   });
-  await check(`[${theme}] stats: panel radius 12px, KPI figure 22/600, toggle on = surface-3 (not accent), chart-wrap radius 12`, async () => {
+  await check(`[${theme}] stats: panel radius 10px, KPI figure 22/600, segmented toggle on = --surface (not accent), chart-wrap radius 10`, async () => {
     await go(p, '#/stats', 'stats');
     const r = await p.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
       const card = document.querySelector('.stats-page .panel'); const big = document.querySelector('.stat-strip .stat-value'); const on = document.querySelector('.toggle button.on'); const cw = document.querySelector('.chart-wrap');
-      return { crad: getComputedStyle(card).borderTopLeftRadius, bfs: getComputedStyle(big).fontSize, bfw: getComputedStyle(big).fontWeight, btn: getComputedStyle(big).fontVariantNumeric, onbg: on && getComputedStyle(on).backgroundColor, s3: root.getPropertyValue('--surface-3').trim(), acc: root.getPropertyValue('--accent').trim(), cwr: cw && getComputedStyle(cw).borderTopLeftRadius, tgl: getComputedStyle(document.querySelector('.toggle')).borderTopWidth };
+      return { crad: getComputedStyle(card).borderTopLeftRadius, bfs: getComputedStyle(big).fontSize, bfw: getComputedStyle(big).fontWeight, btn: getComputedStyle(big).fontVariantNumeric, onbg: on && getComputedStyle(on).backgroundColor, s3: root.getPropertyValue('--surface').trim(), acc: root.getPropertyValue('--accent').trim(), cwr: cw && getComputedStyle(cw).borderTopLeftRadius, tgl: getComputedStyle(document.querySelector('.toggle')).borderTopWidth };
     });
-    ok(r.crad === '12px', `panel radius ${r.crad}`);
+    ok(r.crad === '10px', `panel radius ${r.crad}`);
     ok(r.bfs === '22px' && r.bfw === '600', `KPI figure ${r.bfs}/${r.bfw}`);
     ok(/tabular/.test(r.btn), `tabular-nums missing (${r.btn})`);
-    ok(r.cwr === '12px', `chart-wrap radius ${r.cwr}`);
+    ok(r.cwr === '10px', `chart-wrap radius ${r.cwr}`);
     await p.evaluate(helpers);
     const [bg, s3, acc] = await p.evaluate(({ a, b, c }) => [window.__rgba(a), window.__rgba(b), window.__rgba(c)], { a: r.onbg, b: r.s3, c: r.acc });
     ok(JSON.stringify(bg.slice(0, 3)) !== JSON.stringify(acc.slice(0, 3)), 'toggle .on is an accent fill');
-    ok(JSON.stringify(bg.slice(0, 3)) === JSON.stringify(s3.slice(0, 3)), `toggle on bg ${r.onbg} != --surface-3 ${r.s3}`);
+    ok(JSON.stringify(bg.slice(0, 3)) === JSON.stringify(s3.slice(0, 3)), `toggle on bg ${r.onbg} != --surface ${r.s3}`);
     await p.screenshot({ path: path.join(SHOTS, `stats-${theme}.png`), fullPage: true });
   });
   await check(`[${theme}] stats: primary Save button radius 8px, number inputs radius 8px; chart bars use series tokens`, async () => {
@@ -460,11 +466,11 @@ await check('390 px: editor and run view page itself does not scroll horizontall
   notes.push('390 editor/run doc overflow: ' + out.join(' '));
 });
 
-// ---------- network: no external requests, no font requests
-await check('no external network requests and no font requests while visiting every page', async () => {
+// ---------- network: no external requests; the only font request is the self-hosted Inter file
+await check('no external network requests and no font request other than the bundled Inter while visiting every page', async () => {
   const origin = new URL(base).origin;
   const ext = requests.filter(([u]) => !u.startsWith(origin) && !/^(data|blob|about):/.test(u));
-  const fonts = requests.filter(([, t]) => t === 'font');
+  const fonts = requests.filter(([u, t]) => t === 'font' && !(u.startsWith(origin) && /\/assets\/InterVariable-[\w-]+\.woff2$/.test(u)));
   ok(requests.length > 20, 'few requests recorded: ' + requests.length);
   ok(!ext.length, 'external: ' + ext.slice(0, 3).map((x) => x[0]).join(', '));
   ok(!fonts.length, 'font requests: ' + fonts.slice(0, 3).map((x) => x[0]).join(', '));

@@ -59,7 +59,7 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 
 const views = () => page.locator('nav[aria-label="Views"]');
-const waitingView = () => views().getByRole('button', { name: /^Waiting on you/ });
+const waitingView = () => views().getByRole('button', { name: /^Needs you/ });
 const waitingCount = async () => ((await waitingView().innerText()).match(/\d+/) || [''])[0];
 const pane = () => page.getByRole('complementary', { name: 'Decision inbox' });
 const itemOf = (title) => pane().locator(`article[aria-label="Waiting on you: ${title}"]`);

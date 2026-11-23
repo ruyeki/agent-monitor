@@ -36,6 +36,17 @@ export function formatDuration(ms) {
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+// Compact elapsed time for rows and cards: 45_000 -> "45s"; 725_000 -> "12m"; 4_320_000 -> "1h 12m"; null -> "-"
+export function formatElapsed(ms) {
+  if (ms == null || Number.isNaN(Number(ms))) return '-';
+  const sec = Math.max(0, Math.floor(Number(ms) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
 // 12.345 -> "$12.35"; 0.004 -> "<$0.01"; 0 -> "$0.00"
 export function formatCost(n) {
   const v = Number(n) || 0;

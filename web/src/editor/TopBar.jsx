@@ -2,22 +2,25 @@ import { useState } from 'react';
 import { formatDuration, formatTokens } from '../lib/format.js';
 
 const STATUS_TEXT = { saved: 'Draft — saved', unsaved: 'Draft — unsaved', saving: 'Draft — saving…', error: 'Draft — save failed' };
+const STATUS_PILL = { saved: 'done', unsaved: 'idle', saving: 'run', error: 'fail' };
 
 export function TopBar({ published, status, versions, onPublish, onDiscard, onLoadVersion, onLayout }) {
   const [open, setOpen] = useState(false);
   return (
     <header className="page-head topbar">
       <h1>Workflow</h1>
-      <strong>{published ? `Published v${published.version}` : 'Not published'}</strong>
-      <span role="status">{STATUS_TEXT[status]}</span>
+      <strong className="pill idle">{published ? `Published v${published.version}` : 'Not published'}</strong>
+      <span role="status" className={`pill ${STATUS_PILL[status] ?? 'idle'}`}>
+        {STATUS_TEXT[status]}
+      </span>
       <span className="spacer" />
-      <button type="button" onClick={onLayout}>
+      <button type="button" className="ghost" onClick={onLayout}>
         Auto-layout
       </button>
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         Versions
       </button>
-      <button type="button" onClick={onDiscard}>
+      <button type="button" className="ghost" onClick={onDiscard}>
         Discard
       </button>
       <button type="button" className="primary" onClick={onPublish}>

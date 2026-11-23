@@ -68,8 +68,8 @@ describe('Monitor Today tiles', () => {
     await within(strip).findByText('1.5M');
     expect(within(strip).getByText('$12.50')).toBeTruthy();
     expect(within(strip).getByText('Tokens today')).toBeTruthy();
-    expect(within(strip).getByText('Cost today')).toBeTruthy();
-    expect(within(strip).getByText('API-equivalent (estimate)')).toBeTruthy();
+    expect(within(strip).getByText('Spend today')).toBeTruthy();
+    expect(within(strip).getByText('API-equivalent estimate')).toBeTruthy();
     const urls = globalThis.fetch.mock.calls.map(([u]) => u).filter((u) => u.startsWith('/api/stats/usage'));
     expect(urls).toEqual(['/api/stats/usage?days=30']);
   });

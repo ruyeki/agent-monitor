@@ -84,7 +84,7 @@ await check('monitor: a run row opens #/runs/<id>; Stop confirm flow ends the ru
   await page.getByRole('link', { name: /Run to stop/ }).first().click();
   await page.waitForURL(new RegExp(`#/runs/${toStop}$`));
   await page.getByRole('region', { name: `Run ${toStop}` }).waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^stop$/i }).click();
+  await page.getByRole('button', { name: /^stop run$/i }).click();
   await page.getByRole('group', { name: /confirm stop/i }).waitFor({ timeout: 3000 });
   await page.getByRole('button', { name: /^confirm$/i }).click();
   ok(await until(async () => (await get(`/api/runs/${toStop}`)).run.status === 'stopped', 5000), 'run is not stopped after confirm');

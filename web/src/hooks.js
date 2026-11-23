@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { getRun } from './api.js';
 
 // EventSource with manual reconnect; calls onChange (debounced) on every event and on (re)open.
 export function useLive(onChange, { debounce = 250, retry = 2000 } = {}) {
@@ -61,6 +62,70 @@ export function useTheme() {
   }, [theme]);
   const cycle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : t === 'light' ? 'system' : 'dark')), []);
   return [theme, cycle];
+}
+
+// The Monitor layout ('list' | 'fleet'), remembered per browser. The page works when storage throws.
+const LAYOUT_KEY = 'agent-monitor-layout';
+export function useLayout() {
+  const [layout, setLayout] = useState(() => {
+    try {
+      return localStorage.getItem(LAYOUT_KEY) === 'fleet' ? 'fleet' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  const choose = useCallback((v) => {
+    const next = v === 'fleet' ? 'fleet' : 'list';
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_KEY, next);
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
+  return [layout, choose];
+}
+
+// Run details for the Monitor rows and Fleet cards (contract C3). Live runs refetch when the throttled tick moves (SSE
+// fires on every tool call); ended runs are fetched once per id@updatedAt and never again. Returns detailOf(id) -> detail | null.
+export function useRunDetails(liveRuns, endedRuns, tick, ms = 3000) {
+  const t = useThrottledTick(tick, ms);
+  const [version, setVersion] = useState(0);
+  const cache = useRef(new Map()); // id -> {key, detail}
+  const pending = useRef(new Set());
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const load = (id, key) => {
+    if (pending.current.has(key)) return;
+    pending.current.add(key);
+    getRun(id)
+      .then(
+        (d) => {
+          if (!alive.current || !d || typeof d !== 'object') return;
+          cache.current.set(id, { key, detail: d });
+          setVersion((v) => v + 1);
+        },
+        () => {}, // keep the last good detail
+      )
+      .finally(() => pending.current.delete(key));
+  };
+  const liveIds = liveRuns.map((r) => r.id).join('\n');
+  useEffect(() => {
+    for (const id of liveIds ? liveIds.split('\n') : []) load(id, `${id}#${t}`);
+  }, [liveIds, t]); // eslint-disable-line react-hooks/exhaustive-deps
+  const endedKeys = endedRuns.map((r) => `${r.id}@${r.updatedAt}`).join('\n');
+  useEffect(() => {
+    for (const r of endedRuns) {
+      const key = `${r.id}@${r.updatedAt}`;
+      if (cache.current.get(r.id)?.key !== key) load(r.id, key);
+    }
+  }, [endedKeys]); // eslint-disable-line react-hooks/exhaustive-deps
+  return useCallback((id) => cache.current.get(id)?.detail ?? null, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // Follows `tick` at most once per `ms`. Mounting starts the first period (as if a value had just passed), so the

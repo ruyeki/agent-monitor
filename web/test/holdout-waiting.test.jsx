@@ -16,7 +16,7 @@ describe('route and splitRuns', () => {
   it('#/waiting has no page of its own (lands on the Monitor); others unchanged', () => {
     expect(parseRoute('#/waiting')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/workflow')).toEqual({ name: 'workflow' });
-    expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b' });
+    expect(parseRoute('#/runs/a%20b')).toEqual({ name: 'run', id: 'a b', tab: 'stages' });
     expect(parseRoute('#/waiting/x').name).toBe('monitor');
     expect(parseRoute('').name).toBe('monitor');
   });
@@ -117,8 +117,8 @@ describe('App: Monitor groups and decision inbox', () => {
   it('Views show the Waiting on you count; #/waiting lands on the Monitor', async () => {
     window.location.hash = '#/waiting';
     render(<App />);
-    await waitFor(() => expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you2'));
-    expect(views().getByRole('button', { name: /^Active/ }).textContent).toBe('Active1');
+    await waitFor(() => expect(views().getByRole('button', { name: /^Needs you/ }).textContent).toBe('Needs you2'));
+    expect(views().getByRole('button', { name: /^Running/ }).textContent).toBe('Running1');
     expect(views().getByRole('button', { name: /^Finished/ }).textContent).toBe('Finished1');
     expect(nav().getByRole('link', { name: /^Monitor/ }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 1, name: 'Monitor' })).toBeTruthy();
@@ -152,7 +152,7 @@ describe('App: Monitor groups and decision inbox', () => {
     runs = [{ ...mk('act'), status: 'active' }];
     render(<App />);
     await screen.findByText('Run act');
-    expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you0');
+    expect(views().getByRole('button', { name: /^Needs you/ }).textContent).toBe('Needs you0');
     expect(document.querySelector('section[aria-labelledby="group-waiting"]')).toBeNull();
     expect(pane().getByText('Nothing is waiting on you.')).toBeTruthy();
     expect(screen.queryByRole('article')).toBeNull();
@@ -167,10 +167,10 @@ describe('App: Monitor groups and decision inbox', () => {
     await waitFor(() => expect(screen.getAllByRole('article').length).toBe(1), { timeout: 3000 });
     expect(screen.getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy();
     expect(screen.queryByRole('article', { name: 'Waiting on you: Run w2' })).toBeNull();
-    expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you1');
+    expect(views().getByRole('button', { name: /^Needs you/ }).textContent).toBe('Needs you1');
     runs = runs.map((r) => (r.id === 'w1' ? { ...r, status: 'active' } : r));
     await act(async () => { sources.at(-1).onmessage?.({}); await new Promise((r) => setTimeout(r, 400)); });
-    await waitFor(() => expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you0'));
+    await waitFor(() => expect(views().getByRole('button', { name: /^Needs you/ }).textContent).toBe('Needs you0'));
     expect(pane().getByText('Nothing is waiting on you.')).toBeTruthy();
   });
   it('the inbox uses the unfiltered waiting list (search does not empty it)', async () => {

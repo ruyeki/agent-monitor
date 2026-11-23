@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 
-// '#/' monitor, '#/workflow' editor, '#/runs/<id>' run view, '#/stats' usage. Anything else (including the old '#/waiting') falls back to the monitor.
+export const RUN_TABS = ['crew', 'stages', 'ledger'];
+
+// '#/' monitor, '#/workflow' editor, '#/stats' usage, '#/runs/<id>' and '#/runs/<id>/<tab>' run view (tab crew | stages |
+// ledger; missing or unknown = stages, so old links keep working). Anything else (including the old '#/waiting') falls back to the monitor.
 export function parseRoute(hash) {
   const path = (hash || '').replace(/^#/, '');
   if (path === '/workflow') return { name: 'workflow' };
   if (path === '/stats') return { name: 'stats' };
-  const m = /^\/runs\/([^/]+)$/.exec(path);
+  const m = /^\/runs\/([^/]+)(?:\/([^/]*))?$/.exec(path);
   if (m) {
     try {
-      return { name: 'run', id: decodeURIComponent(m[1]) };
+      return { name: 'run', id: decodeURIComponent(m[1]), tab: RUN_TABS.includes(m[2]) ? m[2] : 'stages' };
     } catch {
       /* malformed escape: monitor */
     }
@@ -16,7 +19,7 @@ export function parseRoute(hash) {
   return { name: 'monitor' };
 }
 
-export const runHref = (id) => `#/runs/${encodeURIComponent(id)}`;
+export const runHref = (id, tab) => `#/runs/${encodeURIComponent(id)}${tab ? `/${tab}` : ''}`;
 
 export function useRoute() {
   const [hash, setHash] = useState(() => window.location.hash);

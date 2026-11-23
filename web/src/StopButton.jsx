@@ -25,10 +25,10 @@ export function StopButton({ run, onDone }) {
     return (
       <span className="confirm-inline" role="group" aria-label="Confirm stop">
         <span>Stop run {run.id}?</span>
-        <button type="button" className="danger" disabled={busy} onClick={confirm}>
+        <button type="button" className="danger sm" disabled={busy} onClick={confirm}>
           Confirm
         </button>
-        <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
+        <button type="button" className="sm" disabled={busy} onClick={() => setConfirming(false)}>
           Cancel
         </button>
         {error && (
@@ -40,8 +40,8 @@ export function StopButton({ run, onDone }) {
     );
   }
   return (
-    <button type="button" className="danger" disabled={isEnded(run)} onClick={() => setConfirming(true)}>
-      Stop
+    <button type="button" className="danger sm" disabled={isEnded(run)} onClick={() => setConfirming(true)}>
+      Stop run
     </button>
   );
 }

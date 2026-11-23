@@ -24,16 +24,16 @@
   --aui-orange: var(--warn);
   --aui-blue: var(--run-run);
   --aui-cyan: var(--ok);
-  --aui-purple: var(--link);
+  --aui-purple: var(--violet);
   --aui-primary: var(--accent);
   --aui-on-primary: var(--accent-text);
   --aui-focus: var(--focus);
   --aui-font: var(--font-sans);
   --aui-font-mono: var(--font-mono);
   --aui-radius: var(--r-md);
-  --aui-radius-lg: var(--r-lg);
+  --aui-radius-lg: var(--r-card);
   --aui-radius-sm: var(--r-sm);
-  --aui-shadow-card: 0 0 0 1px var(--border), var(--elev-1);
+  --aui-shadow-card: var(--elev-1);
 }
 
 /* ---- Decision inbox ---- */
@@ -43,7 +43,7 @@
   --ui-dic-ink: var(--text);
   --ui-dic-text: var(--text-2);
   --ui-dic-muted: var(--muted);
-  --ui-dic-faint: var(--muted);
+  --ui-dic-faint: var(--faint);
   --ui-dic-line: var(--border);
   --ui-dic-wash: var(--surface-2);
   --ui-dic-alert: var(--warn);
@@ -52,12 +52,16 @@
   --ui-dic-solid: var(--accent);
   --ui-dic-solid-hover: var(--accent-hover);
   --ui-dic-on-solid: var(--accent-text);
-  --ui-dic-shadow: 0 0 0 1px var(--border), var(--elev-1);
-  --ui-dic-shadow-hover: 0 0 0 1px var(--border-strong), var(--elev-1);
+  --ui-dic-shadow: var(--elev-1);
+  --ui-dic-shadow-hover: 0 0 0 0.5px var(--border-strong), var(--elev-1);
   --ui-dic-focus: var(--focus);
 }
-/* AM's global button rules (border, hover background) must not leak into the vendored buttons */
+/* AM's global button rules (border, shadow, hover background) must not leak into the vendored buttons */
 :root .ui-dic button { border: 0; margin: 0; }
+:root .ui-dic .ui-dic__title--folded,
+:root .ui-tclc .ui-tclc__head,
+:root .ui-tclc-group .ui-tclc-group__head,
+:root .ui-tclc .ui-tclc__more { box-shadow: none; }
 :root .ui-dic .ui-dic__btn:hover:not(:disabled) { background: var(--ui-dic-card); box-shadow: var(--ui-dic-shadow-hover); }
 :root .ui-dic .ui-dic__btn--primary:hover:not(:disabled) { background: var(--ui-dic-solid-hover); box-shadow: none; }
 :root .ui-dic .ui-dic__title--folded:hover:not(:disabled) { background: var(--ui-dic-wash); color: var(--ui-dic-ink); }
@@ -86,7 +90,7 @@
   --ui-tclc-num: var(--warn);
   --ui-tclc-lit: var(--link);
   --ui-tclc-shine: var(--text);
-  --ui-tclc-shadow: 0 0 0 1px var(--border), var(--elev-1);
+  --ui-tclc-shadow: var(--elev-1);
   --ui-tclc-focus: var(--focus);
   --ui-tclc-mono: var(--font-mono);
 }
@@ -107,7 +111,7 @@
   --ui-tlc-text: var(--text-2);
   --ui-tlc-accent: var(--run-run);
   --ui-tlc-bg: var(--surface);
-  --ui-tlc-shadow: 0 0 0 1px var(--border), var(--elev-1);
+  --ui-tlc-shadow: var(--elev-1);
   --ui-tlc-shine: var(--text);
 }
 

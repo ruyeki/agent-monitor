@@ -140,7 +140,7 @@ await check('views: 3 toggle buttons with counts; filter, clear on second click,
   const vb = pd.locator('nav[aria-label="Views"] button[type=button][aria-pressed]');
   ok(await vb.count() === 3, 'need 3 view buttons');
   const names = await vb.evaluateAll((bs) => bs.map((b) => b.textContent.trim()));
-  ok(/^Waiting on you/.test(names[0]) && /^Active/.test(names[1]) && /^Finished/.test(names[2]), names.join('|'));
+  ok(/^Needs you/.test(names[0]) && /^Running/.test(names[1]) && /^Finished/.test(names[2]), names.join('|'));
   ok(await pd.locator('nav[aria-label="Views"]').getByText('Views', { exact: true }).count() >= 1, 'Views heading missing');
   ok(await vb.locator('.nav-count').count() === 3, 'counts');
   const cnt = async (i) => Number((await vb.nth(i).locator('.nav-count').innerText()).trim());
@@ -223,25 +223,25 @@ await check('stat strip: 4 tiles with the exact labels; values match runs and us
   ok(await pd.locator('section.stat-strip[aria-label="Today"] .stat').count() === 4, 'need 4 tiles');
   const all = await runs();
   const act = all.filter((r) => r.status === 'active').length, wt = all.filter((r) => r.status === 'waiting').length;
-  for (const l of ['Active runs', 'Waiting on you', 'Tokens today', 'Cost today']) ok(await pd.locator('section.stat-strip .stat', { hasText: l }).count() >= 1, `label ${l}`);
-  ok(new RegExp(`Active runs\\s*${act}\\b`).test(await tileText(pd, 'Active runs')), `Active tile: ${await tileText(pd, 'Active runs')} want ${act}`);
-  ok(new RegExp(`Waiting on you\\s*${wt}\\b`).test(await tileText(pd, 'Waiting on you')), `Waiting tile: ${await tileText(pd, 'Waiting on you')} want ${wt}`);
+  for (const l of ['Running', 'Needs you', 'Tokens today', 'Spend today']) ok(await pd.locator('section.stat-strip .stat', { hasText: l }).count() >= 1, `label ${l}`);
+  ok(new RegExp(`Running\\s*${act}\\b`).test(await tileText(pd, 'Running')), `Running tile: ${await tileText(pd, 'Running')} want ${act}`);
+  ok(new RegExp(`Needs you\\s*${wt}\\b`).test(await tileText(pd, 'Needs you')), `Needs you tile: ${await tileText(pd, 'Needs you')} want ${wt}`);
   ok(/Tokens today\s*123k/.test(await tileText(pd, 'Tokens today')), `Tokens tile: ${await tileText(pd, 'Tokens today')}`);
-  ok(/Cost today\s*\$\d/.test(await tileText(pd, 'Cost today')), `Cost tile: ${await tileText(pd, 'Cost today')}`);
+  ok(/Spend today\s*\$\d/.test(await tileText(pd, 'Spend today')), `Spend tile: ${await tileText(pd, 'Spend today')}`);
 });
 
 await check('stat strip: en dash for tokens and cost when the stats endpoint fails; run tiles still render', async () => {
   const { ctx, p } = await newPage({ intercept: (pp) => pp.route('**/api/stats/usage**', (r) => r.fulfill({ status: 500, body: 'boom' })) });
   await goto(p, '#/'); await p.waitForTimeout(500);
   ok(/Tokens today\s*–/.test(await tileText(p, 'Tokens today')), `Tokens: ${await tileText(p, 'Tokens today')}`);
-  ok(/Cost today\s*–/.test(await tileText(p, 'Cost today')), `Cost: ${await tileText(p, 'Cost today')}`);
-  ok(await p.locator('section.stat-strip .stat', { hasText: 'Active runs' }).count() === 1, 'run tiles still render');
+  ok(/Spend today\s*–/.test(await tileText(p, 'Spend today')), `Spend: ${await tileText(p, 'Spend today')}`);
+  ok(await p.locator('section.stat-strip .stat', { hasText: 'Running' }).count() === 1, 'run tiles still render');
   await ctx.close();
 });
 
-await check('runs list: groups Active / Finished in order with counts (waiting runs are in the inbox); Finished is collapsed details', async () => {
+await check('runs list: groups Running / Finished in order with counts (waiting runs are in the inbox); Finished is collapsed details', async () => {
   const norm = (await pd.locator('.run-list h2.group-head').allInnerTexts()).map((h) => h.replace(/\s+/g, ' ').trim());
-  ok(norm.length === 2 && /^Active\b/.test(norm[0]) && /^Finished\b/.test(norm[1]), norm.join('|'));
+  ok(norm.length === 2 && /^Running\b/.test(norm[0]) && /^Finished\b/.test(norm[1]), norm.join('|'));
   const NA0 = (await runs()).filter((r) => !['waiting', 'done', 'stopped'].includes(r.status)).length;
   ok(new RegExp('\\b' + NA0 + '\\b').test(norm[0]), `active head ${norm[0]}`);
   ok(await pd.locator('.run-list details.finished').evaluate((d) => !d.open), 'Finished should be collapsed by default');
@@ -345,7 +345,7 @@ await check('clicking an active row opens #/runs/<id> inside the shell', async (
   ok(await pd.locator('div.shell > aside.sidebar').count() === 1, 'shell on run view');
 });
 
-await check('run view / workflow / stats: one page-head h1 inside main; run header has title, id, Back to monitor; Publish kept', async () => {
+await check('run view / workflow / stats: one page-head h1 inside main; run header has title, id, a Monitor breadcrumb; Publish kept', async () => {
   for (const [h, t] of [[`#/runs/${ids.act}`, T.act], ['#/workflow', 'Workflow'], ['#/stats', 'Stats']]) {
     await goto(pd, h);
     const r = await pd.evaluate(() => { const h1 = document.querySelectorAll('h1'); return { n: h1.length, inMain: !!document.querySelector('main header.page-head h1'), text: h1[0]?.textContent.trim() }; });
@@ -353,7 +353,8 @@ await check('run view / workflow / stats: one page-head h1 inside main; run head
   }
   await goto(pd, `#/runs/${ids.act}`);
   const rv = await pd.locator('main header.page-head').first().innerText();
-  ok(/Back to monitor/.test(rv) && rv.includes(ids.act), `run header: ${rv.replace(/\s+/g, ' ')}`);
+  ok(/^Monitor\b/.test(rv) && rv.includes(ids.act), `run header: ${rv.replace(/\s+/g, ' ')}`);
+  ok(await pd.locator('main header.page-head nav[aria-label="Breadcrumb"] a[href="#/"]').count() === 1, 'no Monitor breadcrumb link');
   await goto(pd, '#/workflow');
   ok(await pd.getByRole('button', { name: /Publish/ }).count() >= 1, 'Publish button missing on Workflow');
 });

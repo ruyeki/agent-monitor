@@ -4,16 +4,16 @@ const svgProps = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', st
 const ICON = {
   monitor: (
     <svg {...svgProps}>
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M3 10h18" />
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M3 9h18" />
     </svg>
   ),
   workflow: (
     <svg {...svgProps}>
       <circle cx="6" cy="6" r="2.5" />
-      <circle cx="18" cy="12" r="2.5" />
-      <circle cx="6" cy="18" r="2.5" />
-      <path d="M8.5 6h4l3 6M8.5 18h4l3-6" />
+      <circle cx="18" cy="18" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <path d="M8.5 6h7M6 8.5v3a4 4 0 0 0 4 4h5.5" />
     </svg>
   ),
   stats: (
@@ -28,8 +28,8 @@ const NAV = [
   ['stats', '#/stats', 'Stats'],
 ];
 const VIEWS = [
-  ['waiting', 'Waiting on you', 'dot-waiting'],
-  ['active', 'Active', 'dot-active'],
+  ['waiting', 'Needs you', 'dot-waiting'],
+  ['active', 'Running', 'dot-active'],
   ['finished', 'Finished', 'dot-finished'],
 ];
 
@@ -37,7 +37,7 @@ export function Sidebar({ current, openCount, counts, query, onQuery, searchRef,
   return (
     <aside className="sidebar">
       <div className="brand">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M3 12h4l3-8 4 16 3-8h4" />
         </svg>
         <span>Agent Monitor</span>
@@ -84,7 +84,7 @@ export function Sidebar({ current, openCount, counts, query, onQuery, searchRef,
         <span className={`conn conn-${connection}`} role="status">
           <span className="dot" aria-hidden="true" /> {LIVE_LABEL[connection]}
         </span>
-        <button type="button" onClick={onTheme} aria-label={`Theme: ${theme}. Click to change.`}>
+        <button type="button" className="sm theme-btn" onClick={onTheme} aria-label={`Theme: ${theme}. Click to change.`}>
           {theme.charAt(0).toUpperCase() + theme.slice(1)}
         </button>
       </div>

@@ -79,10 +79,10 @@ export default function App() {
         theme={theme}
         onTheme={cycleTheme}
       />
-      <main className={route.name === 'workflow' || route.name === 'run' ? 'full' : ''}>
+      <main className={route.name === 'workflow' ? 'full' : route.name === 'run' ? 'full run-main' : ''}>
         {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
         {route.name === 'stats' && <StatsPage tick={tick} />}
-        {route.name === 'run' && <RunView key={route.id} id={route.id} tick={tick} />}
+        {route.name === 'run' && <RunView key={route.id} id={route.id} tab={route.tab} tick={tick} />}
         {route.name === 'monitor' && (
           <Monitor
             groups={{ waiting, active: live, finished }}

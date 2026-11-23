@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getUsageStats, respond } from './api.js';
-import { useThrottledTick } from './hooks.js';
+import { useLayout, useRunDetails, useThrottledTick } from './hooks.js';
 import { Ago } from './Ago.jsx';
+import { Fleet } from './Fleet.jsx';
 import { formatCost, formatTokens } from './lib/format.js';
 import { runHref } from './lib/route.js';
 import { CodexTag, RunList, StatusIcon, stageLabel } from './RunList.jsx';
@@ -9,10 +10,11 @@ import { Ask } from './WaitingCards.jsx';
 import { DecisionInbox } from './vendor/affectui/decision-inbox.tsx';
 
 const GROUPS = [
-  ['active', 'Active', 'dot-active'],
+  ['active', 'Running', 'dot-active'],
   ['finished', 'Finished', 'dot-finished'],
 ];
 const DASH = '–';
+const FINISHED_PAGE = 8; // finished rows shown at a time; each shown row fetches its detail once
 
 // Today's tokens and cost, from the 30-day usage stats. `tick` changes on every live event.
 function useToday(liveTick) {
@@ -33,17 +35,51 @@ function useToday(liveTick) {
   return today;
 }
 
-function Stat({ label, value, sub }) {
+function Stat({ label, dot, value, sub }) {
   return (
     <div className="stat">
-      <div className="stat-label">{label}</div>
+      <div className="stat-label">
+        {dot && <span className={`dot ${dot}`} aria-hidden="true" />}
+        {label}
+      </div>
       <div className="stat-value">{value}</div>
       {sub && <div className="stat-sub">{sub}</div>}
     </div>
   );
 }
 
-function Group({ id, name, dot, runs, collapsible, forceOpen }) {
+const ListIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+const GridIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </svg>
+);
+
+// List / Fleet (contract C1): a segmented pair of toggle buttons.
+export function LayoutToggle({ layout, onChange }) {
+  return (
+    <div className="seg" role="group" aria-label="Layout">
+      {[
+        ['list', 'List', <ListIcon key="i" />],
+        ['fleet', 'Fleet', <GridIcon key="i" />],
+      ].map(([id, label, icon]) => (
+        <button key={id} type="button" aria-pressed={layout === id} className={layout === id ? 'on' : ''} onClick={() => onChange(id)}>
+          {icon}
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Group({ id, name, dot, runs, detailOf, collapsible, forceOpen, onOpen, more, onMore }) {
   const head = (
     <h2 className="group-head" id={`group-${id}`}>
       <span className={`dot ${dot}`} aria-hidden="true" />
@@ -51,11 +87,22 @@ function Group({ id, name, dot, runs, collapsible, forceOpen }) {
       <span className="group-count">{runs.length}</span>
     </h2>
   );
-  const list = <RunList runs={runs} />;
+  const list = (
+    <div className="run-card">
+      <RunList runs={runs.slice(0, collapsible ? more : runs.length)} detailOf={detailOf} />
+      {collapsible && runs.length > more && (
+        <div className="show-more">
+          <button type="button" className="ghost sm" onClick={onMore}>
+            Show {Math.min(FINISHED_PAGE, runs.length - more)} more
+          </button>
+        </div>
+      )}
+    </div>
+  );
   return (
-    <section aria-labelledby={`group-${id}`}>
+    <section className="run-group" aria-labelledby={`group-${id}`}>
       {collapsible ? (
-        <details className="finished" key={forceOpen ? 'open' : 'closed'} open={forceOpen}>
+        <details className="finished" key={forceOpen ? 'open' : 'closed'} open={forceOpen} onToggle={(e) => onOpen(e.currentTarget.open)}>
           <summary>{head}</summary>
           {list}
         </details>
@@ -104,16 +151,16 @@ function Inbox({ waiting, onDone }) {
       detail: (
         <>
           <div className="pane-meta">
-            <StatusIcon status="waiting" size={14} />
-            <span>{stageLabel(run)}</span>
+            <span className="pill wait pane-stage">
+              <StatusIcon status="waiting" size={12} />
+              {stageLabel(run)}
+            </span>
+            <span className="mono">{run.id}</span>
             <span>
-              · <span className="mono">{run.id}</span>
+              round {run.round}/{run.maxRounds}
             </span>
             <span>
-              · round {run.round}/{run.maxRounds}
-            </span>
-            <span>
-              · <Ago at={run.updatedAt} />
+              <Ago at={run.updatedAt} />
             </span>
           </div>
           <Ask text={run.ask} />
@@ -146,9 +193,27 @@ function Inbox({ waiting, onDone }) {
   return <DecisionInbox decisions={decisions} onDecide={decide} />;
 }
 
+// Running agents across the live runs, once their details are in; null while none is.
+function agentsWorking(runs, detailOf) {
+  let known = false;
+  let n = 0;
+  for (const r of runs) {
+    const d = detailOf(r.id);
+    if (!Array.isArray(d?.agents)) continue;
+    known = true;
+    n += d.agents.filter((a) => a?.status === 'running').length;
+  }
+  return known ? n : null;
+}
+
+const cacheShare = (t) => (t && Number(t.total) > 0 && t.cacheRead != null ? Math.round((100 * Number(t.cacheRead)) / Number(t.total)) : null);
+
 export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDone }) {
   const { waiting, active, finished } = groups;
   const today = useToday(tick);
+  const [layout, setLayout] = useLayout();
+  const [finishedOpen, setFinishedOpen] = useState(false);
+  const [more, setMore] = useState(FINISHED_PAGE);
 
   // The run list holds active and finished runs; waiting runs live in the inbox, which search and views never filter.
   const q = query.trim().toLowerCase();
@@ -158,49 +223,90 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
   const total = waiting.length + active.length + finished.length;
   const oldest = waiting.reduce((a, r) => (!a || Date.parse(r.updatedAt) < Date.parse(a) ? r.updatedAt : a), null);
   const inboxOnly = view === 'waiting';
+  const forceOpen = view === 'finished' || !!q;
+  useEffect(() => {
+    if (!forceOpen) setFinishedOpen(false); // the group re-mounts closed when the forced-open state ends
+  }, [forceOpen]);
+  const finishedShown = layout === 'list' && !inboxOnly && (finishedOpen || forceOpen) && visible.some(([id]) => id === 'finished') ? shown.finished.slice(0, more) : [];
+  const detailOf = useRunDetails([...waiting, ...active], finishedShown, tick);
 
   let empty = null;
   if (total === 0) empty = 'No runs yet.';
   else if (visible.length === 0) empty = q ? `No runs match "${query.trim()}".` : view ? 'No runs in this view.' : 'No active or finished runs.';
 
+  const working = agentsWorking([...waiting, ...active], detailOf);
+  const cache = cacheShare(today);
+
   return (
     <>
       <header className="page-head">
-        <h1>Monitor</h1>
-        <span className="muted">Updated {updatedAt ? <Ago at={updatedAt} /> : DASH}</span>
+        <div className="hgroup">
+          <h1>Monitor</h1>
+          <LayoutToggle layout={layout} onChange={setLayout} />
+        </div>
+        {layout === 'list' ? (
+          <span className="faint small">Updated {updatedAt ? <Ago at={updatedAt} /> : DASH}</span>
+        ) : (
+          <div className="hgroup small fleet-summary">
+            <span className="muted">
+              {waiting.length + active.length} live {waiting.length + active.length === 1 ? 'run' : 'runs'}
+            </span>
+            <span className="sep" aria-hidden="true" />
+            <span className="live-text">{active.length} running</span>
+            {waiting.length > 0 && (
+              <>
+                <span className="sep" aria-hidden="true" />
+                <span className="pill wait">{waiting.length} need you</span>
+              </>
+            )}
+            <span className="sep" aria-hidden="true" />
+            <strong>{today ? formatCost(today.cost) : DASH} today</strong>
+          </div>
+        )}
       </header>
       {loadError && (
-        <p className="error pad" role="alert">
+        <p className="error" role="alert">
           Could not load runs: {loadError}
         </p>
       )}
-      <section className="stat-strip" aria-label="Today">
-        <Stat label="Active runs" value={active.length} />
-        <Stat label="Waiting on you" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
-        <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} />
-        <Stat label="Cost today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent (estimate)" />
-      </section>
-      <div className={inboxOnly ? 'monitor-body inbox-only' : 'monitor-body'}>
-        {!inboxOnly && (
-          <section className="run-list" aria-label="Runs">
-            {empty && <p className="muted pad empty">{empty}</p>}
-            {visible.map(([id, name, dot]) => (
-              <Group
-                key={id}
-                id={id}
-                name={name}
-                dot={dot}
-                runs={shown[id]}
-                collapsible={id === 'finished'}
-                forceOpen={id === 'finished' && (view === 'finished' || !!q)}
-              />
-            ))}
+      {layout === 'fleet' ? (
+        <Fleet waiting={waiting} active={active} detailOf={detailOf} query={q} view={view} empty={total === 0} onDone={onDone} />
+      ) : (
+        <>
+          <section className="stat-strip" aria-label="Today">
+            <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
+            <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
+            <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
+            <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
           </section>
-        )}
-        <aside className="inbox-pane" aria-label="Decision inbox">
-          <Inbox waiting={waiting} onDone={onDone} />
-        </aside>
-      </div>
+          <div className={inboxOnly ? 'monitor-body inbox-only' : 'monitor-body'}>
+            {!inboxOnly && (
+              <section className="run-list" aria-label="Runs">
+                {empty && <p className="muted empty">{empty}</p>}
+                {visible.map(([id, name, dot]) => (
+                  <Group
+                    key={id}
+                    id={id}
+                    name={name}
+                    dot={dot}
+                    runs={shown[id]}
+                    detailOf={detailOf}
+                    collapsible={id === 'finished'}
+                    forceOpen={id === 'finished' && forceOpen}
+                    onOpen={setFinishedOpen}
+                    more={more}
+                    onMore={() => setMore((m) => m + FINISHED_PAGE)}
+                  />
+                ))}
+              </section>
+            )}
+            <aside className="inbox-pane" aria-label="Decision inbox">
+              <Inbox waiting={waiting} onDone={onDone} />
+              {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away. The next one opens.</p>}
+            </aside>
+          </div>
+        </>
+      )}
     </>
   );
 }

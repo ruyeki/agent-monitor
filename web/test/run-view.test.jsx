@@ -132,7 +132,7 @@ describe('RunView', () => {
 
   it('Stop asks for confirmation then posts stop', async () => {
     render(<RunView id="my-run" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop run' }));
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm stop' })).getByRole('button', { name: 'Confirm' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u, o]) => u === '/api/runs/my-run/stop' && o?.method === 'POST')).toBe(true));
   });

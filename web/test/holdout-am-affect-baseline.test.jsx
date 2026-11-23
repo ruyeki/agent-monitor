@@ -74,8 +74,8 @@ describe('Monitor today', () => {
     mount({ waiting: [run('w', 'W', 'waiting')], active: [run('a', 'A', 'active'), run('b', 'B', 'active')], finished: [run('d', 'D', 'done')] });
     const strip = document.querySelector('section.stat-strip');
     const val = (label) => [...strip.querySelectorAll('.stat')].find((s) => s.querySelector('.stat-label').textContent === label).querySelector('.stat-value').textContent;
-    expect(val('Active runs')).toBe('2');
-    expect(val('Waiting on you')).toBe('1');
+    expect(val('Running')).toBe('2');
+    expect(val('Needs you')).toBe('1');
     await waitFor(() => expect(val('Tokens today')).not.toBe('–'));
   });
 

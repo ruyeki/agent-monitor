@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8');
+const fonts = readFileSync(resolve(import.meta.dirname, '../src/fonts.css'), 'utf8');
 
 // Body of the nth rule whose selector is exactly `selector` (no nested braces inside a token block).
 function blockBody(selector, nth) {
@@ -71,7 +72,13 @@ describe('theme tokens', () => {
     expect(series.darkAttr).toEqual(series.darkMedia);
   });
 
-  it('loads no web font', () => {
+  it('self-hosts Inter only: one @font-face in fonts.css for the bundled file, nothing remote, nothing in styles.css', () => {
     expect(css).not.toMatch(/@font-face|@import|url\(/);
+    expect(fonts.match(/@font-face/g)).toHaveLength(1);
+    expect(fonts).toMatch(/font-family: 'Inter'/);
+    expect(fonts).toMatch(/font-display: swap/);
+    expect([...fonts.matchAll(/url\(([^)]*)\)/g)].map((m) => m[1])).toEqual(["'./assets/fonts/InterVariable.woff2'"]);
+    expect(fonts).not.toMatch(/@import|https?:/);
+    expect(theme.light['--font-sans']).toMatch(/^Inter,/);
   });
 });

@@ -103,7 +103,7 @@ await check('run view of a waiting run shows the ask and its action buttons; ans
 await check('Stop from the run view ends the run', async () => {
   const s = runIdOf(await call('start_run', { title: 'Stop me' }));
   await page.goto(`${base}/#/runs/${s}`);
-  await page.getByRole('button', { name: /^stop$/i }).first().click();
+  await page.getByRole('button', { name: /^stop run$/i }).first().click();
   const confirm = page.getByRole('button', { name: /^confirm$/i });
   if (await confirm.count()) await confirm.first().click();
   ok(await until(async () => (await get(`/api/runs/${s}`)).run.status === 'stopped', 5000), 'run is not stopped');
