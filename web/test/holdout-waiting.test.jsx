@@ -123,7 +123,7 @@ describe('App: Monitor groups and decision inbox', () => {
     expect(nav().getByRole('link', { name: /^Monitor/ }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 1, name: 'Monitor' })).toBeTruthy();
   });
-  it('Monitor lists Active and Finished (no Waiting on you group); the inbox holds one item per waiting run, the first open', async () => {
+  it('Monitor lists Active and Finished (no Waiting on you group); the inbox holds one item per waiting run, all open', async () => {
     render(<App />);
     await screen.findByRole('article', { name: 'Waiting on you: Run w2' });
     expect(document.querySelector('section[aria-labelledby="group-waiting"]')).toBeNull();
@@ -135,14 +135,13 @@ describe('App: Monitor groups and decision inbox', () => {
     expect(pane().getAllByRole('article').length).toBe(2);
     expect(pane().getAllByRole('link', { name: 'Open run →' }).map((a) => a.getAttribute('href'))).toEqual(['#/runs/w1', '#/runs/w2']);
     expect(within(pane().getByRole('article', { name: 'Waiting on you: Run w1' })).getByRole('heading', { level: 3 })).toBeTruthy();
-    expect(within(pane().getByRole('article', { name: 'Waiting on you: Run w2' })).queryByRole('heading', { level: 3 })).toBeNull();
+    expect(within(pane().getByRole('article', { name: 'Waiting on you: Run w2' })).getByRole('heading', { level: 3 })).toBeTruthy();
     expect(document.querySelector('table')).toBeNull();
   });
-  it('opening a folded item shows its ask and Open run link', async () => {
+  it('every item shows its ask and Open run link without a click', async () => {
     render(<App />);
     const w2 = await screen.findByRole('article', { name: 'Waiting on you: Run w2' });
-    expect(w2.querySelector('.ui-dic__body').hasAttribute('inert')).toBe(true);
-    fireEvent.click(within(w2).getByRole('button', { name: 'Run w2' }));
+    expect(w2.querySelector('.ui-dic__body').hasAttribute('inert')).toBe(false);
     expect(within(w2).getByRole('heading', { level: 3 }).textContent).toBe('Run w2');
     expect(w2.querySelector('.ui-dic__body').hasAttribute('inert')).toBe(false);
     expect(within(w2).getByText("What's your solution?")).toBeTruthy();
@@ -160,7 +159,6 @@ describe('App: Monitor groups and decision inbox', () => {
   it('answering confirms, then folds the item away; the count follows an event-stream refresh', async () => {
     render(<App />);
     await screen.findByRole('article', { name: 'Waiting on you: Run w1' });
-    fireEvent.click(screen.getByRole('button', { name: 'Run w2' }));
     const card = screen.getByRole('article', { name: 'Waiting on you: Run w2' });
     fireEvent.click(within(card).getByRole('button', { name: 'Agree spec' }));
     await waitFor(() => expect(card.querySelector('.ui-dic__done[role=status]').textContent).toBe('Agree spec'));

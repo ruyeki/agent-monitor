@@ -246,3 +246,5 @@
 .ui-dic .ui-dic__row:focus-visible, .ui-dic .ui-dic__heading:focus-visible { outline: 2px solid var(--ui-dic-focus); outline-offset: -2px; }
 /* Agent Monitor: why an answer failed, under the buttons */
 .ui-dic .ui-dic__error { margin: 8px 0 0; overflow-wrap: anywhere; }
+/* Agent Monitor: a folded-away row (still live) is hidden; the row's display:grid would otherwise override [hidden] */
+.ui-dic .ui-dic__row[hidden] { display: none; }

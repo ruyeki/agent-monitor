@@ -37,7 +37,7 @@ const deferred = () => {
 };
 
 describe('Decision inbox on the Monitor', () => {
-  it('lists the waiting runs oldest first in aside.inbox-pane; the first is open, the others fold with inert bodies', () => {
+  it('lists the waiting runs oldest first in aside.inbox-pane; every item is open (no folded lines, no inert bodies)', () => {
     renderMonitor([mk('w2', { updatedAt: '2026-11-22T11:00:00Z' }), mk('w1', { updatedAt: '2026-11-22T09:00:00Z' }), mk('w3', { updatedAt: '2026-11-22T12:00:00Z' })]);
     expect(inbox().matches('aside.inbox-pane')).toBe(true);
     expect(order()).toEqual(['w1', 'w2', 'w3']);
@@ -50,25 +50,24 @@ describe('Decision inbox on the Monitor', () => {
     expect(ta.getAttribute('placeholder')).toBe('Your reply (optional)');
     expect(w1.querySelector('a.open-run').getAttribute('href')).toBe('#/runs/w1');
     const w2 = item('Run w2');
-    expect(within(w2).queryByRole('heading', { level: 3 })).toBeNull();
-    expect(w2.querySelector('button.ui-dic__title--folded').getAttribute('title')).toBe('Run w2');
-    expect(bodyOf(w2).hasAttribute('inert')).toBe(true);
+    expect(within(w2).getByRole('heading', { level: 3 }).textContent).toBe('Run w2');
+    expect(bodyOf(w2).hasAttribute('inert')).toBe(false);
+    expect(within(w2).getByText('Question for w2?')).toBeTruthy();
+    expect(inbox().querySelector('button.ui-dic__title--folded')).toBeNull();
+    expect(inbox().querySelector('.ui-dic__body[inert]')).toBeNull();
     // The run list no longer has a waiting group; the waiting runs are only in the inbox.
     expect(document.querySelector('section[aria-labelledby="group-waiting"]')).toBeNull();
     expect(screen.getByRole('region', { name: 'Runs' }).querySelector('article')).toBeNull();
   });
 
-  it('opening a folded item shows its ask and Open run link and moves focus to it', () => {
+  it('every item shows its ask and Open run link without any click', () => {
     renderMonitor([mk('w1'), mk('w2')]);
     const w2 = item('Run w2');
-    within(w2).getByRole('button', { name: 'Run w2' }).focus();
-    fireEvent.click(within(w2).getByRole('button', { name: 'Run w2' }));
     expect(within(w2).getByRole('heading', { level: 3 }).textContent).toBe('Run w2');
     expect(bodyOf(w2).hasAttribute('inert')).toBe(false);
     expect(within(w2).getByText('Question for w2?')).toBeTruthy();
     expect(within(w2).getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/w2');
-    expect(document.activeElement).toBe(w2);
-    expect(bodyOf(item('Run w1')).hasAttribute('inert')).toBe(false); // the first stays open
+    expect(bodyOf(item('Run w1')).hasAttribute('inert')).toBe(false);
   });
 
   it('shows every action in order (only the first primary), the full parseAsk ask, the meta line and the Codex tag; no reply box without textField', () => {
@@ -95,7 +94,6 @@ describe('Decision inbox on the Monitor', () => {
     const d = deferred();
     post = vi.fn(() => d.promise);
     renderMonitor([mk('w1'), mk('w2')]);
-    fireEvent.click(within(item('Run w2')).getByRole('button', { name: 'Run w2' }));
     const w1 = item('Run w1');
     fireEvent.change(within(w1).getByRole('textbox'), { target: { value: 'use sqlite' } });
     fireEvent.click(within(w1).getByRole('button', { name: 'Stop run' }));
@@ -109,7 +107,7 @@ describe('Decision inbox on the Monitor', () => {
     await act(async () => d.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) }));
   });
 
-  it('success confirms, keeps the row in place after the run leaves waiting, then folds it, opens the next and moves focus there', async () => {
+  it('success confirms, keeps the row in place after the run leaves waiting, then folds it, keeps the others open and moves focus to the next open one', async () => {
     const { onDone, update } = renderMonitor([mk('w1'), mk('w2'), mk('w3')]);
     const w1 = item('Run w1');
     fireEvent.click(within(w1).getByRole('button', { name: 'Agree spec' }));
@@ -130,7 +128,7 @@ describe('Decision inbox on the Monitor', () => {
     const w2 = item('Run w2');
     expect(within(w2).getByRole('heading', { level: 3 }).textContent).toBe('Run w2');
     expect(bodyOf(w2).hasAttribute('inert')).toBe(false);
-    expect(bodyOf(item('Run w3')).hasAttribute('inert')).toBe(true);
+    expect(bodyOf(item('Run w3')).hasAttribute('inert')).toBe(false);
     expect(document.activeElement).toBe(w2);
     await waitFor(() => expect(order()).toEqual(['w2', 'w3']), { timeout: 2000 });
     expect(w1.isConnected).toBe(false);
@@ -189,12 +187,11 @@ describe('Decision inbox on the Monitor', () => {
     update([mk('w1')]);
     expect(heading()).toBe('1 needs your input');
     expect(inbox().querySelector('p.ui-dic__empty')).toBeNull();
-    expect(within(item('Run w1')).getByRole('heading', { level: 3 })).toBeTruthy(); // a newcomer opens when nothing else is open
+    expect(within(item('Run w1')).getByRole('heading', { level: 3 })).toBeTruthy(); // a newcomer opens
   });
 
-  it('a live refresh with unchanged data keeps the same nodes, open state and reply text; a newcomer arrives folded', () => {
+  it('a live refresh with unchanged data keeps the same nodes, open state and reply text; a newcomer arrives open', () => {
     const { update } = renderMonitor([mk('w1'), mk('w2')]);
-    fireEvent.click(within(item('Run w2')).getByRole('button', { name: 'Run w2' }));
     fireEvent.change(within(item('Run w1')).getByRole('textbox'), { target: { value: 'draft' } });
     const before = [...inbox().querySelectorAll('article, textarea, .ui-dic__btn')];
     update([mk('w1'), mk('w2')]);
@@ -204,7 +201,7 @@ describe('Decision inbox on the Monitor', () => {
     expect(within(item('Run w1')).getByRole('textbox').value).toBe('draft');
     expect(bodyOf(item('Run w2')).hasAttribute('inert')).toBe(false);
     update([mk('w1'), mk('w2'), mk('w3', { updatedAt: '2026-11-22T13:00:00Z' })]);
-    expect(bodyOf(item('Run w3')).hasAttribute('inert')).toBe(true);
+    expect(bodyOf(item('Run w3')).hasAttribute('inert')).toBe(false);
     expect(item('Run w1')).toBe(before[0]);
   });
 
@@ -246,6 +243,7 @@ describe('DecisionInbox (vendored)', () => {
     await act(() => new Promise((r) => setTimeout(r, 700)));
     expect(row.isConnected).toBe(true);
     expect(row.hasAttribute('inert')).toBe(true);
+    expect(row.hidden).toBe(true); // no empty grid cell once folded
   });
 
   it('does not steal focus from elsewhere when an answered item folds', async () => {
@@ -256,7 +254,7 @@ describe('DecisionInbox (vendored)', () => {
     await waitFor(() => expect(screen.getByRole('status')).toBeTruthy());
     outside.focus();
     await act(() => new Promise((r) => setTimeout(r, 1300)));
-    expect(screen.getByRole('heading', { level: 3, name: 'B' })).toBeTruthy(); // the folded one opened
+    expect(screen.getByRole('heading', { level: 3, name: 'B' })).toBeTruthy(); // the other one stays open
     expect(document.activeElement).toBe(outside);
     outside.remove();
   });

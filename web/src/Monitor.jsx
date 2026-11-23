@@ -280,6 +280,10 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
             <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
           </section>
           <div className={inboxOnly ? 'monitor-body inbox-only' : 'monitor-body'}>
+            <aside className="inbox-pane" aria-label="Decision inbox">
+              <Inbox waiting={waiting} onDone={onDone} />
+              {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
+            </aside>
             {!inboxOnly && (
               <section className="run-list" aria-label="Runs">
                 {empty && <p className="muted empty">{empty}</p>}
@@ -300,10 +304,6 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
                 ))}
               </section>
             )}
-            <aside className="inbox-pane" aria-label="Decision inbox">
-              <Inbox waiting={waiting} onDone={onDone} />
-              {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away. The next one opens.</p>}
-            </aside>
           </div>
         </>
       )}

@@ -142,7 +142,7 @@ for (const [label, opt] of MODES) {
     const expectDark = opt.scheme === 'dark' ? opt.theme !== 'light' : opt.theme === 'dark';
     const mon = await p.evaluate(() => {
       const tok = window.__token; const px = (el, prop) => window.__rgba(getComputedStyle(el)[prop]);
-      const root = document.querySelector('.ui-dic');
+      const root = document.querySelector('.ui-dic__row'); // each question is its own surface card
       const prim = document.querySelector('.ui-dic__btn--primary');
       const title = document.querySelector('.ui-dic__title');
       const rgb = (c) => c.slice(0, 3).map(Math.round).join(',');
@@ -158,10 +158,8 @@ for (const [label, opt] of MODES) {
     ok(expectDark ? mon.lum < 0.15 : mon.lum > 0.7, `inbox surface luminance ${mon.lum.toFixed(2)} wrong for ${label}`);
     const c1 = await contrast(p, '.ui-dic');
     ok(c1.n > 5 && c1.bad.length === 0, `inbox contrast (${c1.n} texts): ${c1.bad.slice(0, 4).join('; ')}`);
-    // open a folded item too, then re-check (folded body text was inert before)
-    await p.locator('.ui-dic__title--folded').first().click(); await p.waitForTimeout(500);
-    const c1b = await contrast(p, '.ui-dic');
-    ok(c1b.bad.length === 0, `inbox contrast after opening another item: ${c1b.bad.slice(0, 4).join('; ')}`);
+    // every item is open now: no folded line is left to open
+    ok(await p.locator('.ui-dic__title--folded').count() === 0, 'a folded line is still there');
     // hover the primary button: it must stay the accent family, never the light-grey global button hover
     await p.locator('.ui-dic__btn--primary').first().hover(); await p.waitForTimeout(250);
     const hov = await p.evaluate(() => { const b = document.querySelector('.ui-dic__btn--primary:hover') || document.querySelector('.ui-dic__btn--primary'); const bg = window.__rgba(getComputedStyle(b).backgroundColor); const ac = window.__token('--accent'); return { d: Math.abs(bg[0] - ac[0]) + Math.abs(bg[1] - ac[1]) + Math.abs(bg[2] - ac[2]), hovered: !!document.querySelector('.ui-dic__btn--primary:hover') }; });
@@ -206,7 +204,7 @@ await check('reduced motion: nothing runs an infinite animation on the Monitor, 
 });
 
 // ---------- inbox behaviour in the browser
-await check('inbox: oldest first and open, others folded; every action offered; answering confirms, folds, opens the next and the run leaves waiting', async () => {
+await check('inbox: oldest first, all open; every action offered; answering confirms, folds, the others stay open and the run leaves waiting', async () => {
   const { ctx, p } = await newPage({ theme: 'dark' });
   page = p;
   await openMonitor(p);
@@ -221,7 +219,7 @@ await check('inbox: oldest first and open, others folded; every action offered; 
   const gate = (await get(`/api/runs/${waiters[0]}`)).run.actions.map((a) => a.label);
   ok(JSON.stringify(labels.filter((l) => gate.includes(l.trim())).map((l) => l.trim())) === JSON.stringify(gate), `actions ${labels} vs ${gate}`);
   ok(await first.locator('a.open-run').getAttribute('href') === `#/runs/${waiters[0]}`, 'Open run link');
-  // keyboard: Tab never lands inside a folded item's body
+  // keyboard: Tab never lands inside an inert element
   await p.locator('aside[aria-label="Decision inbox"] textarea').first().focus();
   const seen = [];
   for (let i = 0; i < 14; i++) { await p.keyboard.press('Tab'); seen.push(await p.evaluate(() => { const e = document.activeElement; return { inert: !!e?.closest('[inert]'), inInbox: !!e?.closest('aside[aria-label="Decision inbox"]'), t: (e?.textContent || e?.tagName || '').slice(0, 20) }; })); }
@@ -235,7 +233,7 @@ await check('inbox: oldest first and open, others folded; every action offered; 
   await p.waitForTimeout(2200);
   ok(await p.locator('article[data-run-id="' + waiters[0] + '"]').count() === 0 || await p.locator('article[data-run-id="' + waiters[0] + '"]').evaluate((e) => !!e.closest('[data-gone],[inert]')), 'answered row still reachable');
   const second = p.locator('article[data-run-id="' + waiters[1] + '"]');
-  ok(await second.locator('.ui-dic__actions button').first().isVisible(), 'next item did not open');
+  ok(await second.locator('.ui-dic__actions button').first().isVisible(), 'the other item is not open');
   ok(await p.evaluate(() => !!document.activeElement?.closest('aside[aria-label="Decision inbox"]')), 'focus left the inbox');
   await ctx.close();
 });
@@ -245,7 +243,6 @@ await check('inbox: a refresh while another item is being read does not fold it 
   page = p;
   await openMonitor(p);
   const target = p.locator('article[data-run-id="' + waiters[2] + '"]');
-  await target.locator('.ui-dic__title--folded').click();
   await target.locator('textarea').fill('typing a draft');
   const rn = runIdOf(await call('start_run', { title: 'Noise run ' + Date.now() })); // an SSE event that refreshes the list
   await until(async () => (await p.locator('section[aria-label="Runs"]').getByText('Noise run').count()) > 0, 5000, 100);

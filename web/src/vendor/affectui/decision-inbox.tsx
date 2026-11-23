@@ -11,8 +11,9 @@
  *   and keeps the item open. Only a success confirms and folds.
  * - An item being answered stays in its place through the confirmation and the fold even after `decisions` drops it,
  *   unless a new decision with the same `rowKey` takes the row over.
- * - One item opens by default: the first, or a newcomer when nothing else is open. Keyboard focus follows when a folded
- *   line opens or an answered item folds away (to the next open item, else the heading).
+ * - Every item opens by default (as upstream), a newcomer too, so none starts as a folded line. Keyboard focus follows
+ *   when a folded line opens or an answered item folds away (to the next open item, else the heading).
+ * - A row that has folded away but whose decision is still live is hidden, so it leaves no gap in a grid of cards.
  * - Closed bodies are inert, so their hidden buttons are not tabbable.
  * - The count is an h2; the empty text is Agent Monitor's and renders only when nothing is open.
  */
@@ -70,16 +71,13 @@ const FOLD_MS = 500;
 const rowKey = (d: Decision) => d.rowKey ?? d.id;
 const isHeld = (s: State | undefined, liveKeys: Set<string>) => !!s?.d && !!(s.pending || s.answered) && !s.folded && !liveKeys.has(rowKey(s.d));
 
-// Agent Monitor: a decision without an entry opens only when nothing else is open (so the first one, on mount)
+// Agent Monitor: every decision without an entry opens (unless `collapsed`), the first and a newcomer alike
 function withDefaults(s: States, rows: Decision[]): States {
   let next = s;
-  let opened = rows.some((d) => s[d.id]?.open && !s[d.id]?.answered);
   for (const d of rows) {
     if (s[d.id]) continue;
-    const open = !opened && !d.collapsed;
-    opened ||= open;
     if (next === s) next = { ...s };
-    next[d.id] = { open };
+    next[d.id] = { open: !d.collapsed };
   }
   return next;
 }
@@ -246,6 +244,7 @@ export function DecisionInbox({ decisions, onDecide, className }: DecisionInboxP
                 tabIndex={-1}
                 className="ui-dic__row"
                 data-gone={s.gone || undefined}
+                hidden={s.folded || undefined} /* Agent Monitor: folded away but still live: no empty grid cell, not tabbable */
                 inert={s.gone ? "" : undefined}
               >
                 <div className="ui-dic__row-inner">

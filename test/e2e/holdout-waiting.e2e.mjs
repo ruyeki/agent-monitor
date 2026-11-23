@@ -63,7 +63,7 @@ const waitingView = () => views().getByRole('button', { name: /^Needs you/ });
 const waitingCount = async () => ((await waitingView().innerText()).match(/\d+/) || [''])[0];
 const pane = () => page.getByRole('complementary', { name: 'Decision inbox' });
 const itemOf = (title) => pane().locator(`article[aria-label="Waiting on you: ${title}"]`);
-// Opens a folded inbox item (a no-op when it is already open).
+// Waits for an inbox item to be open (every item opens by itself; a folded line is still clicked if one ever shows).
 const openItem = async (title) => {
   const it = itemOf(title);
   await it.waitFor({ timeout: 5000 });
@@ -103,7 +103,8 @@ await check('monitor: no waiting group; the inbox holds three items (oldest open
   const first = pane().locator('article').first();
   ok((await first.getAttribute('aria-label')) === 'Waiting on you: Plain gate run', `first item ${await first.getAttribute('aria-label')}`);
   ok((await first.locator('a.open-run').innerText()).trim() === 'Open run →', 'Open run link missing');
-  ok((await pane().locator('article button.ui-dic__title--folded').count()) === 2, 'the other two items should be folded');
+  ok((await pane().locator('article button.ui-dic__title--folded').count()) === 0, 'no item should be folded');
+  ok((await pane().locator('article .ui-dic__body[inert]').count()) === 0, 'no item body should be inert');
   ok((await page.getByRole('table').count()) === 0, 'a table is on the Monitor page');
 });
 
@@ -132,13 +133,13 @@ await check('screenshots: monitor with the decision inbox, light and dark', asyn
 });
 
 await page.goto(`${base}/#/`);
-await check('inbox card fills the pane width; each item fills the card', async () => {
+await check('inbox section fills the pane width; each item is a card inside it, not wider than the section', async () => {
   await pane().locator('article').first().waitFor({ timeout: 5000 });
   const p = await pane().boundingBox();
   const c = await pane().locator('.ui-dic').boundingBox();
   const b = await pane().locator('article').first().boundingBox();
   ok(c.width >= p.width * 0.85, `card ${Math.round(c.width)} px of pane ${Math.round(p.width)} px`);
-  ok(Math.abs(b.width - c.width) < 2, `item ${Math.round(b.width)} px of card ${Math.round(c.width)} px`);
+  ok(b.width >= 300 && b.width <= c.width + 1, `item ${Math.round(b.width)} px in a section of ${Math.round(c.width)} px`);
 });
 
 await check('long ask card is formatted: heading, four rows, code element, no raw backticks', async () => {
@@ -163,7 +164,7 @@ await check('one-line ask card: heading only', async () => {
   ok(/solution/i.test(await card.locator('h4.ask-heading').innerText()), 'heading text');
 });
 
-await check('opening a folded item shows its ask and Open run link', async () => {
+await check('every item shows its ask and Open run link without a click', async () => {
   await openItem('Second plain run');
   const it = itemOf('Second plain run');
   ok((await pane().locator('article').count()) === 3, 'opening an item changed the number of items');

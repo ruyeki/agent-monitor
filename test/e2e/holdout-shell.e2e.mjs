@@ -282,7 +282,7 @@ await check('rows: icons differ per state in shape and colour (never colour alon
 
 // ---------- decision inbox
 const pane = () => pd.locator('aside.inbox-pane[aria-label="Decision inbox"]');
-await check('inbox: one item per waiting run, oldest first and open, the rest folded; Open run link; inbox beside the list on a wide screen', async () => {
+await check('inbox: one item per waiting run, oldest first, all open; Open run link; inbox full width above the list on a wide screen', async () => {
   await goto(pd, '#/');
   await until(async () => (await pane().locator('article').count()) > 0, 5000);
   const want = (await runs()).filter((r) => r.status === 'waiting').sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt)).map((r) => `Waiting on you: ${r.title}`);
@@ -291,14 +291,13 @@ await check('inbox: one item per waiting run, oldest first and open, the rest fo
   const first = pane().locator('article').first();
   ok(await first.locator('h3.ui-dic__title').count() === 1, 'oldest item not open');
   ok(await first.locator('a.open-run').count() === 1, 'Open run link');
-  ok(await pane().locator('article button.ui-dic__title--folded').count() === want.length - 1, 'the other items should be folded');
-  ok(await pane().locator('article .ui-dic__body[inert]').count() === want.length - 1, 'folded bodies should be inert');
-  const pw = (await pane().boundingBox()).width, lw = (await pd.locator('.run-list').boundingBox()).width;
-  ok(pw > 250 && pw < 520 && lw > pw, `pane ${pw} list ${lw}`);
+  ok(await pane().locator('article button.ui-dic__title--folded').count() === 0, 'no item should be folded');
+  ok(await pane().locator('article .ui-dic__body[inert]').count() === 0, 'no body should be inert');
+  const pb = await pane().boundingBox(), lb = await pd.locator('.run-list').boundingBox();
+  ok(Math.abs(pb.width - lb.width) <= 2 && pb.y + pb.height <= lb.y + 2, `pane ${JSON.stringify(pb)} should be as wide as, and above, the list ${JSON.stringify(lb)}`);
 });
 
-await check('inbox: clicking a folded item opens it (its ask and Open run link; URL stays #/)', async () => {
-  await itemOf(pd, T.wl).locator('button.ui-dic__title--folded').click(); await pd.waitForTimeout(300);
+await check('inbox: every item is open (its ask and Open run link; URL stays #/)', async () => {
   ok(await itemOf(pd, T.wl).locator('h3.ui-dic__title').count() === 1, 'long-ask item did not open');
   ok(await itemOf(pd, T.wl).locator('.ui-dic__body[inert]').count() === 0, 'opened body still inert');
   ok(await itemOf(pd, T.wl).locator('a.open-run').count() === 1, 'Open run link');
@@ -377,7 +376,7 @@ await check('empty states: no runs => "No runs yet."; nothing waiting => "Nothin
 
 // ---------- 390 px
 for (const theme of ['light', 'dark']) {
-  await check(`[${theme}] 390 px: sidebar stacked on top, inbox below the list, no sideways scroll on any page`, async () => {
+  await check(`[${theme}] 390 px: sidebar stacked on top, inbox above the list, no sideways scroll on any page`, async () => {
     const { ctx, p } = await newPage({ w: 390, h: 800, scheme: theme, theme });
     for (const h of ['#/', '#/workflow', '#/stats', `#/runs/${ids.act}`, `#/runs/${ids.wl}`]) {
       await goto(p, h);
@@ -386,9 +385,9 @@ for (const theme of ['light', 'dark']) {
     }
     await goto(p, '#/');
     await until(async () => (await p.locator('aside.inbox-pane article').count()) > 0, 5000);
-    const g = await p.evaluate(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(), mn = document.querySelector('main').getBoundingClientRect(), l = document.querySelector('.run-list').getBoundingClientRect(), pn = document.querySelector('.inbox-pane').getBoundingClientRect(); return { sbBottom: sb.bottom, sbW: sb.width, mainTop: mn.top, listBottom: l.bottom, paneTop: pn.top, paneW: pn.width, vw: innerWidth }; });
+    const g = await p.evaluate(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(), mn = document.querySelector('main').getBoundingClientRect(), l = document.querySelector('.run-list').getBoundingClientRect(), pn = document.querySelector('.inbox-pane').getBoundingClientRect(); return { sbBottom: sb.bottom, sbW: sb.width, mainTop: mn.top, listTop: l.top, paneBottom: pn.bottom, paneW: pn.width, vw: innerWidth }; });
     ok(g.sbW >= g.vw - 2 && g.mainTop >= g.sbBottom - 2, `sidebar not stacked on top: ${JSON.stringify(g)}`);
-    ok(g.paneTop >= g.listBottom - 2 && g.paneW >= g.vw * 0.8, `pane not below list: ${JSON.stringify(g)}`);
+    ok(g.paneBottom <= g.listTop + 2 && g.paneW >= g.vw * 0.8, `pane not above list: ${JSON.stringify(g)}`);
     await ctx.close();
   });
 }

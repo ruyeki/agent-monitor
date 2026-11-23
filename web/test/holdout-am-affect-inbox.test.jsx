@@ -52,8 +52,8 @@ describe('Decision inbox structure', () => {
     expect(within(list).getByText('Busy')).toBeTruthy();
     expect(within(list).getByText('Old')).toBeTruthy();
     expect(within(list).queryByText('Alpha')).toBeNull();
-    // the inbox follows the run list in the DOM
-    expect(list.compareDocumentPosition(inbox()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // the inbox comes before the run list in the DOM (full width above it)
+    expect(list.compareDocumentPosition(inbox()) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   it('header counts: "2 need your input", "1 needs your input", "All caught up"; empty text visible', async () => {
@@ -78,22 +78,17 @@ describe('Decision inbox structure', () => {
     expect(arts.map((a) => a.getAttribute('aria-label'))).toEqual(['Waiting on you: Oldest', 'Waiting on you: Middle', 'Waiting on you: Newest']);
   });
 
-  it('the oldest item is open and the others are folded to a one-line button that is not reachable inside a closed body', async () => {
+  it('every item is open: no folded line, no inert body', async () => {
     mount({ waiting: [wr('w1', 'Alpha', 60), wr('w2', 'Beta', 30)], active: [], finished: [] });
     await flush();
     const open = item('Alpha');
     expect(within(open).getByRole('button', { name: 'Agree spec' })).toBeTruthy();
     expect(within(open).getByLabelText('Reply for Alpha')).toBeTruthy();
-    const folded = item('Beta');
-    const foldedTitle = within(folded).getByRole('button', { name: /Beta/ });
-    expect(foldedTitle).toBeTruthy();
-    // the folded item's action buttons sit inside an inert region
-    const hiddenBtn = [...folded.querySelectorAll('button')].filter((b) => /Agree spec|Revise|Stop run/.test(b.textContent));
-    for (const b of hiddenBtn) expect(b.closest('[inert]')).toBeTruthy();
-    for (const b of within(open).getAllByRole('button')) expect(b.closest('[inert]')).toBeNull();
-    fireEvent.click(foldedTitle);
-    await flush();
-    for (const b of [...folded.querySelectorAll('button')].filter((x) => /Agree spec/.test(x.textContent))) expect(b.closest('[inert]')).toBeNull();
+    const second = item('Beta');
+    expect(within(second).getByRole('button', { name: 'Agree spec' })).toBeTruthy();
+    expect(within(second).getByLabelText('Reply for Beta')).toBeTruthy();
+    expect(inbox().querySelector('button.ui-dic__title--folded')).toBeNull();
+    for (const b of inbox().querySelectorAll('button')) expect(b.closest('[inert]')).toBeNull();
   });
 
   it('nothing is lost: ask text via parseAsk, every action in order (primary only on the first), reply box, Open run link, Codex tag', async () => {
@@ -173,7 +168,7 @@ describe('Decision inbox answering', () => {
     expect(within(inbox()).getByRole('heading', { level: 2 }).textContent).toMatch(/1 needs your input/);
   });
 
-  it('after ~1.1 s the answered row folds away and the next folded item opens and takes focus; it leaves the DOM once the run is no longer waiting', async () => {
+  it('after ~1.1 s the answered row folds away and the other items stay open and focus moves to the next open one; it leaves the DOM once the run is no longer waiting', async () => {
     const m = mount({ waiting: [wr('w1', 'Alpha', 60), wr('w2', 'Beta', 30)], active: [], finished: [] });
     await flush();
     fireEvent.click(within(item('Alpha')).getByRole('button', { name: 'Agree spec' }));
@@ -213,14 +208,13 @@ describe('Decision inbox answering', () => {
     expect(m.onDone).not.toHaveBeenCalled();
     await flush(2000);
     expect(within(item('Alpha')).getByRole('button', { name: 'Agree spec' }).closest('[inert]')).toBeNull();
-    expect(item('Beta').querySelector('textarea')?.closest('[inert]')).toBeTruthy();
+    expect(item('Beta').querySelector('textarea').closest('[inert]')).toBeNull(); // the other item stays open
   });
 
   it('reply text is per item', async () => {
     mount({ waiting: [wr('w1', 'Alpha', 60), wr('w2', 'Beta', 30)], active: [], finished: [] });
     await flush();
     type('Alpha', 'only for alpha');
-    fireEvent.click(within(item('Beta')).getByRole('button', { name: /Beta/ }));
     await flush();
     expect(within(item('Beta')).getByLabelText('Reply for Beta').value).toBe('');
     expect(within(item('Alpha')).getByLabelText('Reply for Alpha').value).toBe('only for alpha');
@@ -249,8 +243,6 @@ describe('Decision inbox answering', () => {
 
   it('a live refresh with the same runs does not reset which item is open nor the typed reply', async () => {
     const m = mount({ waiting: [wr('w1', 'Alpha', 60), wr('w2', 'Beta', 30)], active: [], finished: [] });
-    await flush();
-    fireEvent.click(within(item('Beta')).getByRole('button', { name: /Beta/ }));
     await flush();
     type('Beta', 'draft');
     m.again({ waiting: [wr('w1', 'Alpha', 60), wr('w2', 'Beta', 30)], active: [], finished: [] });
