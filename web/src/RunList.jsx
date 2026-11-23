@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useNow } from './hooks.js';
 import { formatCost, isEnded, roundsLabel } from './lib/format.js';
 import { nowWorking } from './lib/crew.js';
 import { runHref } from './lib/route.js';
@@ -28,16 +28,6 @@ export function StatusIcon({ status, size = 16 }) {
       {i.paths}
     </svg>
   );
-}
-
-// A clock for the "is this agent working" rules of the working pill.
-function useNow(every) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(t);
-  }, [every]);
-  return now;
 }
 
 function Working({ detail }) {

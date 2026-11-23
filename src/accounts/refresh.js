@@ -7,6 +7,7 @@ import path from 'node:path';
 import cp from 'node:child_process';
 import { hasTokens, readOauthAccount, readOauthEmail } from './creds.js';
 import { guardReal, isDefaultHome } from './paths.js';
+import { accountsDir } from './state.js';
 
 export const REFRESH_TIMEOUT_MS = 120_000;
 export const LOGIN_TIMEOUT_MS = 600_000;
@@ -128,13 +129,21 @@ export async function refreshLogin(saved, { claude, spawn = cp.spawn, env = proc
 // A fresh usage reading for the live login: a one-turn haiku call in the live profile (home), cwd a temp dir.
 // The login is used as it is, never expired on purpose, so a token refresh happens only when Claude Code needs one,
 // in the live file, where sync-back saves it. -> the rate_limit_infos seen; throws when there was none.
-export async function liveReading({ claude, spawn = cp.spawn, env = process.env, home, timeoutMs = REFRESH_TIMEOUT_MS } = {}) {
+// The folder is one stable private folder under dataDir (created once, reused): a fresh temp cwd each time could leave a new
+// project entry in ~/.claude.json on every refresh.
+export async function liveReading({ claude, spawn = cp.spawn, env = process.env, home, dataDir, timeoutMs = REFRESH_TIMEOUT_MS } = {}) {
   const cmd = claudeCommand(claude);
   guardReal(home, env);
   const infos = [];
-  const r = await inTemp((dir) => runChild(spawn, cmd, LIVE_ARGS, {
+  const run = (dir) => runChild(spawn, cmd, LIVE_ARGS, {
     dir, profile: liveEnv(env, home), stdio: ['pipe', 'pipe', 'pipe'], input: PROMPT, timeoutMs, onLine: rateLimitLines((i) => infos.push(i)),
-  }));
+  });
+  let r;
+  if (dataDir) {
+    const dir = path.join(accountsDir(dataDir), 'live-reading');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    r = await run(dir);
+  } else r = await inTemp(run);
   if (!infos.length) throw new Error(`Claude Code returned no usage reading (${why(r)})`);
   return infos;
 }

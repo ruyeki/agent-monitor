@@ -142,10 +142,8 @@ export async function startServer({
       const id = decodeURIComponent(g[1]);
       if (!store.getRun(id)) return send(res, 404, { error: 'No such run.' });
       const rows = store.changesOf(id);
-      const seen = new Set(rows.map((r) => r.toolUseId).filter(Boolean));
-      // Older runs have no changes rows: fall back to the activity log (summary as input, no result).
-      for (const a of store.toolActivity(id)) {
-        if (a.toolUseId && seen.has(a.toolUseId)) continue;
+      // Only a run from before the Ledger (no changes rows at all) falls back to the activity log (summary as input, no result).
+      if (!rows.length) for (const a of store.toolActivity(id)) {
         rows.push({ id: `a${a.id}`, agentId: a.agentId, at: a.at, tool: a.tool, input: redact(a.summary), result: null, outcome: a.outcome });
       }
       return send(res, 200, classifyChanges(rows));

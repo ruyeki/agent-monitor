@@ -270,7 +270,7 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
   async function readActive({ timeoutMs } = {}) {
     const name = activeName();
     if (!name) throw new Error(liveReason() ?? 'the live login is not a saved account');
-    const infos = await liveReading({ claude, spawn, env, home, timeoutMs });
+    const infos = await liveReading({ claude, spawn, env, home, dataDir, timeoutMs });
     if (activeName() !== name) throw new Error('the live login changed during the reading; nothing was recorded');
     for (const info of infos) recordRateLimit(name, info);
     return { name };

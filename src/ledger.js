@@ -1,7 +1,7 @@
 // The Ledger's pure core (C8): which tool calls are worth recording, secret masking, and
 // turning recorded calls into "what this run changed" items. No I/O, no dependencies.
 
-const SHELL_TOOLS = /^(bash|powershell|pwsh|shell|exec_command|local_shell|run_shell_command)$/i;
+export const SHELL_TOOLS = /^(bash|powershell|pwsh|shell|exec_command|local_shell|run_shell_command)$/i;
 const MAX_TEXT = 20000;
 const QUICK = /git|gh\b|pg_dump|sqlite3|\.db|\bcp\b|copy|cpi\b|alembic|flask|migrat|upgrade|pm2|systemctl|service|docker|nssm|kill|Stop-Process|screen|restart|worktree|ssh|\bdb\b/i;
 const ERR = /(^|\n)\s*(fatal:|error:)|! \[(remote )?rejected\]|\[remote rejected\]/i;
@@ -27,9 +27,9 @@ function shellText(input) {
   return s;
 }
 
-const isHephaestusUpdate = (tool) => /hephaestus/i.test(tool || '') && /(^|__)update_task$/.test(tool || '');
+export const isHephaestusUpdate = (tool) => /hephaestus/i.test(tool || '') && /(^|__)update_task$/.test(tool || '');
 
-function hephInfo(input) {
+export function hephInfo(input) {
   const text = typeof input === 'string' ? input : input == null ? '' : JSON.stringify(input);
   const status = /"(?:status|state)"\s*:\s*"([^"]+)/.exec(text);
   const id = /"(?:task_id|taskId|id|number|task)"\s*:\s*"?#?(\d+)/.exec(text);
@@ -143,6 +143,7 @@ function stripHead(w) {
     else if ((b === 'uv' || b === 'poetry' || b === 'pipenv') && w[i + 1] === 'run') i += 2;
     else if (/^(python3?|py)$/.test(b) && w[i + 1] === '-m') i += 2;
     else if (/^(python3?|py)$/.test(b) && /\.py$/.test(w[i + 1] || '') && !/ssh_run/.test(w[i + 1])) i++;
+    else if (b === 'sshpass') { i++; while (i < w.length && w[i].startsWith('-')) i += /^-[pfdP]$/.test(w[i]) ? 2 : 1; }
     else if (b === 'npx') i++;
     else break;
   }
@@ -330,22 +331,55 @@ export function isChangeCandidate(tool, input) {
 // ---------- public: redaction ----------
 
 const MASK = '***';
-const SECRET_NAME = '[A-Za-z0-9_]*(?:PASSWORD|PASSWD|TOKEN|SECRET|API_?KEY|ACCESS_KEY|PRIVATE_KEY)';
+const SECRET_NAME = '[A-Za-z0-9_]{0,64}(?:PASSWORD|PASSWD|TOKEN|SECRET|API_?KEY|ACCESS_KEY|PRIVATE_KEY)';
+const QUOTED_OR_WORD = String.raw`"[^"]*"|'[^']*'|[^\s"';&|)]+`;
 
 const keepRef = (value) => /^["']?[$%]/.test(value) || value.includes(MASK);
+
+// Every pattern here must stay linear: bounded repeats, nothing that rescans from each letter of a long run.
+// Command families whose own flags carry a password (mysql -pSECRET): masked only inside that one command.
+const maskIn = (s, head, inner) => s.replace(head, (seg) => inner(seg));
+const MYSQL = /\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n;&|]{0,400}/gi;
+const DOCKER_LOGIN = /\b(?:docker|podman|nerdctl)\s+login\b[^\n;&|]{0,400}/gi;
+const SSHPASS = /\bsshpass\b[^\n;&|]{0,200}/gi;
 
 export function redact(text) {
   if (text == null) return '';
   let s = String(text);
-  s = s.replace(/\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@"']+):([^\s@/"']+)@/gi, `$1:${MASK}@`);
-  s = s.replace(/(authorization\s*:\s*(?:bearer|basic|token)?\s*)[^\s"'`]+/gi, (m, p) => (m.includes(MASK) ? m : `${p}${MASK}`));
-  s = s.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/g, `Bearer ${MASK}`);
-  s = s.replace(new RegExp(`("[\\w-]*(?:password|passwd|token|secret|api_?key)"\\s*:\\s*)"[^"]*"`, 'gi'), `$1"${MASK}"`);
-  s = s.replace(new RegExp(`(\\$env:${SECRET_NAME}\\s*=\\s*)("[^"]*"|'[^']*'|[^\\s;]+)`, 'gi'), (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
-  s = s.replace(new RegExp(`\\b(${SECRET_NAME})(=)("[^"]*"|'[^']*'|[^\\s"';&|)]+)`, 'gi'), (m, k, eq, v) => (keepRef(v) ? m : `${k}${eq}${MASK}`));
-  s = s.replace(/(--?(?:password|passwd|token|secret|api-?key)(?:=|\s+))(?!-)("[^"]*"|'[^']*'|[^\s]+)/gi, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  s = s.replace(/\b([a-z][a-z0-9+.-]{0,31}:\/\/[^\s:/@"']{1,256}):([^\s@/"']{1,512})@/gi, `$1:${MASK}@`);
+  s = s.replace(/(authorization[ \t]{0,5}:[ \t]{0,5}(?:bearer|basic|token)?[ \t]{0,5})[^\s"'`]+/gi, (m, p) => (m.includes(MASK) ? m : `${p}${MASK}`));
+  s = s.replace(/\bBearer[ \t]{1,5}[A-Za-z0-9._~+/=-]{16,}/g, `Bearer ${MASK}`);
+  s = s.replace(/(\b[\w-]{0,40}(?:api-?key|-token|-secret|-password)[ \t]{0,5}:[ \t]{0,5})("[^"]*"|'[^']*'|[^\s"'`]+)/gi, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  s = s.replace(/("[\w-]{0,64}(?:password|passwd|token|secret|api[_-]?key)"[ \t]{0,5}:[ \t]{0,5})"[^"]*"/gi, `$1"${MASK}"`);
+  s = s.replace(new RegExp(String.raw`(\$env:${SECRET_NAME}[ \t]{0,5}=[ \t]{0,5})("[^"]*"|'[^']*'|[^\s;]+)`, 'gi'), (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  // PowerShell variables named like a secret: $dbPassword = 'x'
+  s = s.replace(/(\$[A-Za-z0-9_]{0,64}(?:password|passwd|token|secret|api_?key|credential)[A-Za-z0-9_]{0,32}[ \t]{0,5}=[ \t]{0,5})("[^"]*"|'[^']*'|[^\s;]+)/gi, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  s = s.replace(new RegExp(`\\b(${SECRET_NAME})(=)(${QUOTED_OR_WORD})`, 'gi'), (m, k, eq, v) => (keepRef(v) ? m : `${k}${eq}${MASK}`));
+  // connection strings: ...;Pwd=secret;
+  s = s.replace(/(?<=[;"'])([ \t]{0,3}pwd=)([^;"'\s]{1,512})/gi, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  s = s.replace(/(--?(?:password|passwd|token|secret|api-?key)(?:=|[ \t]{1,5}))(?!-)("[^"]*"|'[^']*'|[^\s]+)/gi, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  // curl -u user:pw / --user user:pw
+  s = s.replace(/((?<![\w-])(?:-u|--user|--proxy-user)(?:=|[ \t]{1,5})["']?[^\s:"']{1,128}:)([^\s"']{1,512})/g, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`));
+  s = maskIn(s, SSHPASS, (seg) => seg.replace(/((?<![\w-])-p[ \t]{0,3})("[^"]*"|'[^']*'|[^\s]+)/, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`)));
+  s = maskIn(s, MYSQL, (seg) => seg.replace(/((?<![\w-])-p[ \t]{0,3})("[^"]*"|'[^']*'|[^\s-][^\s]*)/g, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`)));
+  s = maskIn(s, DOCKER_LOGIN, (seg) => seg.replace(/((?<![\w-])-p[ \t]{1,3})("[^"]*"|'[^']*'|[^\s]+)/g, (m, p, v) => (keepRef(v) ? m : `${p}${MASK}`)));
   s = s.replace(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|npm_[A-Za-z0-9]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+)/g, MASK);
   return s;
+}
+
+// Text for the Ledger: cut before masking (so a huge response never reaches the regexes whole), mask, then cut to max.
+export const ledgerText = (v, max) => redact(String(v ?? '').slice(0, max + 512)).slice(0, max);
+
+// A long result keeps its head and its tail (git's `[branch hash] subject` and push lines come last), exactly max long.
+export function ledgerResult(v, max) {
+  const raw = String(v ?? '');
+  const keep = max * 4;
+  const cut = raw.length > keep * 2 ? `${raw.slice(0, keep)}\n${raw.slice(-keep)}` : raw;
+  const s = redact(cut);
+  if (s.length <= max) return s;
+  const marker = '\n[...]\n';
+  const head = Math.round(max * 0.3);
+  return s.slice(0, head) + marker + s.slice(s.length - (max - head - marker.length));
 }
 
 // ---------- public: classification ----------

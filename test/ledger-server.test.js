@@ -113,11 +113,14 @@ test('the ledger endpoint: items newest first, summary, legacy activity fallback
   t.post('c1', { stdout: '[main aaaaaaa] first\n 1 file changed, 2 insertions(+), 1 deletion(-)\n' });
   t.pre('p1', 'git push origin main');
   t.post('p1', { stdout: PUSH });
-  // legacy: activity rows only (one duplicates a changes row, one has no tool_use_id, one carries a secret)
+  // activity rows next to changes rows are NOT added back (capped-away or non-candidate calls)
   t.store.addActivity(t.id, 'main:cs', 'tool', 'Bash', 'git push origin main', 'p1');
   t.store.addActivity(t.id, 'main:cs', 'tool', 'Bash', 'git merge feature-x', null);
-  t.store.addActivity(t.id, 'main:cs', 'tool', 'Bash', 'git push https://u:topsecretpw@github.com/o/r.git dev', 'old1');
-  t.store.addActivity(t.id, 'main:cs', 'tool', 'Bash', 'git status', 'old2');
+  // legacy run: activity rows only (one has no tool_use_id, one carries a secret)
+  const legacy = t.store.startRun({ title: 'Legacy' }).run;
+  t.store.addActivity(legacy.id, 'a', 'tool', 'Bash', 'git merge feature-x', null);
+  t.store.addActivity(legacy.id, 'a', 'tool', 'Bash', 'git push https://u:topsecretpw@github.com/o/r.git dev', 'old1');
+  t.store.addActivity(legacy.id, 'a', 'tool', 'Bash', 'git status', 'old2');
   // another run must never leak in
   const other = t.store.startRun({ title: 'Other' }).run;
   t.store.addChange(other.id, 'a', 'Bash', 'o1', 'git push origin elsewhere');
@@ -129,17 +132,20 @@ test('the ledger endpoint: items newest first, summary, legacy activity fallback
     assert.equal(r.status, 200);
     const titles = r.json.items.map((i) => i.title);
     assert.ok(!titles.some((x) => /elsewhere|other-run/.test(x)));
-    assert.ok(!r.text.includes('topsecretpw'));
-    assert.equal(r.json.items.filter((i) => i.kind === 'push').length, 2, 'p1 once (de-duplicated) plus the legacy push');
-    assert.equal(r.json.items.filter((i) => i.kind === 'merge').length, 1);
+    assert.equal(r.json.items.filter((i) => i.kind === 'push').length, 1);
+    assert.equal(r.json.items.filter((i) => i.kind === 'merge').length, 0, 'no activity-only rows next to changes rows');
     assert.equal(r.json.items.filter((i) => i.kind === 'commit').length, 1);
     const ats = r.json.items.map((i) => i.at);
     assert.deepEqual(ats, [...ats].sort().reverse(), 'newest first');
     assert.equal(r.json.summary.commits, 1);
-    assert.equal(r.json.summary.pushes, 2);
+    assert.equal(r.json.summary.pushes, 1);
     assert.equal(r.json.summary.total, r.json.items.length);
+    const l = await b.api('GET', `/api/runs/${legacy.id}/ledger`);
+    assert.ok(!l.text.includes('topsecretpw'));
+    assert.equal(l.json.items.filter((i) => i.kind === 'push').length, 1);
+    assert.equal(l.json.items.filter((i) => i.kind === 'merge').length, 1);
     const o = await b.api('GET', `/api/runs/${other.id}/ledger`);
-    assert.equal(o.json.items.length, 2, 'the other run sees only its own push and merge');
+    assert.equal(o.json.items.length, 1, 'the other run sees only its own push');
     const nf = await b.api('GET', '/api/runs/no-such-run/ledger');
     assert.equal(nf.status, 404);
   } finally { await b.srv.close(); }

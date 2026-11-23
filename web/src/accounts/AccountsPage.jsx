@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useThrottledTick } from '../hooks.js';
+import { useNow, useThrottledTick } from '../hooks.js';
 import { relativeTime } from '../lib/time.js';
 import { addAccount, cancelSignIn, getAccounts, refreshUsage, sendCode, switchAccount } from './accountsApi.js';
 import {
@@ -10,16 +10,6 @@ import './accounts.css';
 export const POLL_MS = 1500;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const NAME_HELP = '1-32 characters: a-z, 0-9 and -, starting with a letter.';
-
-// A clock for the "X ago" / "resets in" words; one per page, so the cards do not each run a timer.
-function useNow(ms) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
-  }, [ms]);
-  return now;
-}
 
 // One usage window as a bar (the Crew tab's context-bar look). Only rendered when the account has a reading.
 function Meter({ label, pct, resetsAt, now }) {

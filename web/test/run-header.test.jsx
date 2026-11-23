@@ -88,5 +88,20 @@ describe('useRunDetails (C3)', () => {
     expect(calls().filter((u) => u === '/api/runs/d')).toHaveLength(2);
     expect(result.current('nope')).toBeNull();
   });
-});
 
+  it('ignores a slow older response that arrives after a newer one for the same run', async () => {
+    const resolvers = [];
+    globalThis.fetch = vi.fn(() => new Promise((r) => resolvers.push(r)));
+    const live = [{ id: 'a' }];
+    const { result, rerender } = renderHook(({ tick }) => useRunDetails(live, [], tick), { initialProps: { tick: 0 } });
+    await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    rerender({ tick: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(resolvers).toHaveLength(2);
+    const ok = (body) => ({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    await act(async () => { resolvers[1](ok({ run: { id: 'a' }, v: 'new' })); });
+    await act(async () => { resolvers[0](ok({ run: { id: 'a' }, v: 'old' })); });
+    expect(result.current('a').v).toBe('new');
+  });
+});

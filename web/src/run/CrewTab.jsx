@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Elapsed } from '../Ago.jsx';
+import { useNow } from '../hooks.js';
 import { barSpan } from '../lib/connectors.js';
 import { agentCall, agentName, contextPct, crewTree, modelLabel } from '../lib/crew.js';
 import { formatCost, formatTokens } from '../lib/format.js';
@@ -8,7 +9,7 @@ import { stageLabel } from '../RunList.jsx';
 import { AgentPill, Avatar, StatusPill } from '../RunBits.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
 import { ThinkingLoader } from '../vendor/affectui/thinking-loader.tsx';
-import { ToolCallList, useNow } from './RunSide.jsx';
+import { ToolCallList } from './RunSide.jsx';
 
 const MAX_CALLS = 10;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -16,13 +17,13 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // One agent: who, task, what it is doing now, how full its context is, what it cost. The card is selectable
 // (aria-pressed on its name button, also by clicking anywhere on the card) to filter the tool calls.
 function AgentCard({ node, view }) {
-  const { detail, now, selectedId, onSelect, counts } = view;
+  const { detail, now, selectedId, onSelect } = view;
   const a = node.agent;
   const selected = selectedId === a.id;
   const pct = contextPct(a);
   const call = agentCall(detail, a, now);
   const own = (e) => !e.target.closest?.('button, a');
-  const nCalls = counts.get(a.id) ?? 0;
+  const nCalls = Number(a.toolCalls) || 0; // the server's per-agent count (the activity list holds only the last 100 rows)
   return (
     <article className={selected ? 'card ag sel' : 'card ag'} data-agent-id={a.id} onClick={(e) => own(e) && onSelect(a.id)}>
       <div className="aghead">
@@ -67,6 +68,8 @@ function AgentCard({ node, view }) {
 // The children of a node (or the roots), side by side. A child with a recorded parent gets a stub (`data-edge`); one
 // bar from the parent's centre to the farthest such child joins the parent's stub to them. A child without a recorded
 // parent gets no stub and lies outside the bar. Positions are measured, because they depend on the cards' widths.
+const countNodes = (n) => 1 + n.children.reduce((s, c) => s + countNodes(c), 0);
+
 function Kids({ nodes, view, roots }) {
   const ref = useRef(null);
   const [span, setSpan] = useState(null);
@@ -82,14 +85,19 @@ function Kids({ nodes, view, roots }) {
     const next = barSpan(box.width / 2, kids);
     setSpan((cur) => (cur && next && cur.left === next.left && cur.right === next.right ? cur : next));
   };
-  useLayoutEffect(measure); // after every render: cards change height and width as their text changes
+  const latest = useRef(measure);
+  latest.current = measure;
+  // Re-measure when the tree's shape changes (who is here, who has a recorded parent, how many below).
+  const shape = nodes.map((n) => `${n.id}:${n.edge ?? ''}:${countNodes(n)}`).join('|');
+  useLayoutEffect(() => latest.current(), [shape, roots]);
+  // One observer for this level's life; it also catches size changes (text wrapping, window width).
   useEffect(() => {
     const el = ref.current;
     if (!el || roots || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => latest.current());
     ro.observe(el);
     return () => ro.disconnect();
-  });
+  }, [roots]);
   return (
     <div ref={ref} className={roots ? 'tn-kids tn-roots' : 'tn-kids'}>
       {!roots && hasLinked && <span className="tn-bar" data-bar="" aria-hidden="true" style={span ? { left: span.left, width: span.right - span.left } : { display: 'none' }} />}
@@ -173,18 +181,13 @@ export function CrewTab({ detail, onChanged }) {
   const [picked, setPicked] = useState(null);
   const tree = crewTree(detail.agents);
   const selected = tree.nodes.some((n) => n.id === picked) ? picked : null;
-  useEffect(() => {
-    if (picked && !selected) setPicked(null); // the agent left the run: stop filtering by it
-  }, [picked, selected]);
 
   const all = toolCalls(detail, now, Infinity);
-  const counts = new Map();
-  for (const c of all) counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1);
   const calls = (selected ? all.filter((c) => c.agentId === selected) : all).slice(0, MAX_CALLS);
   const chosen = tree.nodes.find((n) => n.id === selected)?.agent;
   const running = tree.nodes.filter((n) => n.agent.status === 'running').length;
   const total = tree.nodes.length;
-  const view = { detail, now, selectedId: selected, counts, onSelect: (id) => setPicked((cur) => (cur === id ? null : id)) };
+  const view = { detail, now, selectedId: selected, onSelect: (id) => setPicked((cur) => (cur === id ? null : id)) };
 
   return (
     <div className="run-body crew-body" role="tabpanel" id="panel-crew" aria-labelledby="tab-crew">

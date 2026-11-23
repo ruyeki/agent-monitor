@@ -17,7 +17,7 @@ const detail = (over = {}) => ({
   agents: [
     agent('main:s1', 'main', { model: 'claude-opus-5-5', status: 'idle', context: { tokens: 710, window: 1000, pct: 71 } }),
     agent('lead', 'fable-lead', { model: 'claude-opus-5-5', description: 'Lead: steer the build', parentId: 'main:s1', context: { tokens: 380, window: 1000, pct: 38 } }),
-    agent('e1', 'sonnet-engineer', { description: 'Restyle the Monitor', parentId: 'lead', context: { tokens: 22, window: 100, pct: 22 } }),
+    agent('e1', 'sonnet-engineer', { description: 'Restyle the Monitor', parentId: 'lead', toolCalls: 42, context: { tokens: 22, window: 100, pct: 22 } }),
     agent('v1', 'sonnet-engineer', { description: 'Verifier: write tests', parentId: 'lead', context: null }),
     agent('w1', 'sonnet-engineer', { description: 'White-hat pass', parentId: 'ghost', context: { tokens: 1, window: 100, pct: 1 } }),
   ],
@@ -113,7 +113,7 @@ describe('Crew tab', () => {
     expect(card('e1').textContent).toContain('Restyle the Monitor');
     expect(card('e1').textContent).toContain('Edit web/src/Monitor.jsx');
     expect(card('e1').textContent).toContain('$0.50 · 10m');
-    expect(card('e1').textContent).toContain('1 tool call');
+    expect(card('e1').textContent).toContain('42 tool calls'); // the server's per-agent count, not the 1 row in the (last-100) activity list;
     expect(card('lead').textContent).toContain('Opus 5.5');
     expect(card('lead').textContent).toContain('3 helpers');
     expect(within(card('v1')).getByRole('button', { name: 'verifier' })).toBeTruthy();

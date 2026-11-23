@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS usage_messages (
 CREATE INDEX IF NOT EXISTS usage_messages_day ON usage_messages (day);
 CREATE INDEX IF NOT EXISTS usage_messages_agent ON usage_messages (agent_id);
 CREATE INDEX IF NOT EXISTS usage_messages_session ON usage_messages (session_id);
+CREATE INDEX IF NOT EXISTS usage_messages_agent_ts ON usage_messages (agent_id, ts);
+CREATE INDEX IF NOT EXISTS usage_messages_session_ts ON usage_messages (session_id, ts);
 CREATE TABLE IF NOT EXISTS prices (
   model TEXT PRIMARY KEY, input REAL NOT NULL, output REAL NOT NULL, cache_write REAL NOT NULL,
   cache_write_1h REAL NOT NULL, cache_read REAL NOT NULL, note TEXT NOT NULL DEFAULT '');

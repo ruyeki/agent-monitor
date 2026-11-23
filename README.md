@@ -143,6 +143,6 @@ Each run's tokens come from the indexer, never from the old per-agent counters. 
 
 ## Ledger
 
-The Ledger tab answers "what did this run change?". The hooks record only change-worthy tool calls (git commit/push/merge, `gh pr create/merge`, database backups and upgrades, server restarts, worktree add/remove, Hephaestus status updates); read-only commands never appear. Each recorded call keeps its command (2000 characters) and its result (1000 characters) with passwords, tokens, keys and `user:pass@` URLs masked as `***` before anything is stored, at most 300 per run. Runs from before the Ledger fall back to the activity log (command summary only).
+The Ledger tab answers "what did this run change?". The hooks record only change-worthy tool calls (git commit/push/merge, `gh pr create/merge`, database backups and upgrades, server restarts, worktree add/remove, Hephaestus status updates); read-only commands never appear. Each recorded call keeps its command (2000 characters) and its result (1000 characters: the first 300 and the end) in the Ledger with passwords, tokens, keys and `user:pass@` URLs masked as `***` before they are stored there, at most 300 per run. Only Ledger records are masked. Runs from before the Ledger fall back to the activity log (command summary only).
 
 `GET /api/runs/:id/ledger` returns `{items, summary}`, newest first. Each item has a `category` (`code`, `tasks`, `machines`) and a `tag`: `permanent` ("Can't undo"), `backup` ("Backup kept"), `reversible` ("Can change back") or `info`. Failed calls are skipped.

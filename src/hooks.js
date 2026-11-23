@@ -1,7 +1,7 @@
 // Claude hook events -> per-agent tracking. Never throws: every problem answers {}.
 import path from 'node:path';
 import { MODES } from './exe.js';
-import { isChangeCandidate, redact } from './ledger.js';
+import { isChangeCandidate, isHephaestusUpdate, hephInfo, ledgerText, ledgerResult, SHELL_TOOLS } from './ledger.js';
 import { fileSize, readUsage, readMeta, subagentPath } from './transcripts.js';
 
 // Tools a Claude session may still use on a run that was handed over to Codex.
@@ -12,6 +12,7 @@ const TOKEN_READ_EVERY_MS = 5000;
 const MAX_PENDING = 2000;
 const MAX_CHANGE_INPUT = 2000;
 const MAX_CHANGE_RESULT = 1000;
+const MAX_OPEN_CHANGES = 2000;
 const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -23,14 +24,19 @@ function summarize(input) {
   return text(input.command ?? input.file_path ?? input.pattern ?? input.description ?? input.url ?? first, 120);
 }
 
-// Ledger text: redact first, then cut, so a secret split by the cut is never half-kept.
-const ledgerText = (v, max) => redact(v).slice(0, max);
-const SHELLS = /^(bash|powershell|pwsh|shell)$/i;
 const jsonOf = (v) => { try { return typeof v === 'string' ? v : JSON.stringify(v ?? ''); } catch { return ''; } };
-const changeInput = (tool, input) => (SHELLS.test(tool) && typeof input?.command === 'string' ? input.command : jsonOf(input));
+// A Hephaestus status change is stored as a compact {task_id, status}: the full JSON may carry a long description first
+// and be cut before the status.
+function changeInput(tool, input) {
+  if (isHephaestusUpdate(tool)) {
+    const { id, status } = hephInfo(jsonOf(input));
+    if (status) return JSON.stringify({ task_id: id, status });
+  }
+  return SHELL_TOOLS.test(tool) && typeof input?.command === 'string' ? input.command : jsonOf(input);
+}
 function changeResult(tool, resp, error) {
   if (error != null) return String(error);
-  if (SHELLS.test(tool) && resp && typeof resp === 'object') return `${resp.stdout ?? ''}${resp.stderr ? `
+  if (SHELL_TOOLS.test(tool) && resp && typeof resp === 'object') return `${resp.stdout ?? ''}${resp.stderr ? `
 ${resp.stderr}` : ''}`;
   return jsonOf(resp);
 }
@@ -60,6 +66,7 @@ const stable = (v) => (v && typeof v === 'object'
 export function createHooks(store, { projectsDir, port, defer = setImmediate, clock = Date.now, onLimit, onChatLimit } = {}) {
   // A command aimed at our own port on a loopback host: subagents must use the MCP tools instead.
   const selfApi = port ? new RegExp(`(?:127\\.\\d+\\.\\d+\\.\\d+|localhost|\\[::1\\]|0\\.0\\.0\\.0):${port}(?!\\d)`, 'i') : null;
+  const openChanges = new Set(); // tool_use_ids that got a ledger row: only those get a result built and masked
   const pending = new Map(); // tool_use_id -> {sid, agentId, tool, key}
   const lastRead = new Map(); // agent id -> ms of the last transcript read
   const guessed = new Set(); // subagents whose parent came from the pending-call fallback (meta.json may still correct it)
@@ -75,8 +82,8 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     return parent && parent !== a.agent_id ? parent : null;
   }
   function setParent(a, parent, viaFallback) {
-    if (!parent || parent === a.agent_id || parent === a.parent_agent_id) return;
-    store.updateAgent(a.agent_id, { parent_agent_id: parent });
+    if (!parent || parent === a.agent_id) return;
+    if (parent !== a.parent_agent_id) store.updateAgent(a.agent_id, { parent_agent_id: parent });
     if (!viaFallback) guessed.delete(a.agent_id);
     else {
       if (guessed.size >= MAX_PENDING) guessed.delete(guessed.values().next().value);
@@ -229,6 +236,10 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         act('tool', text(p.tool_name, 80), summary, p.tool_use_id);
         if (isChangeCandidate(p.tool_name, p.tool_input)) {
           store.addChange(run.id, agentId, text(p.tool_name, 80), p.tool_use_id, ledgerText(changeInput(p.tool_name, p.tool_input), MAX_CHANGE_INPUT));
+          if (str(p.tool_use_id)) {
+            if (openChanges.size >= MAX_OPEN_CHANGES) openChanges.delete(openChanges.values().next().value);
+            openChanges.add(p.tool_use_id);
+          }
         }
         if (p.tool_use_id) {
           if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
@@ -245,8 +256,10 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
           act('error', text(p.tool_name, 80), text(p.error, 120), p.tool_use_id);
         }
         store.endActivity(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error');
-        store.endChange(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error',
-          ledgerText(changeResult(p.tool_name, p.tool_response, ev === 'PostToolUse' ? null : p.error), MAX_CHANGE_RESULT));
+        if (openChanges.delete(p.tool_use_id)) {
+          store.endChange(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error',
+            ledgerResult(changeResult(p.tool_name, p.tool_response, ev === 'PostToolUse' ? null : p.error), MAX_CHANGE_RESULT));
+        }
         store.updateAgent(agentId, fields);
         if (clock() - (lastRead.get(agentId) ?? 0) >= TOKEN_READ_EVERY_MS) {
           lastRead.set(agentId, clock());

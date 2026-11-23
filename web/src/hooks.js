@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getRun } from './api.js';
 
 // EventSource with manual reconnect; calls onChange (debounced) on every event and on (re)open.
@@ -39,6 +39,48 @@ export function useLive(onChange, { debounce = 250, retry = 2000 } = {}) {
     };
   }, [debounce, retry]);
   return state;
+}
+
+// One shared clock per period: a single interval serves every subscriber (a long Ledger has hundreds of Ago leaves),
+// started with the first subscriber and stopped with the last. Read through useSyncExternalStore.
+const clocks = new Map(); // ms -> {now, subs, timer}
+function clockFor(ms) {
+  let c = clocks.get(ms);
+  if (!c) {
+    c = { now: Date.now(), subs: new Set(), timer: null };
+    clocks.set(ms, c);
+  }
+  return c;
+}
+function subscribeClock(ms, fn) {
+  const c = clockFor(ms);
+  c.subs.add(fn);
+  if (c.timer == null) {
+    c.now = Date.now();
+    c.timer = setInterval(() => {
+      c.now = Date.now();
+      for (const f of [...c.subs]) f();
+    }, ms);
+  }
+  return () => {
+    c.subs.delete(fn);
+    if (!c.subs.size) {
+      clearInterval(c.timer);
+      c.timer = null;
+      clocks.delete(ms);
+    }
+  };
+}
+function clockNow(ms) {
+  const c = clockFor(ms);
+  // Idle clock: keep the value stable between reads, but not older than one period.
+  if (c.timer == null && Date.now() - c.now >= ms) c.now = Date.now();
+  return c.now;
+}
+export function useNow(ms) {
+  const subscribe = useCallback((fn) => subscribeClock(ms, fn), [ms]);
+  const get = useCallback(() => clockNow(ms), [ms]);
+  return useSyncExternalStore(subscribe, get, get);
 }
 
 const KEY = 'agent-monitor-theme';
@@ -93,6 +135,8 @@ export function useRunDetails(liveRuns, endedRuns, tick, ms = 3000) {
   const [version, setVersion] = useState(0);
   const cache = useRef(new Map()); // id -> {key, detail}
   const pending = useRef(new Set());
+  const seq = useRef(0); // request order; a slow older response must not overwrite a newer one
+  const applied = useRef(new Map()); // id -> seq of the response shown
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -103,10 +147,13 @@ export function useRunDetails(liveRuns, endedRuns, tick, ms = 3000) {
   const load = (id, key) => {
     if (pending.current.has(key)) return;
     pending.current.add(key);
+    const mine = ++seq.current;
     getRun(id)
       .then(
         (d) => {
           if (!alive.current || !d || typeof d !== 'object') return;
+          if (mine < (applied.current.get(id) ?? 0)) return;
+          applied.current.set(id, mine);
           cache.current.set(id, { key, detail: d });
           setVersion((v) => v + 1);
         },

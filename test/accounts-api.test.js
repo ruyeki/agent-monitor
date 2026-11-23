@@ -205,7 +205,8 @@ test('refresh: 202, one at a time, live account via the live-reading path (no ro
   assert.deepEqual(liveCall.argv, LIVE_ARGS);
   assert.equal(liveCall.configDir, s.home, 'the live profile, not a temp one');
   assert.notEqual(liveCall.cwd, s.home);
-  assert.equal(fs.existsSync(liveCall.cwd), false, 'the temp cwd was removed');
+  assert.equal(liveCall.cwd, path.join(s.dataDir, 'accounts', 'live-reading'), 'one stable private folder, reused (no new project entry per refresh)');
+  assert.equal(fs.existsSync(liveCall.cwd), true);
   assert.equal(liveCall.seenExpiresAt, RYAN.expiresAt, 'the live login was not expired on purpose');
   assert.equal(liveCall.hasOauthToken, false);
   assert.equal(liveCall.hasApiKey, false);

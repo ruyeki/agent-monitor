@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { respond } from './api.js';
+import { useNow } from './hooks.js';
 import { Elapsed } from './Ago.jsx';
 import { agentCall, agentName, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
 import { parseAsk } from './lib/ask.js';
@@ -7,16 +8,6 @@ import { formatCost, roundsLabel } from './lib/format.js';
 import { runHref } from './lib/route.js';
 import { CodexTag, stageLabel } from './RunList.jsx';
 import { AgentPill, Avatar, Avatars, StageStepper, StatusPill } from './RunBits.jsx';
-
-// A clock for the working rules (how old the last activity is).
-function useNow(every) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(t);
-  }, [every]);
-  return now;
-}
 
 const costOf = (detail) => (detail?.tokens?.total ? formatCost(detail.tokens.total.cost) : '–');
 const agentsOf = (detail) => (Array.isArray(detail?.agents) ? detail.agents : []);

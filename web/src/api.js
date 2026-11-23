@@ -1,4 +1,4 @@
-async function request(path, opts) {
+export async function request(path, opts) {
   const res = await fetch(path, opts);
   let body = null;
   try {
@@ -9,12 +9,13 @@ async function request(path, opts) {
   if (!res.ok) {
     const err = new Error((body && body.error) || `Request failed (${res.status})`);
     err.body = body;
+    err.status = res.status;
     throw err;
   }
   return body;
 }
 
-const post = (path, data) =>
+export const post = (path, data) =>
   request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data ?? {}) });
 
 export const getRuns = () => request('/api/runs');
@@ -23,7 +24,7 @@ export const getLedger = (id) => request(`/api/runs/${encodeURIComponent(id)}/le
 export const respond = (id, action, text) => post(`/api/runs/${encodeURIComponent(id)}/respond`, { action, text });
 export const stopRun = (id) => post(`/api/runs/${encodeURIComponent(id)}/stop`, {});
 
-const send = (method, path, data) =>
+export const send = (method, path, data) =>
   request(path, { method, headers: { 'Content-Type': 'application/json' }, body: data === undefined ? undefined : JSON.stringify(data) });
 
 export const getWorkflow = () => request('/api/workflow');

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useNow } from '../hooks.js';
 import { Ago, Idle } from '../Ago.jsx';
 import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
 import { pillLabel, toolCalls } from '../lib/toolCalls.js';
@@ -8,16 +8,6 @@ import { Avatar, StatusPill } from '../RunBits.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
 import { ThinkingLoader } from '../vendor/affectui/thinking-loader.tsx';
 import { ToolCallCard } from '../vendor/affectui/tool-call-card.tsx';
-
-// A clock for the working/running rules, which depend on how old the last activity is.
-export function useNow(every) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(t);
-  }, [every]);
-  return now;
-}
 
 function ActiveAgents({ detail, now }) {
   const { run, agents = [] } = detail;
