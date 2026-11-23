@@ -101,7 +101,7 @@ export function RunList({ runs, detailOf }) {
     <ul className="run-rows">
       {runs.map((r) => (
         <li key={r.id}>
-          <a className="run-row" href={runHref(r.id)}>
+          <a className="run-row" href={runHref(r.id, isEnded(r) ? 'ledger' : 'crew')}>
             <RowBody run={r} detail={detailOf?.(r.id) ?? null} />
           </a>
         </li>

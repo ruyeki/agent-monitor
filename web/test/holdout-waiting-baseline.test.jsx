@@ -65,7 +65,7 @@ describe('baseline card and app', () => {
   it('an active run row is a link that opens its run view route', async () => {
     render(<App />);
     const row = (await screen.findByText('Busy run')).closest('a');
-    expect(row.getAttribute('href')).toBe('#/runs/act'); // a real anchor: the browser navigates, no click handler needed
+    expect(row.getAttribute('href')).toBe('#/runs/act/crew'); // a real anchor: the browser navigates, no click handler needed
     expect(row.classList.contains('run-row')).toBe(true);
   });
 });

@@ -142,7 +142,7 @@ function CrewStrip({ run, detail, now }) {
             {crew.length} {crew.length === 1 ? 'agent' : 'agents'}
           </span>
           {working > 0 && <span className="live-text">{working} working</span>}
-          <a className="link" href={runHref(run.id)}>
+          <a className="link" href={runHref(run.id, 'crew')}>
             Open run →
           </a>
         </div>

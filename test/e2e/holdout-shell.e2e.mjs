@@ -109,15 +109,15 @@ await check('shell: aside.sidebar + one main inside .shell on all 4 pages; brand
   }
 });
 
-await check('nav: exactly Monitor, Workflow, Stats with hrefs and icons; Monitor count = open runs; no Waiting link', async () => {
+await check('nav: exactly Monitor, Workflow, Stats, Accounts with hrefs and icons; Monitor count = open runs; no Waiting link', async () => {
   await goto(pd, '#/');
   const items = await navLinks(pd).evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-  ok(items.length === 3 && /^Monitor/.test(items[0][0]) && /^Workflow/.test(items[1][0]) && /^Stats/.test(items[2][0]), JSON.stringify(items));
-  ok(items.map((i) => i[1]).join() === '#/,#/workflow,#/stats', JSON.stringify(items));
+  ok(items.length === 4 && /^Monitor/.test(items[0][0]) && /^Workflow/.test(items[1][0]) && /^Stats/.test(items[2][0]) && /^Accounts/.test(items[3][0]), JSON.stringify(items));
+  ok(items.map((i) => i[1]).join() === '#/,#/workflow,#/stats,#/accounts', JSON.stringify(items));
   const open = (await runs()).filter((r) => ['waiting', 'active'].includes(r.status)).length;
   const c = (await navLinks(pd).first().locator('.nav-count').innerText()).trim();
   ok(Number(c) === open, `Monitor count ${c} vs open runs ${open}`);
-  ok(await navLinks(pd).locator('svg[aria-hidden="true"]').count() === 3, 'each nav link needs an aria-hidden svg icon');
+  ok(await navLinks(pd).locator('svg[aria-hidden="true"]').count() === 4, 'each nav link needs an aria-hidden svg icon');
   ok(await pd.locator('a[href="#/waiting"]').count() === 0, 'a link to #/waiting exists');
   ok(!/^Waiting \(\d+\)$/m.test(await pd.locator('body').innerText()), 'Waiting (n) tab text present');
 });
@@ -262,7 +262,7 @@ await check('rows: status icon aria-label, mono id, stage pill, rounds n/max, ag
     ok(info.pill && info.pill.length > 0, `${title}: stage pill`);
     ok(/\b\d+\/\d+\b/.test(info.txt), `${title}: rounds in "${info.txt.replace(/\s+/g, ' ')}"`);
     ok(/(\bnow\b|\bago\b|\d+\s?(s|m|h|d)\b)/i.test(info.txt), `${title}: age in "${info.txt.replace(/\s+/g, ' ')}"`);
-    ok(info.href === `#/runs/${id}`, `href ${info.href}`);
+    ok(info.href === `#/runs/${id}/${label === 'Running' ? 'crew' : 'ledger'}`, `href ${info.href}`); // live rows open Crew, finished rows the Ledger
   }
 });
 
@@ -341,7 +341,7 @@ await check('inbox: an action posts, the item confirms, folds away and leaves; t
 
 await check('clicking an active row opens #/runs/<id> inside the shell', async () => {
   await rowOf(pd, T.act).click(); await pd.waitForTimeout(500);
-  ok(pd.url().endsWith(`#/runs/${ids.act}`), pd.url());
+  ok(pd.url().endsWith(`#/runs/${ids.act}/crew`), pd.url());
   ok(await pd.locator('div.shell > aside.sidebar').count() === 1, 'shell on run view');
 });
 

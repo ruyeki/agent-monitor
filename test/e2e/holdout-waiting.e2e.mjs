@@ -82,13 +82,13 @@ await check('seed: three runs are waiting, the long ask is intact', async () => 
 await page.goto(`${base}/#/`);
 await page.locator('nav[aria-label="Sections"]').waitFor();
 
-await check('nav: Monitor, Workflow, Stats in order (no Waiting page); Views count 3', async () => {
+await check('nav: Monitor, Workflow, Stats, Accounts in order (no Waiting page); Views count 3', async () => {
   await until(async () => (await waitingCount()) === '3', 5000);
   const links = page.locator('nav[aria-label="Sections"] a');
   const labels = (await links.allInnerTexts()).map((t) => t.trim().replace(/\d+$/, '').trim());
-  ok(labels.join(',') === 'Monitor,Workflow,Stats', `nav was ${labels.join(',')}`);
+  ok(labels.join(',') === 'Monitor,Workflow,Stats,Accounts', `nav was ${labels.join(',')}`);
   const hrefs = await links.evaluateAll((as) => as.map((a) => a.getAttribute('href')));
-  ok(hrefs.join(',') === '#/,#/workflow,#/stats', `hrefs ${hrefs}`);
+  ok(hrefs.join(',') === '#/,#/workflow,#/stats,#/accounts', `hrefs ${hrefs}`);
   ok((await page.locator('nav[aria-label="Sections"] a[aria-current="page"]').innerText()).startsWith('Monitor'), 'aria-current on Monitor');
   ok((await page.locator('nav[aria-label="Sections"] a', { hasText: /^Monitor/ }).locator('.nav-count').innerText()).trim() === '4', 'open count (3 waiting + 1 active)');
 });

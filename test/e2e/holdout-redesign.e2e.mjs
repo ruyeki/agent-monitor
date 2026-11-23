@@ -221,7 +221,7 @@ for (const theme of ['light', 'dark']) {
     ok(r.w >= 220 && r.w <= 245, `sidebar width ${r.w}`);
     ok(r.bw === '1px', `sidebar right border ${r.bw}`);
     ok(rgb(sbg) === rgb(s1), `sidebar bg ${r.sbg} != --side ${r.s1}`);
-    ok(r.links === 3, `nav links ${r.links}`);
+    ok(r.links === 4, `nav links ${r.links}`);
   });
   await check(`[${theme}] sidebar: brand mark is an accent-family svg next to the text; no h1 in the sidebar`, async () => {
     const r = await p.evaluate(() => { const b = document.querySelector('aside.sidebar .brand'); const svg = b && b.querySelector('svg'); return { text: b && b.textContent.trim(), hidden: svg && svg.getAttribute('aria-hidden'), col: svg && getComputedStyle(svg).color, link: getComputedStyle(document.documentElement).getPropertyValue('--link').trim(), h1: document.querySelectorAll('aside.sidebar h1').length }; });

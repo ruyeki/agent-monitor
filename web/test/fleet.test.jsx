@@ -180,7 +180,7 @@ describe('Fleet (C2)', () => {
     expect(card('a1').nextElementSibling).toBe(strip());
     expect(strip().getAttribute('aria-label')).toBe('Crew of a1');
     expect(toggleOf('a1').getAttribute('aria-controls')).toBe(strip().id);
-    expect(within(strip()).getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/a1');
+    expect(within(strip()).getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/a1/crew');
     await waitFor(() => expect(strip().querySelectorAll('[data-agent-id]')).toHaveLength(4));
     const ver = strip().querySelector('[data-agent-id="a-ver"]');
     expect(ver.textContent).toContain('verifier');

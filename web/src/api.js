@@ -19,6 +19,7 @@ const post = (path, data) =>
 
 export const getRuns = () => request('/api/runs');
 export const getRun = (id) => request(`/api/runs/${encodeURIComponent(id)}`);
+export const getLedger = (id) => request(`/api/runs/${encodeURIComponent(id)}/ledger`);
 export const respond = (id, action, text) => post(`/api/runs/${encodeURIComponent(id)}/respond`, { action, text });
 export const stopRun = (id) => post(`/api/runs/${encodeURIComponent(id)}/stop`, {});
 

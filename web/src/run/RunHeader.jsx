@@ -5,8 +5,8 @@ import { CodexTag, stageLabel } from '../RunList.jsx';
 import { StatusPill } from '../RunBits.jsx';
 import { StopButton } from '../StopButton.jsx';
 
-// The tabs of the run view, in this order; piece 2 adds Crew and piece 3 adds Ledger (the route already knows them).
-const TABS = [['stages', 'Stages']];
+// The tabs of the run view, in this order.
+const TABS = [['crew', 'Crew'], ['stages', 'Stages'], ['ledger', 'Ledger']];
 
 // Shared header of every run tab (contract C5): breadcrumb, title, status, stage, agents, cost, run time, Stop run, tabs.
 export function RunHeader({ detail, tab = 'stages', error, onChanged }) {

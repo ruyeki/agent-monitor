@@ -82,7 +82,7 @@ await check('monitor: the waiting run is in the decision inbox and its item resp
 
 await check('monitor: a run row opens #/runs/<id>; Stop confirm flow ends the run', async () => {
   await page.getByRole('link', { name: /Run to stop/ }).first().click();
-  await page.waitForURL(new RegExp(`#/runs/${toStop}$`));
+  await page.waitForURL(new RegExp(`#/runs/${toStop}/crew$`)); // a live row opens the Crew tab
   await page.getByRole('region', { name: `Run ${toStop}` }).waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: /^stop run$/i }).click();
   await page.getByRole('group', { name: /confirm stop/i }).waitFor({ timeout: 3000 });
@@ -127,7 +127,7 @@ await check('run view: side panel shows the ask, totals and timeline; responding
 await check('stats: nav has Stats; the page shows period cards, the chart, versions and prices', async () => {
   await page.goto(`${base}/#/`);
   const nav = page.getByRole('navigation', { name: 'Sections' });
-  ok(/^Monitor\d*,Workflow,Stats$/.test((await nav.getByRole('link').allInnerTexts()).map((t) => t.replace(/\s+/g, '')).join()), 'nav is not Monitor (n),Workflow,Stats');
+  ok(/^Monitor\d*,Workflow,Stats,Accounts$/.test((await nav.getByRole('link').allInnerTexts()).map((t) => t.replace(/\s+/g, '')).join()), 'nav is not Monitor (n),Workflow,Stats,Accounts');
   await nav.getByRole('link', { name: 'Stats' }).click();
   await page.waitForURL(/#\/stats$/);
   await page.getByRole('region', { name: 'Usage statistics' }).waitFor({ timeout: 8000 });

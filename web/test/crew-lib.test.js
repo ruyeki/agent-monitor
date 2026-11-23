@@ -1,6 +1,6 @@
 // Contract C10 (roles and avatars) plus the model label and "who is working" helpers of web/src/lib/crew.js.
 import { describe, expect, it } from 'vitest';
-import { agentCall, agentName, avatarOf, modelLabel, nowWorking, roleOf, sortCrew } from '../src/lib/crew.js';
+import { agentCall, agentName, avatarOf, contextPct, crewTree, modelLabel, nowWorking, roleOf, sortCrew } from '../src/lib/crew.js';
 
 const NOW = Date.parse('2026-11-22T12:00:00Z');
 const iso = (ms) => new Date(ms).toISOString();
@@ -94,5 +94,76 @@ describe('agentCall / nowWorking', () => {
     expect(nowWorking(detail, NOW + 10 * 60_000)).toBeNull(); // quiet for minutes: not working
     expect(nowWorking({ ...detail, run: { ...run, status: 'done' } }, NOW)).toBeNull();
     expect(nowWorking({}, NOW)).toBeNull();
+  });
+});
+
+describe('crewTree', () => {
+  const main = ag('main:s1', 'main');
+  const lead = ag('lead', 'fable-lead', { parentId: 'main:s1' });
+  const eng = (id, parentId) => ag(id, 'sonnet-engineer', { description: 'Build', parentId });
+  const at = (t, id) => t.nodes.find((n) => n.id === id);
+
+  it('a known parent gives an edge and places the agent under it', () => {
+    const t = crewTree([main, lead, eng('e1', 'lead')]);
+    expect(t.edges).toEqual([{ from: 'main:s1', to: 'lead' }, { from: 'lead', to: 'e1' }]);
+    expect(t.roots.map((n) => n.id)).toEqual(['main:s1']);
+    expect(t.levels.map((l) => l.map((n) => n.id))).toEqual([['main:s1'], ['lead'], ['e1']]);
+    expect(at(t, 'e1')).toMatchObject({ parentId: 'lead', edge: 'lead', depth: 2 });
+  });
+
+  it('an unknown parent (null, or an agent not in the run) goes under the lead with no edge', () => {
+    const t = crewTree([main, lead, eng('e1', null), eng('e2', 'gone'), eng('e3', 'lead')]);
+    expect(at(t, 'e1')).toMatchObject({ parentId: 'lead', edge: null });
+    expect(at(t, 'e2')).toMatchObject({ parentId: 'lead', edge: null });
+    expect(t.edges.map((e) => e.to).sort()).toEqual(['e3', 'lead']);
+    expect(at(t, 'lead').children.map((n) => n.id)).toEqual(['e3', 'e1', 'e2']); // linked children first
+  });
+
+  it('with no lead an unknown parent goes under the main session; the lead itself goes under main without an edge', () => {
+    const t = crewTree([main, eng('e1', null)]);
+    expect(at(t, 'e1')).toMatchObject({ parentId: 'main:s1', edge: null });
+    const u = crewTree([main, ag('lead', 'fable-lead')]);
+    expect(at(u, 'lead')).toMatchObject({ parentId: 'main:s1', edge: null });
+    expect(u.edges).toEqual([]);
+  });
+
+  it('several main sessions are all roots; with no main or lead everyone is a root', () => {
+    const t = crewTree([main, ag('main:s2', 'main'), eng('e1', 'main:s2')]);
+    expect(t.roots.map((n) => n.id)).toEqual(['main:s1', 'main:s2']);
+    expect(at(t, 'e1').parentId).toBe('main:s2');
+    const alone = crewTree([eng('x', null), eng('y', null)]);
+    expect(alone.roots.map((n) => n.id)).toEqual(['x', 'y']);
+    expect(alone.edges).toEqual([]);
+  });
+
+  it('a parent that is the agent itself, or a loop, never makes an edge to itself', () => {
+    const self = crewTree([main, lead, eng('e1', 'e1')]);
+    expect(at(self, 'e1')).toMatchObject({ parentId: 'lead', edge: null });
+    const loop = crewTree([eng('a', 'b'), eng('b', 'a')]);
+    expect(loop.levels.flat()).toHaveLength(2);
+    expect(loop.edges.length).toBeLessThan(2);
+  });
+
+  it('copes with no agents, junk rows and many helpers', () => {
+    expect(crewTree(undefined)).toMatchObject({ roots: [], levels: [], edges: [], nodes: [] });
+    expect(crewTree([null, 3, main]).nodes).toHaveLength(1);
+    const many = crewTree([main, lead, ...Array.from({ length: 30 }, (_, i) => eng(`e${i}`, 'lead'))]);
+    expect(at(many, 'lead').children).toHaveLength(30);
+    expect(many.edges).toHaveLength(31);
+  });
+});
+
+describe('contextPct', () => {
+  it('null when the server has no reading; never a made-up 0', () => {
+    expect(contextPct({})).toBeNull();
+    expect(contextPct({ context: null })).toBeNull();
+    expect(contextPct({ context: { pct: null } })).toBeNull();
+    expect(contextPct({ context: { pct: 'x' } })).toBeNull();
+  });
+  it('a whole percent, also from a string; a real 0 stays 0', () => {
+    expect(contextPct({ context: { pct: 38 } })).toBe(38);
+    expect(contextPct({ context: { pct: '71' } })).toBe(71);
+    expect(contextPct({ context: { pct: 0 } })).toBe(0);
+    expect(contextPct({ context: { pct: 140 } })).toBe(100);
   });
 });

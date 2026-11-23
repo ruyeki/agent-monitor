@@ -49,7 +49,7 @@ describe('RunHeader', () => {
     expect(screen.getByRole('group', { name: 'Run graph' })).toBeTruthy();
   });
 
-  it('ended run: Done pill, no stage chip and no Stop run; a crew or ledger link still shows the Stages tab', async () => {
+  it('ended run: Done pill, no stage chip and no Stop run; the Ledger link shows the Ledger tab', async () => {
     current = detail({ status: 'done', stage: 'done', endedAt: iso(NOW - 60_000) });
     render(<RunView id="r1" tab="ledger" />);
     const head = (await screen.findByRole('heading', { level: 1, name: 'My run' })).closest('header');
@@ -57,7 +57,8 @@ describe('RunHeader', () => {
     expect(head.querySelector('.chip')).toBeNull();
     expect(within(head).queryByRole('button', { name: 'Stop run' })).toBeNull();
     expect(head.textContent).toContain('1h 11m');
-    expect(within(head).getByRole('tab', { name: 'Stages' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(head).getByRole('tab', { name: 'Ledger' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(head).getByRole('tab', { name: 'Stages' }).getAttribute('aria-selected')).toBe('false');
   });
 });
 

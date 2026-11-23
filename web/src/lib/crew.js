@@ -87,3 +87,65 @@ export function nowWorking(detail, nowMs) {
   }
   return null;
 }
+
+// The run's agents as a tree: main session -> lead -> helpers (contract C7). Pure.
+// A parent counts as known only when `parentId` names another agent of this run. An agent whose parent is unknown (or
+// would make a loop) is placed under the lead, or under the first main session when there is no lead (or the agent is
+// the lead); it gets no edge, so the picture never claims a link the server did not record.
+// Returns { roots, levels, edges, nodes }: node = { id, agent, parentId (where it sits), edge (the known parent, else
+// null), depth, children }; levels[n] = the nodes at depth n; edges = [{ from, to }] for known parents only.
+export function crewTree(agents) {
+  const crew = sortCrew(agents).filter((a) => a.id != null);
+  const byId = new Map(crew.map((a) => [a.id, a]));
+  const lead = crew.find((a) => roleOf(a) === 'lead');
+  const main = crew.find((a) => roleOf(a) === 'main');
+  const known = (a) => (a.parentId != null && a.parentId !== a.id && byId.has(a.parentId) ? a.parentId : null);
+  const fallback = (a) => {
+    const role = roleOf(a);
+    if (role === 'main') return null;
+    if (lead && lead !== a) return lead.id;
+    return main && main !== a ? main.id : null;
+  };
+  const at = new Map(crew.map((a) => [a.id, known(a) ?? fallback(a)]));
+  const edge = new Map(crew.map((a) => [a.id, known(a)]));
+  // Break loops (a's parent chain comes back to a): that agent becomes a root with no edge.
+  for (const a of crew) {
+    const seen = new Set([a.id]);
+    for (let p = at.get(a.id); p != null; p = at.get(p)) {
+      if (seen.has(p)) {
+        if (p === a.id) {
+          at.set(a.id, null);
+          edge.set(a.id, null);
+        }
+        break;
+      }
+      seen.add(p);
+    }
+  }
+  const nodes = crew.map((a) => ({ id: a.id, agent: a, parentId: at.get(a.id), edge: edge.get(a.id), depth: 0, children: [] }));
+  const node = new Map(nodes.map((n) => [n.id, n]));
+  const roots = [];
+  for (const n of nodes) (n.parentId == null ? roots : node.get(n.parentId).children).push(n);
+  // Children with a recorded link come first, so the connector bar over them has no gaps.
+  const linked = (n) => (n.edge != null ? 0 : 1);
+  for (const n of [{ children: roots }, ...nodes]) n.children.sort((x, y) => linked(x) - linked(y)); // stable
+  const levels = [];
+  const walk = (list, depth) => {
+    for (const n of list) {
+      n.depth = depth;
+      (levels[depth] ??= []).push(n);
+      walk(n.children, depth + 1);
+    }
+  };
+  walk(roots, 0);
+  const edges = nodes.filter((n) => n.edge != null).map((n) => ({ from: n.edge, to: n.id }));
+  return { roots, levels, edges, nodes };
+}
+
+// Context window use as a whole percent, or null when the server has no reading yet (never a made-up 0).
+export function contextPct(agent) {
+  const c = agent?.context;
+  if (c == null || c.pct == null || c.pct === '') return null;
+  const n = Number(c.pct);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
+}

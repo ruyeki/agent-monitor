@@ -107,10 +107,10 @@ describe('App: Monitor groups and decision inbox', () => {
   const views = () => within(screen.getByRole('navigation', { name: 'Views' }));
   const pane = () => within(screen.getByRole('complementary', { name: 'Decision inbox' }));
 
-  it('nav has Monitor, Workflow, Stats (no Waiting); Monitor carries the open count and aria-current', async () => {
+  it('nav has Monitor, Workflow, Stats, Accounts (no Waiting); Monitor carries the open count and aria-current', async () => {
     render(<App />);
     await waitFor(() => expect(nav().getByRole('link', { name: /^Monitor/ }).textContent).toBe('Monitor3'));
-    expect(nav().getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#/', '#/workflow', '#/stats']);
+    expect(nav().getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#/', '#/workflow', '#/stats', '#/accounts']);
     expect(nav().queryByRole('link', { name: /Waiting/ })).toBeNull();
     expect(nav().getByRole('link', { name: /^Monitor/ }).getAttribute('aria-current')).toBe('page');
   });

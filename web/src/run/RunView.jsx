@@ -3,9 +3,23 @@ import { getRun } from '../api.js';
 import { RunGraph } from './RunGraph.jsx';
 import { RunHeader } from './RunHeader.jsx';
 import { RunSide } from './RunSide.jsx';
+import { CrewTab } from './CrewTab.jsx';
+import { LedgerTab } from './LedgerTab.jsx';
 
-// #/runs/<id>[/<tab>]: the shared run header and tabs, then the tab. Stages (the only tab so far) is the pinned graph
-// plus a side panel. `tick` changes on every live (SSE) event.
+// The pinned graph plus a side panel.
+function StagesTab({ detail, onChanged }) {
+  return (
+    <div className="run-body" role="tabpanel" id="panel-stages" aria-labelledby="tab-stages">
+      <RunGraph detail={detail} />
+      <RunSide detail={detail} onChanged={onChanged} />
+    </div>
+  );
+}
+
+// One entry per tab. A tab not listed here shows Stages.
+const TAB_VIEWS = { crew: CrewTab, stages: StagesTab, ledger: LedgerTab };
+
+// #/runs/<id>[/<tab>]: the shared run header and tabs, then the tab. `tick` changes on every live (SSE) event.
 export function RunView({ id, tab = 'stages', tick = 0 }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
@@ -33,14 +47,12 @@ export function RunView({ id, tab = 'stages', tick = 0 }) {
   }
   const { run } = detail;
   const changed = () => setReload((n) => n + 1);
+  const shown = TAB_VIEWS[tab] ? tab : 'stages';
+  const View = TAB_VIEWS[shown];
   return (
     <section className="run-view" aria-label={`Run ${run.id}`}>
-      <RunHeader detail={detail} tab="stages" error={error} onChanged={changed} />
-      {/* Only the Stages tab exists so far: a crew or ledger link (tab) shows it too until those tabs land. */}
-      <div className="run-body" role="tabpanel" id="panel-stages" aria-labelledby="tab-stages">
-        <RunGraph detail={detail} />
-        <RunSide detail={detail} onChanged={changed} />
-      </div>
+      <RunHeader detail={detail} tab={shown} error={error} onChanged={changed} />
+      <View detail={detail} onChanged={changed} tick={tick} />
     </section>
   );
 }

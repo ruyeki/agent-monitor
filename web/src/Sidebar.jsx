@@ -21,11 +21,18 @@ const ICON = {
       <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </svg>
   ),
+  accounts: (
+    <svg {...svgProps}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20a7 7 0 0 1 14 0" />
+    </svg>
+  ),
 };
 const NAV = [
   ['monitor', '#/', 'Monitor'],
   ['workflow', '#/workflow', 'Workflow'],
   ['stats', '#/stats', 'Stats'],
+  ['accounts', '#/accounts', 'Accounts'],
 ];
 const VIEWS = [
   ['waiting', 'Needs you', 'dot-waiting'],

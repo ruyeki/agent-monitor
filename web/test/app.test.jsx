@@ -67,7 +67,7 @@ describe('RunList', () => {
     expect(screen.getByText('2/5')).toBeTruthy();
     expect(screen.getByText('Your solution')).toBeTruthy();
     expect(screen.getByText('2m')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /My run/ }).getAttribute('href')).toBe('#/runs/my-run');
+    expect(screen.getByRole('link', { name: /My run/ }).getAttribute('href')).toBe('#/runs/my-run/crew');
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -79,8 +79,8 @@ describe('RunList', () => {
 
   it('active and finished rows are links to the run view', () => {
     render(<RunList runs={[{ ...run, id: 'a b', title: 'Busy', status: 'active' }, { ...run, id: 'd', title: 'Done', status: 'done' }]} />);
-    expect(screen.getByRole('link', { name: /Busy/ }).getAttribute('href')).toBe('#/runs/a%20b');
-    expect(screen.getByRole('link', { name: /Done/ }).getAttribute('href')).toBe('#/runs/d');
+    expect(screen.getByRole('link', { name: /Busy/ }).getAttribute('href')).toBe('#/runs/a%20b/crew');
+    expect(screen.getByRole('link', { name: /Done/ }).getAttribute('href')).toBe('#/runs/d/ledger');
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

@@ -10,7 +10,7 @@ import { ThinkingLoader } from '../vendor/affectui/thinking-loader.tsx';
 import { ToolCallCard } from '../vendor/affectui/tool-call-card.tsx';
 
 // A clock for the working/running rules, which depend on how old the last activity is.
-function useNow(every) {
+export function useNow(every) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), every);
@@ -79,6 +79,35 @@ function RunTokens({ tokens }) {
 
 const when = (iso) => new Date(iso).toLocaleString();
 
+// The tool-call cards (vendored ToolCallCard), newest first; shared by the Stages and Crew tabs.
+export function ToolCallList({ calls, empty = 'No tool calls yet.' }) {
+  if (!calls.length) return <p className="muted">{empty}</p>;
+  return (
+    <div className="tool-calls">
+      {calls.map((c) => (
+        <ToolCallCard
+          key={c.id}
+          name={c.tool || 'tool'}
+          summary={c.summary || undefined}
+          agent={c.agent ?? undefined}
+          status={c.status}
+          startedAt={Date.parse(c.at)}
+          duration={c.durationMs ?? undefined}
+          error={c.error ?? undefined}
+          openOnError={false}
+        >
+          <div className="tool-call-details">
+            {c.summary && <p className="tool-call-summary">{c.summary}</p>}
+            <p className="muted">
+              Agent <span className="mono">{c.agent ?? 'unknown'}</span> · started {when(c.at)}
+            </p>
+          </div>
+        </ToolCallCard>
+      ))}
+    </div>
+  );
+}
+
 // Codex hand-off: when Claude's usage ran out, and what Codex has used since (tokens only; $ only when a price row gave a cost).
 function CodexInfo({ run, codex }) {
   const t = codex || {};
@@ -136,32 +165,7 @@ export function RunSide({ detail, onChanged }) {
           <span className="faint small">newest first</span>
         </div>
         <div className="pad">
-          {calls.length ? (
-            <div className="tool-calls">
-              {calls.map((c) => (
-                <ToolCallCard
-                  key={c.id}
-                  name={c.tool || 'tool'}
-                  summary={c.summary || undefined}
-                  agent={c.agent ?? undefined}
-                  status={c.status}
-                  startedAt={Date.parse(c.at)}
-                  duration={c.durationMs ?? undefined}
-                  error={c.error ?? undefined}
-                  openOnError={false}
-                >
-                  <div className="tool-call-details">
-                    {c.summary && <p className="tool-call-summary">{c.summary}</p>}
-                    <p className="muted">
-                      Agent <span className="mono">{c.agent ?? 'unknown'}</span> · started {when(c.at)}
-                    </p>
-                  </div>
-                </ToolCallCard>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">No tool calls yet.</p>
-          )}
+          <ToolCallList calls={calls} />
         </div>
       </section>
       <section className="card side-card" aria-label="Totals">

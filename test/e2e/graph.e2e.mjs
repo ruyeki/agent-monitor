@@ -69,7 +69,9 @@ await check('Monitor: the waiting run in the decision inbox responds', async () 
 
 await check('clicking a run row opens #/runs/<id> with the pinned graph', async () => {
   await page.getByRole('link', { name: /Parallel run/ }).first().click();
-  await page.waitForURL(new RegExp(`#/runs/${parallel}`), { timeout: 4000 });
+  await page.waitForURL(new RegExp(`#/runs/${parallel}/crew$`), { timeout: 4000 }); // a live row lands on the Crew tab
+  await page.getByRole('tab', { name: 'Stages' }).click(); // the pinned graph is on the Stages tab
+  await page.waitForURL(new RegExp(`#/runs/${parallel}/stages$`), { timeout: 4000 });
   await page.getByText(/Verifier prep/).first().waitFor({ timeout: 6000 });
   ok(await page.getByText(/implement/i).count() > 0, 'Implement node is not shown');
   ok(await page.getByText(/gate 2|accept, push|Gate2/i).count() > 0 || await page.getByText(/decision/i).count() > 0, 'the rest of the graph is not drawn');
