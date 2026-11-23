@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 
 export const RUN_TABS = ['crew', 'stages', 'ledger'];
 
-// '#/' monitor, '#/workflow' editor, '#/stats' usage, '#/runs/<id>' and '#/runs/<id>/<tab>' run view (tab crew | stages |
+// '#/' monitor, '#/workflow' editor, '#/stats' usage, '#/accounts' Claude accounts, '#/runs/<id>' and '#/runs/<id>/<tab>' run view (tab crew | stages |
 // ledger; missing or unknown = stages, so old links keep working). Anything else (including the old '#/waiting') falls back to the monitor.
 export function parseRoute(hash) {
   const path = (hash || '').replace(/^#/, '');
   if (path === '/workflow') return { name: 'workflow' };
   if (path === '/stats') return { name: 'stats' };
+  if (path === '/accounts') return { name: 'accounts' };
   const m = /^\/runs\/([^/]+)(?:\/([^/]*))?$/.exec(path);
   if (m) {
     try {

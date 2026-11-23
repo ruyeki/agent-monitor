@@ -8,7 +8,8 @@ import { NAME, loadRegistry, saveRegistry, readUsage, writeUsage, removeUsage, w
 import { readCredsText, parseCreds, liveIdentity, parseOauth, validOauth, applySwap, credsPath } from './creds.js';
 import { usageLeft, windowPct, limitedUntil, isAvailable, pickBest as best, attribute, toSecs, toMs, fromRateLimitInfo } from './usage.js';
 import { recordWindows } from './record.js';
-import { refreshLogin, signIn } from './refresh.js';
+import { refreshLogin, signIn, liveReading } from './refresh.js';
+import { startSignIn as beginSignIn } from './signin.js';
 
 const DUPLICATE_MS = 120_000;
 const MAX_LIMIT_S = 7 * 86400; // a recorded reset is at most a week after the hit (a forged far-future one cannot park an account)
@@ -81,14 +82,23 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
 
   async function add(name, { current = false, email = null } = {}) {
     checkName(name);
-    let oauth;
-    let found = null;
-    if (current) {
-      const id = identity(registry());
-      if (id.reason) throw new Error(id.reason);
-      ({ oauth, email: found } = id);
-    } else ({ oauth, email: found } = await signIn({ claude, spawn, env, email }));
-    if (!validOauth(oauth)) throw new Error(current ? 'there is no usable live login to save' : 'the sign-in returned no usable login');
+    if (!current) return saveLogin(name, await signIn({ claude, spawn, env, email }), email);
+    const id = identity(registry());
+    if (id.reason) throw new Error(id.reason);
+    if (!validOauth(id.oauth)) throw new Error('there is no usable live login to save');
+    return saveLogin(name, id, email);
+  }
+
+  // The Accounts page's sign-in (piped `claude auth login`, see signin.js); its done saves the login as add() does.
+  function startSignIn(name, { email = null, timeoutMs, onUpdate } = {}) {
+    checkName(name);
+    const s = beginSignIn({ claude, spawn, env, email, timeoutMs, onUpdate });
+    return { ...s, done: s.done.then((r) => saveLogin(name, r, email)) };
+  }
+
+  // Saves a signed-in login {oauth, email: found} as name, for every way in: one account per name, one name per account.
+  async function saveLogin(name, { oauth, email: found = null }, email) {
+    if (!validOauth(oauth)) throw new Error('the sign-in returned no usable login');
     return withLock(dataDir, async () => {
       const reg = registry();
       const other = nameFor(reg, oauth.accountUuid);
@@ -171,8 +181,8 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
 
   // reading {five_hour, seven_day} (statusline windows); name null = attribute by five_hour.resets_at.
   // Never throws; -> the account it was recorded on, or null.
-  function recordReading(name, reading) {
-    try { return recordWindows({ dataDir, home, claudeJson, name, reading, now: clock() }); } catch { return null; }
+  function recordReading(name, reading, { touch = false } = {}) {
+    try { return recordWindows({ dataDir, home, claudeJson, name, reading, now: clock(), touch }); } catch { return null; }
   }
 
   // A hit without a reset time keeps a stored limit that is still in force (it would only lose information).
@@ -188,10 +198,11 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
     } catch { return false; }
   }
 
-  // A stream-json rate_limit_info: its windows as a reading, and a limit when status is rejected. Sync, never throws.
+  // A stream-json rate_limit_info: its windows as a reading (stamped now, a call just confirmed them), and a limit
+  // when status is rejected. Sync, never throws.
   function recordRateLimit(name, info) {
     try {
-      const target = recordReading(name, fromRateLimitInfo(info)) ?? name ?? activeName();
+      const target = recordReading(name, fromRateLimitInfo(info), { touch: true }) ?? name ?? activeName();
       if (info?.status === 'rejected') recordLimit(target, { at: clock(), resetsAt: Number.isFinite(info.resetsAt) ? info.resetsAt : null });
     } catch { /* best effort */ }
   }
@@ -252,6 +263,17 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
       saveRegistry(dataDir, fresh);
       return { name, refreshExpiresAt: fresh.accounts[name]?.refreshExpiresAt ?? null };
     });
+  }
+
+  // A fresh reading for the live login's account without touching its tokens (refresh.js liveReading). Recorded only
+  // when the live account is the same before and after, so a switch meanwhile cannot misfile it. -> {name}
+  async function readActive({ timeoutMs } = {}) {
+    const name = activeName();
+    if (!name) throw new Error(liveReason() ?? 'the live login is not a saved account');
+    const infos = await liveReading({ claude, spawn, env, home, timeoutMs });
+    if (activeName() !== name) throw new Error('the live login changed during the reading; nothing was recorded');
+    for (const info of infos) recordRateLimit(name, info);
+    return { name };
   }
 
   // Refreshes the non-active accounts whose refresh token expires within 7 days. -> [{name, ok, error?}]
@@ -332,7 +354,7 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
   }
 
   return {
-    list, liveReason, activeName, hasAccounts, add, use, remove, recordReading, recordRateLimit, recordLimit, pickBest, handleLimit,
-    refresh, refreshDue, syncBack, startSync, close,
+    list, liveReason, activeName, hasAccounts, add, startSignIn, use, remove, recordReading, recordRateLimit, recordLimit, pickBest, handleLimit,
+    refresh, readActive, refreshDue, syncBack, startSync, close,
   };
 }

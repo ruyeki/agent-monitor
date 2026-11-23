@@ -8,8 +8,8 @@ import { liveIdentity } from './creds.js';
 import { attribute, normWindow } from './usage.js';
 
 // Records reading {five_hour, seven_day} on name, or (name null) on the account it belongs to: attribution by
-// five_hour.resets_at, else the live login's account. -> the account name, or null when nothing was recorded.
-export function recordWindows({ dataDir, home, claudeJson = join(home, '.claude.json'), name = null, reading, now }) {
+// five_hour.resets_at, else the live login's account. touch: see saveReading. -> the account name, or null when nothing was recorded.
+export function recordWindows({ dataDir, home, claudeJson = join(home, '.claude.json'), name = null, reading, now, touch = false }) {
   const five = normWindow(reading?.five_hour);
   const seven = normWindow(reading?.seven_day);
   if (!five && !seven) return null;
@@ -23,7 +23,7 @@ export function recordWindows({ dataDir, home, claudeJson = join(home, '.claude.
     target = attribute(names, active, Object.fromEntries(names.map((n) => [n, readUsage(dataDir, n)])), five?.resets_at ?? null);
   }
   if (!target || !reg.accounts[target]) return null;
-  saveReading(dataDir, target, { five_hour: five, seven_day: seven }, now);
+  saveReading(dataDir, target, { five_hour: five, seven_day: seven }, now, { touch });
   return target;
 }
 

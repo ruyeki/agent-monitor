@@ -21,6 +21,9 @@ export function isRealClaude(p) {
   return a === b || a.startsWith(b + path.sep) || a === norm(path.join(os.homedir(), '.claude.json'));
 }
 
+// True when home is Claude Code's default profile dir, ~/.claude itself.
+export const isDefaultHome = (home) => norm(home) === norm(realClaude());
+
 // Under node --test, a path in the real ~/.claude is refused.
 export function guardReal(p, env) {
   if (testing(env) && isRealClaude(p)) throw new Error('refusing the real ~/.claude under node --test');

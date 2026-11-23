@@ -56,12 +56,13 @@ export const removeUsage = (dataDir, name) => fs.rmSync(usageFile(dataDir, name)
 
 const sameWindow = (a, b) => (a?.used_percentage ?? null) === (b?.used_percentage ?? null) && (a?.resets_at ?? null) === (b?.resets_at ?? null);
 
-// Merges a reading into name's usage file (an absent window keeps the stored one). Writes only when a window changed.
-export function saveReading(dataDir, name, { five_hour = null, seven_day = null }, now) {
+// Merges a reading into name's usage file (an absent window keeps the stored one). Writes only when a window changed,
+// or (touch) also to stamp an unchanged reading as taken now: a fresh check of an idle account is still fresh.
+export function saveReading(dataDir, name, { five_hour = null, seven_day = null }, now, { touch = false } = {}) {
   const u = readUsage(dataDir, name);
   const old = u.reading ?? {};
   const next = { five_hour: five_hour ?? old.five_hour ?? null, seven_day: seven_day ?? old.seven_day ?? null };
-  if (u.reading && sameWindow(old.five_hour, next.five_hour) && sameWindow(old.seven_day, next.seven_day)) return false;
+  if (!touch && u.reading && sameWindow(old.five_hour, next.five_hour) && sameWindow(old.seven_day, next.seven_day)) return false;
   writeUsage(dataDir, name, { ...u, reading: { ...next, at: new Date(now).toISOString() } });
   return true;
 }

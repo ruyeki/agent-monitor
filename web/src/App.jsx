@@ -3,6 +3,7 @@ import { getRuns } from './api.js';
 import { useLive, useTheme } from './hooks.js';
 import { splitRuns } from './lib/format.js';
 import { useRoute } from './lib/route.js';
+import { AccountsPage } from './accounts/AccountsPage.jsx';
 import { WorkflowEditor } from './editor/WorkflowEditor.jsx';
 import { StatsPage } from './stats/StatsPage.jsx';
 import { Monitor } from './Monitor.jsx';
@@ -31,7 +32,7 @@ export default function App() {
   }, []);
   const refreshAll = useCallback(() => {
     refresh();
-    setTick((t) => t + 1); // the run view, the editor, stats and the usage tiles refetch on this
+    setTick((t) => t + 1); // the run view, the editor, stats, accounts and the usage tiles refetch on this
   }, [refresh]);
 
   const connection = useLive(refreshAll);
@@ -82,6 +83,7 @@ export default function App() {
       <main className={route.name === 'workflow' ? 'full' : route.name === 'run' ? 'full run-main' : ''}>
         {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
         {route.name === 'stats' && <StatsPage tick={tick} />}
+        {route.name === 'accounts' && <AccountsPage tick={tick} />}
         {route.name === 'run' && <RunView key={route.id} id={route.id} tab={route.tab} tick={tick} />}
         {route.name === 'monitor' && (
           <Monitor

@@ -14,6 +14,7 @@ import { createClaudeResume } from './claude-resume.js';
 import { toTokens, emptyAcc } from './attribution.js';
 import { contextOf } from './context.js';
 import { classifyChanges, redact } from './ledger.js';
+import { createAccountsApi } from './accounts/api.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
 const MIME = {
@@ -117,12 +118,21 @@ export async function startServer({
     }
   };
 
+  // The Accounts page API (/api/accounts*). liveRuns = Claude runs with an open chat: a waiting run's chat stays open
+  // (the lead waits in the background, helpers may still work), so it counts too; a Codex run has no Claude chat.
+  const accountsApi = createAccountsApi({
+    manager,
+    emit: () => store.bus.emit('change', { type: 'usage' }),
+    liveRuns: () => store.listRuns().filter((r) => (r.status === 'active' || r.status === 'waiting') && r.provider !== 'codex').length,
+  });
+
   const handleApi = async (req, res, url) => {
     const m = (re) => re.exec(url.pathname);
     const method = req.method;
     const body = () => readBody(req).then(parseJson);
     let g;
 
+    if (await accountsApi.handle(req, res, url, body)) return;
     if (method === 'GET' && url.pathname === '/api/runs') return send(res, 200, store.listRuns());
     if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)$/))) {
       const d = store.detail(decodeURIComponent(g[1]));
@@ -316,6 +326,7 @@ export async function startServer({
     close: () => new Promise((resolve) => {
       launcher.close();
       claudeResume?.close();
+      accountsApi.close();
       try { manager?.close?.(); } catch { /* closing is best effort */ }
       for (const s of streams) s.end();
       server.close(() => { usage.close().then(() => { store.close(); resolve(); }); });
