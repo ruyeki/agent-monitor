@@ -55,11 +55,12 @@ await check('header nav has Monitor, Workflow and Stats', async () => {
   }
 });
 
-await check('Monitor: the waiting card in the answer pane responds', async () => {
+await check('Monitor: the waiting run in the decision inbox responds', async () => {
   await page.goto(base + '/#/');
-  await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Waiting for Ryan/ }).click();
-  const card = page.getByRole('complementary', { name: 'Selected run' }).getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
+  const card = page.getByRole('complementary', { name: 'Decision inbox' }).locator('article[aria-label="Waiting on you: Waiting for Ryan"]');
   await card.waitFor({ timeout: 6000 });
+  if (await card.locator('button.ui-dic__title--folded').count()) await card.locator('button.ui-dic__title--folded').click();
+  await card.locator('h3.ui-dic__title').waitFor({ timeout: 6000 });
   await card.getByRole('textbox').fill('agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();
   ok(await until(async () => (await get(`/api/runs/${waiting}`)).run.stage === 'plan', 5000), 'run did not reach plan');

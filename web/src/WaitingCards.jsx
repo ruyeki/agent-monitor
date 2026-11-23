@@ -8,7 +8,7 @@ function Code({ text }) {
   return splitCode(text).map((s, i) => (s.code ? <code key={i}>{s.text}</code> : s.text));
 }
 
-function Ask({ text }) {
+export function Ask({ text }) {
   const { heading, blocks } = parseAsk(text);
   if (!heading) return null;
   return (
@@ -28,8 +28,8 @@ function Ask({ text }) {
   );
 }
 
-// `pane`: inside the Monitor answer pane (meta line is shown by the pane; first action is primary). `footer` goes after the buttons.
-export function WaitingCard({ run, onDone, pane = false, footer = null }) {
+// The card for one run that is waiting on you: the question, an optional reply box, and one button per action.
+export function WaitingCard({ run, onDone }) {
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState(null);
@@ -52,11 +52,9 @@ export function WaitingCard({ run, onDone, pane = false, footer = null }) {
     <article className="card waiting-card" aria-label={`Waiting on you: ${run.title}`}>
       <header className="card-head">
         <h3>{run.title}<CodexTag run={run} /></h3>
-        {!pane && (
-          <span className="muted">
-            {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
-          </span>
-        )}
+        <span className="muted">
+          {run.stageName || run.stage} · round {run.round}/{run.maxRounds} · <Ago at={run.updatedAt} />
+        </span>
       </header>
       <Ask text={run.ask} />
       {run.textField && (
@@ -70,12 +68,11 @@ export function WaitingCard({ run, onDone, pane = false, footer = null }) {
         />
       )}
       <div className="actions">
-        {(run.actions || []).map((a, i) => (
-          <button key={a.label} type="button" className={pane && i === 0 ? 'primary' : undefined} disabled={posting} onClick={() => send(a.label)}>
+        {(run.actions || []).map((a) => (
+          <button key={a.label} type="button" disabled={posting} onClick={() => send(a.label)}>
             {a.label}
           </button>
         ))}
-        {footer}
       </div>
       {error && (
         <p className="error" role="alert">

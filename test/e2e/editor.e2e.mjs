@@ -65,11 +65,12 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto(`${base}/#/`);
 
 // ---- Monitor
-await check('monitor: the waiting run is in the Waiting on you group and its answer-pane card responds', async () => {
+await check('monitor: the waiting run is in the decision inbox and its item responds', async () => {
   await page.goto(`${base}/#/`);
-  await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Waiting for Ryan/ }).click();
-  const card = page.getByRole('complementary', { name: 'Selected run' }).getByRole('article', { name: /Waiting on you: Waiting for Ryan/ });
+  const card = page.getByRole('complementary', { name: 'Decision inbox' }).locator('article[aria-label="Waiting on you: Waiting for Ryan"]');
   await card.waitFor({ timeout: 5000 });
+  if (await card.locator('button.ui-dic__title--folded').count()) await card.locator('button.ui-dic__title--folded').click();
+  await card.locator('h3.ui-dic__title').waitFor({ timeout: 5000 });
   ok(/solution/i.test(await card.innerText()), 'card does not show the gate question');
   await card.getByRole('textbox').fill('looks good, agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();

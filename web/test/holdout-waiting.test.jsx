@@ -1,4 +1,4 @@
-// Holdout: WaitingCard rendering, route, splitRuns, App sidebar + Monitor answer pane (AC1, AC2, AC4, AC5).
+// Holdout: WaitingCard rendering, route, splitRuns, App sidebar + Monitor decision inbox (AC1, AC2, AC4, AC5).
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App.jsx';
@@ -82,7 +82,7 @@ describe('WaitingCard ask rendering', () => {
   });
 });
 
-describe('App: Monitor groups and answer pane', () => {
+describe('App: Monitor groups and decision inbox', () => {
   let runs;
   let sources;
   beforeEach(() => {
@@ -105,7 +105,7 @@ describe('App: Monitor groups and answer pane', () => {
 
   const nav = () => within(screen.getByRole('navigation', { name: 'Sections' }));
   const views = () => within(screen.getByRole('navigation', { name: 'Views' }));
-  const pane = () => within(screen.getByRole('complementary', { name: 'Selected run' }));
+  const pane = () => within(screen.getByRole('complementary', { name: 'Decision inbox' }));
 
   it('nav has Monitor, Workflow, Stats (no Waiting); Monitor carries the open count and aria-current', async () => {
     render(<App />);
@@ -123,31 +123,30 @@ describe('App: Monitor groups and answer pane', () => {
     expect(nav().getByRole('link', { name: /^Monitor/ }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 1, name: 'Monitor' })).toBeTruthy();
   });
-  it('Monitor lists the Waiting on you group (as buttons) beside Active and Finished, and the pane shows one card', async () => {
+  it('Monitor lists Active and Finished (no Waiting on you group); the inbox holds one item per waiting run, the first open', async () => {
     render(<App />);
-    const waitingGroup = await waitFor(() => {
-      const g = document.querySelector('section[aria-labelledby="group-waiting"]');
-      expect(g).toBeTruthy();
-      return g;
-    });
-    expect(within(waitingGroup).getByRole('heading', { name: /Waiting on you/ }).textContent).toBe('Waiting on you2');
-    expect(within(waitingGroup).getAllByRole('button').map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    await screen.findByRole('article', { name: 'Waiting on you: Run w2' });
+    expect(document.querySelector('section[aria-labelledby="group-waiting"]')).toBeNull();
+    expect(pane().getByRole('heading', { level: 2 }).textContent).toBe('2 need your input');
     expect(screen.getByText('Busy run')).toBeTruthy();
     expect(document.querySelector('section[aria-labelledby="group-active"]')).toBeTruthy();
     expect(document.querySelector('section[aria-labelledby="group-finished"] details.finished')).toBeTruthy();
-    expect(screen.getAllByRole('article').length).toBe(1);
-    expect(pane().getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy();
-    expect(pane().getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/w1');
+    expect(screen.getAllByRole('article').length).toBe(2);
+    expect(pane().getAllByRole('article').length).toBe(2);
+    expect(pane().getAllByRole('link', { name: 'Open run →' }).map((a) => a.getAttribute('href'))).toEqual(['#/runs/w1', '#/runs/w2']);
+    expect(within(pane().getByRole('article', { name: 'Waiting on you: Run w1' })).getByRole('heading', { level: 3 })).toBeTruthy();
+    expect(within(pane().getByRole('article', { name: 'Waiting on you: Run w2' })).queryByRole('heading', { level: 3 })).toBeNull();
     expect(document.querySelector('table')).toBeNull();
   });
-  it('clicking another waiting row moves the pane to that run', async () => {
+  it('opening a folded item shows its ask and Open run link', async () => {
     render(<App />);
-    await screen.findByRole('article', { name: 'Waiting on you: Run w1' });
-    fireEvent.click(screen.getByRole('button', { name: /Run w2/ }));
-    expect(screen.getByRole('article', { name: 'Waiting on you: Run w2' })).toBeTruthy();
-    expect(screen.queryByRole('article', { name: 'Waiting on you: Run w1' })).toBeNull();
-    expect(screen.getByRole('button', { name: /Run w2/ }).getAttribute('aria-pressed')).toBe('true');
-    expect(pane().getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/w2');
+    const w2 = await screen.findByRole('article', { name: 'Waiting on you: Run w2' });
+    expect(w2.querySelector('.ui-dic__body').hasAttribute('inert')).toBe(true);
+    fireEvent.click(within(w2).getByRole('button', { name: 'Run w2' }));
+    expect(within(w2).getByRole('heading', { level: 3 }).textContent).toBe('Run w2');
+    expect(w2.querySelector('.ui-dic__body').hasAttribute('inert')).toBe(false);
+    expect(within(w2).getByText("What's your solution?")).toBeTruthy();
+    expect(within(w2).getByRole('link', { name: 'Open run →' }).getAttribute('href')).toBe('#/runs/w2');
   });
   it('no waiting run: no group, count 0, and the empty pane says Nothing is waiting on you.', async () => {
     runs = [{ ...mk('act'), status: 'active' }];
@@ -158,28 +157,30 @@ describe('App: Monitor groups and answer pane', () => {
     expect(pane().getByText('Nothing is waiting on you.')).toBeTruthy();
     expect(screen.queryByRole('article')).toBeNull();
   });
-  it('answering removes the run and moves the selection; the count follows an event-stream refresh', async () => {
+  it('answering confirms, then folds the item away; the count follows an event-stream refresh', async () => {
     render(<App />);
     await screen.findByRole('article', { name: 'Waiting on you: Run w1' });
-    fireEvent.click(screen.getByRole('button', { name: /Run w2/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run w2' }));
     const card = screen.getByRole('article', { name: 'Waiting on you: Run w2' });
     fireEvent.click(within(card).getByRole('button', { name: 'Agree spec' }));
-    await waitFor(() => expect(screen.getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy());
-    expect(screen.getAllByRole('article').length).toBe(1);
-    expect(screen.queryByRole('button', { name: /Run w2/ })).toBeNull();
+    await waitFor(() => expect(card.querySelector('.ui-dic__done[role=status]').textContent).toBe('Agree spec'));
+    await waitFor(() => expect(screen.getAllByRole('article').length).toBe(1), { timeout: 3000 });
+    expect(screen.getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy();
+    expect(screen.queryByRole('article', { name: 'Waiting on you: Run w2' })).toBeNull();
     expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you1');
     runs = runs.map((r) => (r.id === 'w1' ? { ...r, status: 'active' } : r));
     await act(async () => { sources.at(-1).onmessage?.({}); await new Promise((r) => setTimeout(r, 400)); });
     await waitFor(() => expect(views().getByRole('button', { name: /^Waiting on you/ }).textContent).toBe('Waiting on you0'));
     expect(pane().getByText('Nothing is waiting on you.')).toBeTruthy();
   });
-  it('the pane uses the unfiltered waiting list (search does not empty it)', async () => {
+  it('the inbox uses the unfiltered waiting list (search does not empty it)', async () => {
     render(<App />);
     await screen.findByRole('article', { name: 'Waiting on you: Run w1' });
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search runs' }), { target: { value: 'busy' } });
     expect(screen.getByText('Busy run')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Run w2/ })).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Runs' })).queryByText('Done run')).toBeNull();
     expect(screen.getByRole('article', { name: 'Waiting on you: Run w1' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Waiting on you: Run w2' })).toBeTruthy();
   });
   it('load error shows on the Monitor', async () => {
     globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) }));

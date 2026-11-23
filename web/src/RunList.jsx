@@ -49,21 +49,15 @@ function RowBody({ run }) {
   );
 }
 
-// Waiting rows select into the answer pane; every other row opens the run view.
-export function RunList({ runs, selectedId, onSelect }) {
+// Every row opens the run view (waiting runs are answered in the Monitor's decision inbox, not listed here).
+export function RunList({ runs }) {
   return (
     <ul className="run-rows">
       {runs.map((r) => (
         <li key={r.id}>
-          {r.status === 'waiting' ? (
-            <button type="button" className="run-row" aria-pressed={r.id === selectedId} onClick={() => onSelect?.(r.id)}>
-              <RowBody run={r} />
-            </button>
-          ) : (
-            <a className="run-row" href={runHref(r.id)}>
-              <RowBody run={r} />
-            </a>
-          )}
+          <a className="run-row" href={runHref(r.id)}>
+            <RowBody run={r} />
+          </a>
         </li>
       ))}
     </ul>

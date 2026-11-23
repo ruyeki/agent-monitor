@@ -62,22 +62,18 @@ describe('WaitingCard', () => {
 });
 
 describe('RunList', () => {
-  it('shows rounds n/max, stage label and age; a waiting row is a button that selects', () => {
-    const onSelect = vi.fn();
-    render(<RunList runs={[run]} onSelect={onSelect} />);
+  it('shows rounds n/max, stage label and age; the row is a link to the run view (waiting runs are answered in the inbox)', () => {
+    render(<RunList runs={[run]} />);
     expect(screen.getByText('2/5')).toBeTruthy();
     expect(screen.getByText('Your solution')).toBeTruthy();
     expect(screen.getByText('1m ago')).toBeTruthy();
-    const row = screen.getByRole('button', { name: /My run/ });
-    expect(row.getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(row);
-    expect(onSelect).toHaveBeenCalledWith('my-run');
+    expect(screen.getByRole('link', { name: /My run/ }).getAttribute('href')).toBe('#/runs/my-run');
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('marks the selected waiting row and joins parallel active stages', () => {
+  it('joins parallel active stages', () => {
     const par = { ...run, id: 'p', title: 'Par run', status: 'active', active: [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }] };
-    render(<RunList runs={[run, par]} selectedId="my-run" />);
-    expect(screen.getByRole('button', { name: /My run/ }).getAttribute('aria-pressed')).toBe('true');
+    render(<RunList runs={[run, par]} />);
     expect(screen.getByText('Alpha + Beta')).toBeTruthy();
   });
 

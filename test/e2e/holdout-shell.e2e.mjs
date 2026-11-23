@@ -1,4 +1,4 @@
-// Holdout e2e: app shell + Monitor (sidebar, nav, views, search, theme, stat strip, run list, answer pane, empty states, 390 px, contrast, no external requests).
+// Holdout e2e: app shell + Monitor (sidebar, nav, views, search, theme, stat strip, run list, decision inbox, empty states, 390 px, contrast, no external requests).
 // Run: WEB_DIR=<temp build> CHROME_PATH=<chrome> [HS_SHOTS=<dir>] node --disable-warning=ExperimentalWarning test/e2e/holdout-shell.e2e.mjs
 import fs from 'node:fs';
 import os from 'node:os';
@@ -91,13 +91,14 @@ async function newPage({ w = 1300, h = 900, scheme = 'light', theme = null, inte
 const goto = async (p, hash) => { await p.goto(`${base}/${hash}`); await p.locator('main').first().waitFor(); await p.waitForTimeout(350); };
 const navLinks = (p) => p.locator('nav[aria-label="Sections"] a');
 const rowOf = (p, title) => p.locator('.run-list .run-row', { hasText: title }).first();
+const itemOf = (p, title) => p.locator(`aside.inbox-pane article[aria-label="Waiting on you: ${title}"]`);
 const keyOf = (title) => Object.keys(T).find((k) => T[k] === title);
 const avg = (css) => { const m = css.match(/\d+/g).map(Number); return (m[0] + m[1] + m[2]) / 3; };
 
 const { ctx: ctxD, p: pd } = await newPage({ scheme: 'light' }); // nothing saved, OS says light: must still be dark
 page = pd;
 await goto(pd, '#/');
-await until(async () => (await rowOf(pd, T.w1).count()) > 0, 6000);
+await until(async () => (await itemOf(pd, T.w1).count()) > 0, 6000);
 
 // ---------- shell
 await check('shell: aside.sidebar + one main inside .shell on all 4 pages; brand, search, kbd hint, status', async () => {
@@ -149,14 +150,16 @@ await check('views: 3 toggle buttons with counts; filter, clear on second click,
   ok((await vb.nth(1).getAttribute('aria-pressed')) === 'true', 'Active not pressed');
   ok(await rowOf(pd, T.act).count() === 1 && await rowOf(pd, T.w1).count() === 0, 'Active view should show only active rows');
   await vb.nth(1).click(); await pd.waitForTimeout(250);
-  ok((await vb.nth(1).getAttribute('aria-pressed')) === 'false' && await rowOf(pd, T.w1).count() === 1, 'second click should clear');
+  ok((await vb.nth(1).getAttribute('aria-pressed')) === 'false' && await rowOf(pd, T.stp).count() === 1, 'second click should clear');
+  ok(await itemOf(pd, T.w1).count() === 1, 'a view hid an inbox item');
   await goto(pd, '#/stats');
   await vb.nth(0).click(); await pd.waitForTimeout(300);
   ok(/#\/$/.test(pd.url()), `url ${pd.url()}`);
-  ok(await rowOf(pd, T.w1).count() === 1 && await rowOf(pd, T.act).count() === 0, 'Waiting view should show only waiting');
+  ok(await pd.locator('.run-list').count() === 0 && await itemOf(pd, T.w1).count() === 1, 'Waiting view should show the inbox only');
   await vb.nth(0).click(); await pd.waitForTimeout(200);
   await vb.nth(2).click(); await pd.waitForTimeout(250);
-  ok(await rowOf(pd, T.w1).count() === 0 && await rowOf(pd, T.act).count() === 0, 'Finished view should hide waiting and active rows');
+  ok(await rowOf(pd, T.stp).count() === 1 && await rowOf(pd, T.act).count() === 0, 'Finished view should hide active rows');
+  ok(await itemOf(pd, T.w1).count() === 1, 'the Finished view hid an inbox item');
   await vb.nth(2).click(); await pd.waitForTimeout(200);
 });
 
@@ -166,14 +169,15 @@ await check('search: filters by title and id (case-insensitive); Ctrl+K focuses;
   await pd.locator('main').click({ position: { x: 600, y: 10 } });
   await pd.keyboard.press('Control+k');
   ok(await s.evaluate((e) => e === document.activeElement), 'Ctrl+K did not focus search');
-  await s.fill('BRAVO'); await pd.waitForTimeout(250);
-  ok(await rowOf(pd, T.w2).count() === 1 && await rowOf(pd, T.w1).count() === 0 && await rowOf(pd, T.act).count() === 0, 'title filter');
+  await s.fill('BUSY'); await pd.waitForTimeout(250);
+  ok(await rowOf(pd, T.act).count() === 1 && await rowOf(pd, T.stp).count() === 0, 'title filter');
+  ok(await itemOf(pd, T.w1).count() === 1 && await itemOf(pd, T.w2).count() === 1, 'search hid an inbox item');
   await s.fill(ids.act.toLowerCase()); await pd.waitForTimeout(250);
-  ok(await rowOf(pd, T.act).count() === 1 && await rowOf(pd, T.w1).count() === 0, 'id filter');
+  ok(await rowOf(pd, T.act).count() === 1 && await rowOf(pd, T.stp).count() === 0, 'id filter');
   await s.fill('zzz-nothing'); await pd.waitForTimeout(250);
   ok((await pd.locator('main').innerText()).includes('No runs match "zzz-nothing".'), 'no-match empty state');
   await s.press('Escape'); await pd.waitForTimeout(250);
-  ok((await s.inputValue()) === '' && await rowOf(pd, T.w1).count() === 1, 'Escape should clear');
+  ok((await s.inputValue()) === '' && await rowOf(pd, T.stp).count() === 1, 'Escape should clear');
   await goto(pd, '#/stats');
   await s.fill('Alpha'); await pd.waitForTimeout(400);
   ok(/#\/$/.test(pd.url()), `typing on Stats should go to #/ (url ${pd.url()})`);
@@ -235,19 +239,19 @@ await check('stat strip: en dash for tokens and cost when the stats endpoint fai
   await ctx.close();
 });
 
-await check('runs list: groups Waiting on you / Active / Finished in order with counts; Finished is collapsed details', async () => {
+await check('runs list: groups Active / Finished in order with counts (waiting runs are in the inbox); Finished is collapsed details', async () => {
   const norm = (await pd.locator('.run-list h2.group-head').allInnerTexts()).map((h) => h.replace(/\s+/g, ' ').trim());
-  ok(norm.length === 3 && /^Waiting on you\b/.test(norm[0]) && /^Active\b/.test(norm[1]) && /^Finished\b/.test(norm[2]), norm.join('|'));
-  const NW0 = (await runs()).filter((r) => r.status === "waiting").length;
-  ok(new RegExp('\\b' + NW0 + '\\b').test(norm[0]), `waiting head ${norm[0]}`);
+  ok(norm.length === 2 && /^Active\b/.test(norm[0]) && /^Finished\b/.test(norm[1]), norm.join('|'));
+  const NA0 = (await runs()).filter((r) => !['waiting', 'done', 'stopped'].includes(r.status)).length;
+  ok(new RegExp('\\b' + NA0 + '\\b').test(norm[0]), `active head ${norm[0]}`);
   ok(await pd.locator('.run-list details.finished').evaluate((d) => !d.open), 'Finished should be collapsed by default');
   ok(await pd.locator('.run-list details.finished > summary h2.group-head').count() === 1, 'finished head in summary');
   await pd.locator('.run-list details.finished > summary').click(); await pd.waitForTimeout(200);
   ok(await rowOf(pd, T.stp).count() === 1, 'stopped run listed under Finished');
 });
 
-await check('rows: status icon aria-label, mono id, stage pill, rounds n/max, age; waiting rows are buttons, others links', async () => {
-  const want = [[T.w1, 'Waiting on you', 'button'], [T.act, 'Running', 'a'], [T.stp, 'Stopped', 'a']];
+await check('rows: status icon aria-label, mono id, stage pill, rounds n/max, age; rows are links', async () => {
+  const want = [[T.act, 'Running', 'a'], [T.stp, 'Stopped', 'a']];
   const fin = (await runs()).find((r) => r.id === ids.fin);
   if (fin && fin.status === 'done') want.push([T.fin, 'Done', 'a']);
   for (const [title, label, tag] of want) {
@@ -258,47 +262,51 @@ await check('rows: status icon aria-label, mono id, stage pill, rounds n/max, ag
     ok(info.pill && info.pill.length > 0, `${title}: stage pill`);
     ok(/\b\d+\/\d+\b/.test(info.txt), `${title}: rounds in "${info.txt.replace(/\s+/g, ' ')}"`);
     ok(/(\bnow\b|\bago\b|\d+\s?(s|m|h|d)\b)/i.test(info.txt), `${title}: age in "${info.txt.replace(/\s+/g, ' ')}"`);
-    if (tag === 'button') ok(info.pressed === 'true' || info.pressed === 'false', 'aria-pressed on waiting row');
-    else ok(info.href === `#/runs/${id}`, `href ${info.href}`);
+    ok(info.href === `#/runs/${id}`, `href ${info.href}`);
   }
 });
 
-await check('rows: the Codex run shows the Codex tag in the list', async () => {
-  ok(/codex/i.test(await rowOf(pd, T.cdx).innerText()), `row: ${(await rowOf(pd, T.cdx).innerText()).replace(/\s+/g, ' ')}`);
+await check('rows: the Codex run shows the Codex tag (its list row, or its inbox item while it waits)', async () => {
+  const waits = (await runs()).find((r) => r.id === ids.cdx)?.status === 'waiting';
+  const el = waits ? itemOf(pd, T.cdx).locator('.ui-dic__title') : rowOf(pd, T.cdx);
+  ok(/codex/i.test(await el.innerText()), `${waits ? 'inbox item' : 'row'}: ${(await el.innerText()).replace(/\s+/g, ' ')}`);
 });
 
-await check('rows: icons differ per state in shape and colour (never colour alone)', async () => {
-  const icons = await pd.locator('.run-list .run-row svg[role=img]').evaluateAll((els) => els.map((e) => ({ l: e.getAttribute('aria-label'), c: [getComputedStyle(e).color, getComputedStyle(e).fill, getComputedStyle(e).stroke].join('|'), shape: e.innerHTML.replace(/\s+/g, ' ') })));
+await check('rows: icons differ per state in shape and colour (never colour alone), with the inbox meta icon for waiting', async () => {
+  const icons = await pd.locator('.run-list .run-row svg[role=img], .inbox-pane .pane-meta svg[role=img]').evaluateAll((els) => els.map((e) => ({ l: e.getAttribute('aria-label'), c: [getComputedStyle(e).color, getComputedStyle(e).fill, getComputedStyle(e).stroke].join('|'), shape: e.innerHTML.replace(/\s+/g, ' ') })));
   const by = {}; for (const i of icons) by[i.l] = i;
   ok(by['Waiting on you'] && by.Running && by.Stopped, `labels ${Object.keys(by)}`);
   ok(by['Waiting on you'].shape !== by.Running.shape && by.Running.shape !== by.Stopped.shape && by['Waiting on you'].shape !== by.Stopped.shape, 'icon shapes should differ per state');
   ok(by['Waiting on you'].c !== by.Running.c && by.Running.c !== by.Stopped.c, 'icon colours should differ per state');
 });
 
-// ---------- answer pane
-const pane = () => pd.locator('aside.answer-pane[aria-label="Selected run"]');
-await check('pane: first waiting run selected by default; card, Open run link; pane beside the list on a wide screen', async () => {
+// ---------- decision inbox
+const pane = () => pd.locator('aside.inbox-pane[aria-label="Decision inbox"]');
+await check('inbox: one item per waiting run, oldest first and open, the rest folded; Open run link; inbox beside the list on a wide screen', async () => {
   await goto(pd, '#/');
   await until(async () => (await pane().locator('article').count()) > 0, 5000);
-  const first = pd.locator('.run-list button.run-row').first();
-  ok((await first.getAttribute('aria-pressed')) === 'true', 'first waiting row not pressed');
-  const art = await pane().locator('article').first().getAttribute('aria-label');
-  ok(/^Waiting on you: /.test(art) && (await first.innerText()).includes(art.replace('Waiting on you: ', '')), `article ${art}`);
-  ok(await pane().getByRole('link', { name: /Open run/ }).count() === 1, 'Open run link');
+  const want = (await runs()).filter((r) => r.status === 'waiting').sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt)).map((r) => `Waiting on you: ${r.title}`);
+  const arts = await pane().locator('article').evaluateAll((as) => as.map((a) => a.getAttribute('aria-label')));
+  ok(JSON.stringify(arts) === JSON.stringify(want), `items ${arts.join('|')} want ${want.join('|')}`);
+  const first = pane().locator('article').first();
+  ok(await first.locator('h3.ui-dic__title').count() === 1, 'oldest item not open');
+  ok(await first.locator('a.open-run').count() === 1, 'Open run link');
+  ok(await pane().locator('article button.ui-dic__title--folded').count() === want.length - 1, 'the other items should be folded');
+  ok(await pane().locator('article .ui-dic__body[inert]').count() === want.length - 1, 'folded bodies should be inert');
   const pw = (await pane().boundingBox()).width, lw = (await pd.locator('.run-list').boundingBox()).width;
   ok(pw > 250 && pw < 520 && lw > pw, `pane ${pw} list ${lw}`);
 });
 
-await check('pane: clicking another waiting row selects it (aria-pressed, pane content, URL stays #/)', async () => {
-  await rowOf(pd, T.wl).click(); await pd.waitForTimeout(300);
-  ok((await rowOf(pd, T.wl).getAttribute('aria-pressed')) === 'true', 'long-ask row not pressed');
-  ok(await pane().locator(`article[aria-label="Waiting on you: ${T.wl}"]`).count() === 1, 'pane did not switch');
-  ok((await rowOf(pd, T.w1).getAttribute('aria-pressed')) === 'false', 'old row still pressed');
+await check('inbox: clicking a folded item opens it (its ask and Open run link; URL stays #/)', async () => {
+  await itemOf(pd, T.wl).locator('button.ui-dic__title--folded').click(); await pd.waitForTimeout(300);
+  ok(await itemOf(pd, T.wl).locator('h3.ui-dic__title').count() === 1, 'long-ask item did not open');
+  ok(await itemOf(pd, T.wl).locator('.ui-dic__body[inert]').count() === 0, 'opened body still inert');
+  ok(await itemOf(pd, T.wl).locator('a.open-run').count() === 1, 'Open run link');
   ok(/#\/$/.test(pd.url()), `url ${pd.url()}`);
 });
 
-await check('pane: long multi-line ask is formatted (bold labels, inline code) and does not overflow the pane', async () => {
-  const info = await pane().locator('article').first().evaluate((e) => {
+await check('inbox: long multi-line ask is formatted (bold labels, inline code) and does not overflow the pane', async () => {
+  const info = await itemOf(pd, T.wl).evaluate((e) => {
     const lab = e.querySelector('.ask-label'), txt = e.querySelector('.ask-text');
     return { labels: [...e.querySelectorAll('.ask-label')].map((x) => x.textContent.trim()), lw: lab && parseInt(getComputedStyle(lab).fontWeight, 10), tw: txt && parseInt(getComputedStyle(txt).fontWeight, 10), code: e.querySelectorAll('code').length, sw: e.scrollWidth, cw: e.clientWidth, paneSw: e.closest('aside').scrollWidth, paneCw: e.closest('aside').clientWidth };
   });
@@ -308,26 +316,25 @@ await check('pane: long multi-line ask is formatted (bold labels, inline code) a
   ok(info.sw <= info.cw + 1 && info.paneSw <= info.paneCw + 1, `overflow ${JSON.stringify(info)}`);
 });
 
-await check('pane: labelled reply textarea, action buttons with only the first primary, Open run link target', async () => {
-  const a = pane().locator('article').first();
+await check('inbox: labelled reply textarea, action buttons with only the first primary, Open run link target', async () => {
+  const a = itemOf(pd, T.wl);
   ok(await a.getByRole('textbox', { name: `Reply for ${T.wl}` }).count() === 1, 'reply textarea');
-  const btns = await pane().locator('button').evaluateAll((bs) => bs.map((b) => [b.textContent.trim(), b.classList.contains('primary')]));
+  const btns = await a.locator('.ui-dic__actions button').evaluateAll((bs) => bs.map((b) => [b.textContent.trim(), b.classList.contains('primary')]));
   ok(btns.length >= 2, `buttons ${JSON.stringify(btns)}`);
   ok(btns[0][1] === true && btns.slice(1).every((b) => !b[1]), `primary only on the first action: ${JSON.stringify(btns)}`);
-  ok((await pane().getByRole('link', { name: /Open run/ }).getAttribute('href')) === `#/runs/${ids.wl}`, 'Open run href');
+  ok((await a.locator('a.open-run').getAttribute('href')) === `#/runs/${ids.wl}`, 'Open run href');
 });
 
-await check('pane: an action posts, the run leaves the waiting list and the pane falls back to another waiting run', async () => {
+await check('inbox: an action posts, the item confirms, folds away and leaves; the Views count drops', async () => {
   const before = (await runs()).filter((r) => r.status === 'waiting').length;
-  await rowOf(pd, T.w1).click(); await pd.waitForTimeout(250);
-  const art = pane().locator(`article[aria-label="Waiting on you: ${T.w1}"]`);
-  const actName = (await art.locator('button').first().innerText()).trim();
-  await art.locator('button').first().click();
+  const art = itemOf(pd, T.w1);
+  const actName = (await art.locator('.ui-dic__actions button').first().innerText()).trim();
+  await art.locator('.ui-dic__actions button').first().click();
+  ok(await until(async () => (await art.locator('.ui-dic__done[role=status]').count()) === 1, 3000), `no confirmation after "${actName}"`);
   await until(async () => (await runs()).filter((r) => r.status === 'waiting').length < before, 6000);
-  await until(async () => (await pd.locator('.run-list button.run-row', { hasText: T.w1 }).count()) === 0, 6000);
-  ok(await pd.locator('.run-list button.run-row', { hasText: T.w1 }).count() === 0, `${T.w1} still a waiting row after "${actName}"`);
-  ok(await pane().locator(`article[aria-label="Waiting on you: ${T.w1}"]`).count() === 0, 'pane still shows the answered run');
-  ok(await pane().locator('article').count() === 1, 'pane should fall back to another waiting run');
+  await until(async () => (await art.count()) === 0, 6000);
+  ok(await art.count() === 0, `${T.w1} still in the inbox after "${actName}"`);
+  ok(await pane().locator('article').count() === before - 1, 'the other waiting runs should stay');
   const ww = Number((await pd.locator('nav[aria-label="Views"] button').first().locator('.nav-count').innerText()).trim());
   ok(ww === before - 1, `Views waiting count ${ww} want ${before - 1}`);
 });
@@ -369,7 +376,7 @@ await check('empty states: no runs => "No runs yet."; nothing waiting => "Nothin
 
 // ---------- 390 px
 for (const theme of ['light', 'dark']) {
-  await check(`[${theme}] 390 px: sidebar stacked on top, pane below the list, no sideways scroll on any page`, async () => {
+  await check(`[${theme}] 390 px: sidebar stacked on top, inbox below the list, no sideways scroll on any page`, async () => {
     const { ctx, p } = await newPage({ w: 390, h: 800, scheme: theme, theme });
     for (const h of ['#/', '#/workflow', '#/stats', `#/runs/${ids.act}`, `#/runs/${ids.wl}`]) {
       await goto(p, h);
@@ -377,8 +384,8 @@ for (const theme of ['light', 'dark']) {
       ok(r.doc <= 0 && r.body <= 0 && (h === '#/workflow' || r.main <= 0), `${h}: overflow ${JSON.stringify(r)}`);
     }
     await goto(p, '#/');
-    await until(async () => (await p.locator('aside.answer-pane article').count()) > 0, 5000);
-    const g = await p.evaluate(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(), mn = document.querySelector('main').getBoundingClientRect(), l = document.querySelector('.run-list').getBoundingClientRect(), pn = document.querySelector('.answer-pane').getBoundingClientRect(); return { sbBottom: sb.bottom, sbW: sb.width, mainTop: mn.top, listBottom: l.bottom, paneTop: pn.top, paneW: pn.width, vw: innerWidth }; });
+    await until(async () => (await p.locator('aside.inbox-pane article').count()) > 0, 5000);
+    const g = await p.evaluate(() => { const sb = document.querySelector('.sidebar').getBoundingClientRect(), mn = document.querySelector('main').getBoundingClientRect(), l = document.querySelector('.run-list').getBoundingClientRect(), pn = document.querySelector('.inbox-pane').getBoundingClientRect(); return { sbBottom: sb.bottom, sbW: sb.width, mainTop: mn.top, listBottom: l.bottom, paneTop: pn.top, paneW: pn.width, vw: innerWidth }; });
     ok(g.sbW >= g.vw - 2 && g.mainTop >= g.sbBottom - 2, `sidebar not stacked on top: ${JSON.stringify(g)}`);
     ok(g.paneTop >= g.listBottom - 2 && g.paneW >= g.vw * 0.8, `pane not below list: ${JSON.stringify(g)}`);
     await ctx.close();
@@ -411,10 +418,10 @@ const contrastIn = () => {
   return { n, bad };
 };
 for (const theme of ['light', 'dark']) {
-  await check(`[${theme}] Monitor text contrast >= 4.5:1 (list, pane, tiles, sidebar, hovered row)`, async () => {
+  await check(`[${theme}] Monitor text contrast >= 4.5:1 (list, inbox, tiles, sidebar, hovered row)`, async () => {
     const { ctx, p } = await newPage({ scheme: theme, theme });
     await goto(p, '#/');
-    await until(async () => (await p.locator('aside.answer-pane article').count()) > 0, 5000);
+    await until(async () => (await p.locator('aside.inbox-pane article').count()) > 0, 5000);
     await p.locator('.run-list details.finished > summary').click().catch(() => {});
     await p.waitForTimeout(300);
     const r1 = await p.evaluate(contrastIn);

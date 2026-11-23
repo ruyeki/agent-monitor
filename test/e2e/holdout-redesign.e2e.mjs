@@ -149,7 +149,7 @@ async function go(p, hash, name) {
   else if (name === 'workflow') await p.locator('.fnode[data-node="frame"]').waitFor({ timeout: 10000 });
   else if (name === 'stats') await p.locator('.stats-page .panel').first().waitFor({ timeout: 10000 });
   else await p.locator('.run-rows, .muted').first().waitFor({ timeout: 8000 });
-  if (name === 'monitor') await p.locator('.answer-pane').waitFor({ timeout: 8000 });
+  if (name === 'monitor') await p.locator('.inbox-pane').waitFor({ timeout: 8000 });
   await p.waitForTimeout(900);
 }
 
@@ -226,9 +226,9 @@ for (const theme of ['light', 'dark']) {
     const [c, l] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: r.col, b: r.link });
     ok(JSON.stringify(c.slice(0, 3)) === JSON.stringify(l.slice(0, 3)), `brand mark colour ${r.col} != --link ${r.link}`);
   });
-  await check(`[${theme}] controls: buttons radius 8px, not pill, text weight 500+ (answer pane action)`, async () => {
-    const r = await p.evaluate(() => { const b = document.querySelector('.answer-pane .actions button'); const cs = getComputedStyle(b); return { rad: cs.borderTopLeftRadius, fw: cs.fontWeight, bw: cs.borderTopWidth }; });
-    ok(r.rad === '8px', `button radius ${r.rad}`);
+  await check(`[${theme}] controls: buttons radius 7-8px, not pill, text weight 500+ (decision inbox action)`, async () => {
+    const r = await p.evaluate(() => { const b = document.querySelector('.inbox-pane .ui-dic__actions button'); const cs = getComputedStyle(b); return { rad: cs.borderTopLeftRadius, fw: cs.fontWeight, bw: cs.borderTopWidth }; });
+    ok(['7px', '8px'].includes(r.rad), `button radius ${r.rad}`); // the vendored inbox buttons use the theme radius (8px) minus 1px
     ok(parseInt(r.fw, 10) >= 500, `button weight ${r.fw}`);
   });
   await check(`[${theme}] monitor: stat strip (4 tiles, 22px/600 values, 12px muted labels), run rows as a list, stage pill`, async () => {
@@ -274,10 +274,10 @@ for (const theme of ['light', 'dark']) {
   });
   await check(`[${theme}] inputs: radius 8px, 1px --border-strong, focus = --focus border + ring`, async () => {
     await go(p, '#/', 'monitor');
-    const ta = p.locator('.answer-pane .waiting-card textarea').first();
+    const ta = p.locator('.inbox-pane textarea').first();
     ok(await ta.count(), 'no textarea on waiting card');
     await ta.focus();
-    const r = await p.evaluate(() => { const t = document.querySelector('.answer-pane .waiting-card textarea'); const cs = getComputedStyle(t); const root = getComputedStyle(document.documentElement); return { rad: cs.borderTopLeftRadius, bc: cs.borderTopColor, bw: cs.borderTopWidth, shadow: cs.boxShadow, outline: cs.outlineStyle + ' ' + cs.outlineWidth, focus: root.getPropertyValue('--focus').trim() }; });
+    const r = await p.evaluate(() => { const t = document.querySelector('.inbox-pane textarea'); const cs = getComputedStyle(t); const root = getComputedStyle(document.documentElement); return { rad: cs.borderTopLeftRadius, bc: cs.borderTopColor, bw: cs.borderTopWidth, shadow: cs.boxShadow, outline: cs.outlineStyle + ' ' + cs.outlineWidth, focus: root.getPropertyValue('--focus').trim() }; });
     ok(r.rad === '8px', `textarea radius ${r.rad}`);
     ok(r.bw === '1px', `border ${r.bw}`);
     await p.evaluate(helpers);
@@ -288,7 +288,8 @@ for (const theme of ['light', 'dark']) {
   });
   await check(`[${theme}] keyboard focus ring visible at full opacity on a button`, async () => {
     await go(p, '#/', 'monitor');
-    await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
+    // Tab on from wherever focus is (the inbox adds tab stops) until a button has keyboard focus.
+    for (let i = 0; i < 30 && (await p.evaluate(() => document.activeElement?.tagName)) !== 'BUTTON'; i++) await p.keyboard.press('Tab');
     const r = await p.evaluate(() => { const e = document.activeElement; const cs = getComputedStyle(e); return { tag: e.tagName, ow: cs.outlineWidth, os: cs.outlineStyle, oc: cs.outlineColor, sh: cs.boxShadow }; });
     ok((r.os === 'solid' && parseFloat(r.ow) >= 2) || (r.sh && r.sh !== 'none'), `no ring on ${r.tag}: ${JSON.stringify(r)}`);
     if (r.os === 'solid') { await p.evaluate(helpers); const c = await p.evaluate((x) => window.__rgba(x), r.oc); ok(c[3] === 1, `focus ring alpha ${c[3]}`); }
@@ -416,7 +417,8 @@ await check('three theme blocks in sync: system-dark computed vars equal forced-
   const dl = Object.keys(forcedLight.v).filter((k) => sysLight.v[k] !== forcedLight.v[k]);
   ok(!dl.length, 'light differs: ' + dl.join(','));
   // every custom property declared is defined in both themes
-  const un = forcedDark.names.filter((n) => !forcedDark.v[n] || !forcedLight.v[n]).filter((n) => !/^--(xy|tc$|rs$)/.test(n));
+  // --ui-* / --aui-* belong to the vendored affectUI pieces and are set on their own roots, not on <html>.
+  const un = forcedDark.names.filter((n) => !forcedDark.v[n] || !forcedLight.v[n]).filter((n) => !/^--(xy|tc$|rs$|ui-|aui-)/.test(n));
   ok(!un.length, 'declared but empty in a theme: ' + un.join(','));
   ok(JSON.stringify(sysDark.v) !== JSON.stringify(sysLight.v), 'dark equals light');
 });

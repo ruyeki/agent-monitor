@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunList } from '../src/RunList.jsx';
 import { RunView } from '../src/run/RunView.jsx';
 import { KpiStrip } from '../src/stats/KpiStrip.jsx';
+import { Monitor } from '../src/Monitor.jsx';
 import { WaitingCard } from '../src/WaitingCards.jsx';
 import { sample } from './fixtures.js';
 
@@ -70,6 +71,13 @@ describe('Codex tags and stats', () => {
     expect(within(rows[1]).queryByText('Codex')).toBeNull();
     render(<WaitingCard run={{ ...claudeRun, status: 'waiting', ask: 'ok?', provider: 'codex' }} />);
     expect(within(screen.getByRole('article', { name: /Waiting on you/ })).getByText('Codex')).toBeTruthy();
+  });
+
+  it('tags a Codex run in the Monitor decision inbox, and not a Claude run', () => {
+    const w = (id, over) => ({ ...claudeRun, id, title: `W ${id}`, status: 'waiting', ask: 'ok?', actions: [{ label: 'Resume' }], updatedAt: '2026-11-02T10:00:00Z', ...over });
+    render(<Monitor groups={{ waiting: [w('c', { provider: 'codex' }), w('k', { updatedAt: '2026-11-02T11:00:00Z' })], active: [], finished: [] }} query="" view={null} tick={0} />);
+    expect(within(screen.getByRole('article', { name: 'Waiting on you: W c' })).getByText('Codex')).toBeTruthy();
+    expect(within(screen.getByRole('article', { name: 'Waiting on you: W k' })).queryByText('Codex')).toBeNull();
   });
 
   it('KPI tiles add a separate Codex line and leave the Claude headline alone', () => {

@@ -1,4 +1,4 @@
-// Holdout e2e: waiting runs in the Monitor (group, answer pane), formatted cards, run view card, 390 px, screenshots.
+// Holdout e2e: waiting runs in the Monitor (decision inbox), formatted asks, run view card, 390 px, screenshots.
 // Run: WEB_DIR=<temp build> CHROME_PATH=<chrome> [HV_SHOTS=<dir>] node --disable-warning=ExperimentalWarning test/e2e/holdout-waiting.e2e.mjs
 import fs from 'node:fs';
 import os from 'node:os';
@@ -61,11 +61,14 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 const views = () => page.locator('nav[aria-label="Views"]');
 const waitingView = () => views().getByRole('button', { name: /^Waiting on you/ });
 const waitingCount = async () => ((await waitingView().innerText()).match(/\d+/) || [''])[0];
-const pane = () => page.getByRole('complementary', { name: 'Selected run' });
-const selectRow = async (title) => {
-  const row = page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: new RegExp(title) });
-  await row.click();
-  await pane().getByRole('article', { name: new RegExp(`Waiting on you: ${title}`) }).waitFor({ timeout: 5000 });
+const pane = () => page.getByRole('complementary', { name: 'Decision inbox' });
+const itemOf = (title) => pane().locator(`article[aria-label="Waiting on you: ${title}"]`);
+// Opens a folded inbox item (a no-op when it is already open).
+const openItem = async (title) => {
+  const it = itemOf(title);
+  await it.waitFor({ timeout: 5000 });
+  if (await it.locator('button.ui-dic__title--folded').count()) await it.locator('button.ui-dic__title--folded').click();
+  await it.locator('h3.ui-dic__title').waitFor({ timeout: 5000 });
 };
 
 await check('seed: three runs are waiting, the long ask is intact', async () => {
@@ -90,14 +93,17 @@ await check('nav: Monitor, Workflow, Stats in order (no Waiting page); Views cou
   ok((await page.locator('nav[aria-label="Sections"] a', { hasText: /^Monitor/ }).locator('.nav-count').innerText()).trim() === '4', 'open count (3 waiting + 1 active)');
 });
 
-await check('monitor: waiting group with three rows, active row, Finished group, one card in the pane', async () => {
-  const group = page.locator('section[aria-labelledby="group-waiting"]');
-  ok((await group.getByRole('button').count()) === 3, 'expected 3 waiting rows as buttons');
+await check('monitor: no waiting group; the inbox holds three items (oldest open), active row, Finished group', async () => {
+  ok((await page.locator('section[aria-labelledby="group-waiting"]').count()) === 0, 'the Waiting on you group is still in the run list');
   ok((await page.locator('section[aria-labelledby="group-active"]').getByRole('link', { name: /Busy active run/ }).count()) === 1, 'active run row missing');
   ok(/Finished\s*1/.test(await page.locator('#group-finished').innerText()), 'finished group changed');
-  ok((await page.getByRole('article').count()) === 1, 'expected one card, in the pane');
-  ok((await pane().getByRole('article').count()) === 1, 'the card is not in the answer pane');
-  ok((await pane().getByRole('link', { name: 'Open run →' }).count()) === 1, 'Open run link missing');
+  ok((await page.locator('article').count()) === 3, 'expected three items, all in the inbox');
+  ok((await pane().locator('article').count()) === 3, 'the items are not in the decision inbox');
+  ok((await pane().locator('h2').innerText()).trim() === '3 need your input', `heading ${await pane().locator('h2').innerText()}`);
+  const first = pane().locator('article').first();
+  ok((await first.getAttribute('aria-label')) === 'Waiting on you: Plain gate run', `first item ${await first.getAttribute('aria-label')}`);
+  ok((await first.locator('a.open-run').innerText()).trim() === 'Open run →', 'Open run link missing');
+  ok((await pane().locator('article button.ui-dic__title--folded').count()) === 2, 'the other two items should be folded');
   ok((await page.getByRole('table').count()) === 0, 'a table is on the Monitor page');
 });
 
@@ -119,23 +125,25 @@ async function shots(name, hash, vp) {
   }
   await page.emulateMedia({ colorScheme: 'light' });
 }
-await check('screenshots: monitor with the answer pane, light and dark', async () => {
+await check('screenshots: monitor with the decision inbox, light and dark', async () => {
   await shots('monitor', '#/', { width: 1300, height: 900 });
   await shots('monitor-mobile', '#/', { width: 390, height: 844 });
   await page.setViewportSize({ width: 1300, height: 900 });
 });
 
 await page.goto(`${base}/#/`);
-await check('pane card: one per pane, fills the pane width', async () => {
-  await pane().getByRole('article').waitFor({ timeout: 5000 });
+await check('inbox card fills the pane width; each item fills the card', async () => {
+  await pane().locator('article').first().waitFor({ timeout: 5000 });
   const p = await pane().boundingBox();
-  const b = await pane().getByRole('article').boundingBox();
-  ok(b.width >= p.width * 0.85, `card ${Math.round(b.width)} px of pane ${Math.round(p.width)} px`);
+  const c = await pane().locator('.ui-dic').boundingBox();
+  const b = await pane().locator('article').first().boundingBox();
+  ok(c.width >= p.width * 0.85, `card ${Math.round(c.width)} px of pane ${Math.round(p.width)} px`);
+  ok(Math.abs(b.width - c.width) < 2, `item ${Math.round(b.width)} px of card ${Math.round(c.width)} px`);
 });
 
 await check('long ask card is formatted: heading, four rows, code element, no raw backticks', async () => {
-  await selectRow('Escalated long ask');
-  const card = pane().getByRole('article', { name: /Escalated long ask/ });
+  await openItem('Escalated long ask');
+  const card = itemOf('Escalated long ask');
   ok((await card.locator('h4.ask-heading').innerText()).startsWith('[CloudLab] T10.10 template requests'), 'heading');
   ok((await card.locator('.ask-row').count()) === 4, 'expected 4 rows');
   ok((await card.locator('.ask-label').allInnerTexts()).join(',') === 'Background,Proposal,Options,Answer', 'labels');
@@ -149,18 +157,19 @@ await check('long ask card is formatted: heading, four rows, code element, no ra
 });
 
 await check('one-line ask card: heading only', async () => {
-  await selectRow('Plain gate run');
-  const card = pane().getByRole('article', { name: /Plain gate run/ });
+  await openItem('Plain gate run');
+  const card = itemOf('Plain gate run');
   ok((await card.locator('.ask-row, .ask-para').count()) === 0, 'extra blocks on a one-line ask');
   ok(/solution/i.test(await card.locator('h4.ask-heading').innerText()), 'heading text');
 });
 
-await check('selecting a row switches the pane and the Open run link', async () => {
-  await selectRow('Second plain run');
-  ok((await pane().getByRole('article').count()) === 1, 'more than one card in the pane');
-  ok((await pane().getByRole('link', { name: 'Open run →' }).getAttribute('href')) === `#/runs/${plain2}`, 'Open run href');
-  const pressed = await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Second plain run/ }).getAttribute('aria-pressed');
-  ok(pressed === 'true', 'selected row is not aria-pressed');
+await check('opening a folded item shows its ask and Open run link', async () => {
+  await openItem('Second plain run');
+  const it = itemOf('Second plain run');
+  ok((await pane().locator('article').count()) === 3, 'opening an item changed the number of items');
+  ok((await it.locator('h4.ask-heading').count()) === 1, 'ask not shown');
+  ok((await it.locator('a.open-run').getAttribute('href')) === `#/runs/${plain2}`, 'Open run href');
+  ok((await it.locator('.ui-dic__body').getAttribute('inert')) === null, 'the opened body is still inert');
 });
 
 await check('run view: card has the same formatting, label above text in the side panel', async () => {
@@ -201,23 +210,24 @@ await check('live: count drops on the Monitor page without reload after the run 
   ok(r.status === 200, `respond ${r.status} ${r.text}`);
   ok(await until(async () => (await waitingCount()) === '2', 6000), `Views count stayed ${await waitingCount()}`);
   ok(await page.evaluate(() => window.__marker === 1), 'page reloaded instead of updating live');
-  ok((await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button').count()) === 2, 'waiting rows did not update');
+  ok(await until(async () => (await pane().locator('article').count()) === 2, 3000), 'inbox items did not update');
 });
 
-await check('answering from the pane removes the run and lowers the count', async () => {
+await check('answering from the inbox confirms, folds the item away, opens the next and lowers the count', async () => {
   await page.goto(`${base}/#/`);
-  await selectRow('Plain gate run');
-  const card = pane().getByRole('article', { name: /Waiting on you: Plain gate run/ });
+  await openItem('Plain gate run');
+  const card = itemOf('Plain gate run');
   await card.getByRole('textbox').fill('agreed');
   await card.getByRole('button', { name: /agree spec/i }).click();
+  await card.locator('.ui-dic__done[role=status]', { hasText: /agree spec/i }).waitFor({ timeout: 3000 });
   await card.waitFor({ state: 'detached', timeout: 6000 });
   ok(await until(async () => (await waitingCount()) === '1', 5000), `count ${await waitingCount()}`);
-  ok((await page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Plain gate run/ }).count()) === 0, 'answered run still listed as waiting');
-  ok((await pane().getByRole('article', { name: /Escalated long ask/ }).count()) === 1, 'selection did not move to the remaining waiting run');
+  ok((await pane().locator('article').count()) === 1, 'answered run still in the inbox');
+  ok((await itemOf('Escalated long ask').locator('h3.ui-dic__title').count()) === 1, 'the next item did not open');
 });
 
 await check('empty state after everything is answered', async () => {
-  const card = pane().getByRole('article', { name: /Escalated long ask/ });
+  const card = itemOf('Escalated long ask');
   await card.getByRole('button', { name: /stop run/i }).click().catch(() => {});
   ok(await until(async () => (await pane().getByText('Nothing is waiting on you.').count()) === 1, 6000), 'empty text missing');
   ok((await waitingCount()) === '0', 'count not zero');

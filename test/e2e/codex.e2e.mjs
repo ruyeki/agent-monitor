@@ -69,15 +69,11 @@ await check('a Claude-only run shows no Codex text', async () => {
   const t = await text();
   ok(!/Claude usage ran out/i.test(t) && !/Codex tokens/i.test(t), 'Codex text leaked into a Claude run');
 });
-await check('waiting row and answer-pane card tag the Codex run; the monitor row of a Claude run is not tagged', async () => {
+await check('the decision inbox item tags the Codex run; the monitor row of a Claude run is not tagged', async () => {
   await page.goto(`${base}/#/`);
-  const waitingRow = page.locator('section[aria-labelledby="group-waiting"]').getByRole('button', { name: /Handed over run/ });
-  await waitingRow.waitFor({ timeout: 8000 });
-  ok(/Codex/.test(await waitingRow.innerText()), 'waiting row has no Codex tag');
-  await waitingRow.click();
-  const card = page.getByRole('complementary', { name: 'Selected run' }).getByRole('article', { name: /Waiting on you: Handed over run/ });
+  const card = page.locator('aside.inbox-pane[aria-label="Decision inbox"] article[aria-label="Waiting on you: Handed over run"]');
   await card.waitFor({ timeout: 8000 });
-  ok(/Codex/.test(await card.innerText()), 'card has no Codex tag');
+  ok(/Codex/.test(await card.locator('.ui-dic__title').innerText()), 'inbox item title has no Codex tag');
   await page.getByText('Plain Claude run').first().waitFor({ timeout: 8000 });
   const plain = page.locator('li', { hasText: 'Plain Claude run' }).first();
   ok(!/Codex/.test(await plain.innerText()), 'Claude row tagged Codex');
