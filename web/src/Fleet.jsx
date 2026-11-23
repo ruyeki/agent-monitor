@@ -166,14 +166,15 @@ function CrewStrip({ run, detail, now }) {
 const byAge = (a, b) => (Date.parse(a.updatedAt) || 0) - (Date.parse(b.updatedAt) || 0);
 
 // The Fleet layout (contract C2): one card per live run, waiting ones first (oldest first), then the running ones.
-// Waiting cards are never hidden by search or views (like the inbox); running cards follow both. A card's crew strip
+// Views hide the other kind of card (Needs you: waiting only; Running: running only). Search never hides waiting cards
+// (like the inbox); running cards follow it. A card's crew strip
 // opens under its grid row (the grid packs densely, so the full-width strip drops below the row); one at a time; Escape closes it.
-export function Fleet({ waiting, active, detailOf, query, view, empty, onDone }) {
+export function Fleet({ waiting, active, detailOf, query, view, empty, emptyText, onDone }) {
   const [openId, setOpenId] = useState(null);
   const toggles = useRef(new Map());
   const now = useNow(10000);
   const match = (r) => !query || r.title.toLowerCase().includes(query) || String(r.id).toLowerCase().includes(query);
-  const runs = [...[...waiting].sort(byAge), ...(!view || view === 'active' ? active.filter(match) : [])];
+  const runs = [...(!view || view === 'waiting' ? [...waiting].sort(byAge) : []), ...(!view || view === 'active' ? active.filter(match) : [])];
   const open = runs.some((r) => r.id === openId) ? openId : null;
 
   useEffect(() => {
@@ -191,7 +192,7 @@ export function Fleet({ waiting, active, detailOf, query, view, empty, onDone })
   }, [open]);
 
   if (!runs.length) {
-    return <p className="muted empty">{empty ? 'No runs yet.' : waiting.length + active.length ? 'No live runs in this view.' : 'No live runs.'}</p>;
+    return <p className="muted empty">{emptyText ? emptyText : empty ? 'No runs yet.' : waiting.length + active.length ? 'No live runs in this view.' : 'No live runs.'}</p>;
   }
   return (
     <section className="fleet" aria-label="Live runs">

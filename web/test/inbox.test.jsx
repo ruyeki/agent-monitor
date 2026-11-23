@@ -205,7 +205,7 @@ describe('Decision inbox on the Monitor', () => {
     expect(item('Run w1')).toBe(before[0]);
   });
 
-  it('search and views never hide inbox items; the Waiting view shows the inbox without the run list', () => {
+  it('search never hides inbox items; the Waiting view shows the inbox without the run list; Running shows no inbox', () => {
     const groups = { waiting: [mk('w1')], active: [{ ...mk('a1'), status: 'active', title: 'Busy run' }], finished: [] };
     const props = { loadError: null, updatedAt: null, tick: 0, onDone: () => {} };
     const { rerender } = render(<Monitor groups={groups} query="zzz" view={null} {...props} />);
@@ -213,7 +213,8 @@ describe('Decision inbox on the Monitor', () => {
     expect(item('Run w1')).toBeTruthy();
     rerender(<Monitor groups={groups} query="" view="active" {...props} />);
     expect(screen.getByText('Busy run')).toBeTruthy();
-    expect(item('Run w1')).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'Decision inbox' })).toBeNull();
+    expect(screen.queryByText('Run w1')).toBeNull();
     rerender(<Monitor groups={groups} query="" view="waiting" {...props} />);
     expect(screen.queryByRole('region', { name: 'Runs' })).toBeNull();
     expect(screen.queryByText('Busy run')).toBeNull();

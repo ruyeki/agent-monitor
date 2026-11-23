@@ -209,7 +209,7 @@ describe('Fleet (C2)', () => {
     expect(strip()).toBeNull();
   });
 
-  it('search and views: waiting cards always stay (like the inbox); running cards follow both', () => {
+  it('search never hides waiting cards (like the inbox); views show only their own cards; running cards follow search', () => {
     const g = { waiting: [waitingRun('w1', 10)], active: [activeRun('a1'), activeRun('zz9', { title: 'Other job' })], finished: [] };
     const { again } = mount(g, { query: 'other' });
     const ids = () => [...document.querySelectorAll('article[data-run-id]')].map((a) => a.getAttribute('data-run-id'));
@@ -217,7 +217,7 @@ describe('Fleet (C2)', () => {
     again(g, { query: '', view: 'waiting' });
     expect(ids()).toEqual(['w1']);
     again(g, { query: '', view: 'active' });
-    expect(ids()).toEqual(['w1', 'a1', 'zz9']);
+    expect(ids()).toEqual(['a1', 'zz9']);
     again({ waiting: [], active: [], finished: [] }, { query: '', view: null });
     expect(screen.getByText('No runs yet.')).toBeTruthy();
   });

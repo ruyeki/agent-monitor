@@ -34,7 +34,7 @@ const NAV = [
   ['stats', '#/stats', 'Stats'],
   ['accounts', '#/accounts', 'Accounts'],
 ];
-const VIEWS = [
+export const VIEWS = [
   ['waiting', 'Needs you', 'dot-waiting'],
   ['active', 'Running', 'dot-active'],
   ['finished', 'Finished', 'dot-finished'],

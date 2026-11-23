@@ -171,6 +171,8 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
 /* ---- page heads ---- */
 .page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .page-head h1 { min-width: 0; overflow-wrap: anywhere; }
+/* keep the header row as tall as the List/Fleet toggle (.seg: 26px button + 2x2px padding) so the h1 does not shift when the toggle is hidden */
+.page-head > .hgroup:first-child { min-height: 30px; }
 
 /* ---- Monitor: KPI cards, run groups, rows ---- */
 .stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }

@@ -122,7 +122,7 @@ describe('Decision inbox structure', () => {
     expect(item('Alpha').querySelector('textarea')).toBeNull();
   });
 
-  it('search and view never hide inbox items; view "waiting" shows the inbox only', async () => {
+  it('search never hides inbox items; view "waiting" shows the inbox only; view "active" has no inbox', async () => {
     const g = { waiting: [wr('w1', 'Alpha', 5)], active: [ar('a1', 'Busy')], finished: [] };
     const m = mount(g, { query: 'zzz-nothing' });
     await flush();
@@ -130,7 +130,8 @@ describe('Decision inbox structure', () => {
     m.unmount();
     mount(g, { view: 'active' });
     await flush();
-    expect(item('Alpha')).toBeTruthy();
+    expect(screen.queryByText('Alpha')).toBeNull();
+    expect(screen.getByText('Busy')).toBeTruthy();
     cleanupAll();
     mount(g, { view: 'waiting' });
     await flush();

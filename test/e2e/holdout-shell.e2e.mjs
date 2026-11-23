@@ -149,6 +149,7 @@ await check('views: 3 toggle buttons with counts; filter, clear on second click,
   await vb.nth(1).click(); await pd.waitForTimeout(250);
   ok((await vb.nth(1).getAttribute('aria-pressed')) === 'true', 'Active not pressed');
   ok(await rowOf(pd, T.act).count() === 1 && await rowOf(pd, T.w1).count() === 0, 'Active view should show only active rows');
+  ok(await itemOf(pd, T.w1).count() === 0, 'the Running view showed an inbox item');
   await vb.nth(1).click(); await pd.waitForTimeout(250);
   ok((await vb.nth(1).getAttribute('aria-pressed')) === 'false' && await rowOf(pd, T.stp).count() === 1, 'second click should clear');
   ok(await itemOf(pd, T.w1).count() === 1, 'a view hid an inbox item');
@@ -159,7 +160,7 @@ await check('views: 3 toggle buttons with counts; filter, clear on second click,
   await vb.nth(0).click(); await pd.waitForTimeout(200);
   await vb.nth(2).click(); await pd.waitForTimeout(250);
   ok(await rowOf(pd, T.stp).count() === 1 && await rowOf(pd, T.act).count() === 0, 'Finished view should hide active rows');
-  ok(await itemOf(pd, T.w1).count() === 1, 'the Finished view hid an inbox item');
+  ok(await itemOf(pd, T.w1).count() === 0, "the Finished view showed an inbox item");
   await vb.nth(2).click(); await pd.waitForTimeout(200);
 });
 

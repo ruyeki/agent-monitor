@@ -6,6 +6,7 @@ import { Fleet } from './Fleet.jsx';
 import { formatCost, formatTokens } from './lib/format.js';
 import { runHref } from './lib/route.js';
 import { CodexTag, RunList, StatusIcon, stageLabel } from './RunList.jsx';
+import { VIEWS } from './Sidebar.jsx';
 import { Ask } from './WaitingCards.jsx';
 import { DecisionInbox } from './vendor/affectui/decision-inbox.tsx';
 
@@ -211,7 +212,9 @@ const cacheShare = (t) => (t && Number(t.total) > 0 && t.cacheRead != null ? Mat
 export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDone }) {
   const { waiting, active, finished } = groups;
   const today = useToday(tick);
-  const [layout, setLayout] = useLayout();
+  const [savedLayout, setLayout] = useLayout();
+  // Finished is always a list; the saved preference is left alone so the other views come back as the user set them.
+  const layout = view === 'finished' ? 'list' : savedLayout;
   const [finishedOpen, setFinishedOpen] = useState(false);
   const [more, setMore] = useState(FINISHED_PAGE);
 
@@ -230,9 +233,16 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
   const finishedShown = layout === 'list' && !inboxOnly && (finishedOpen || forceOpen) && visible.some(([id]) => id === 'finished') ? shown.finished.slice(0, more) : [];
   const detailOf = useRunDetails([...waiting, ...active], finishedShown, tick);
 
+  // A view has its own empty texts; with no view the old ones stay.
+  const noMatch = `No runs match "${query.trim()}".`;
   let empty = null;
-  if (total === 0) empty = 'No runs yet.';
-  else if (visible.length === 0) empty = q ? `No runs match "${query.trim()}".` : view ? 'No runs in this view.' : 'No active or finished runs.';
+  if (view === 'waiting') empty = 'Nothing is waiting on you.'; // the list shows the inbox's own text instead
+  else if (view) {
+    const pool = view === 'active' ? active : finished;
+    if (pool.length === 0) empty = view === 'active' ? 'Nothing is running.' : 'No finished runs.';
+    else if (shown[view].length === 0) empty = noMatch;
+  } else if (total === 0) empty = 'No runs yet.';
+  else if (visible.length === 0) empty = q ? noMatch : 'No active or finished runs.';
 
   const working = agentsWorking([...waiting, ...active], detailOf);
   const cache = cacheShare(today);
@@ -241,10 +251,10 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
     <>
       <header className="page-head">
         <div className="hgroup">
-          <h1>Monitor</h1>
-          <LayoutToggle layout={layout} onChange={setLayout} />
+          <h1>{view ? VIEWS.find(([id]) => id === view)?.[1] : 'Monitor'}</h1>
+          {view !== 'finished' && <LayoutToggle layout={layout} onChange={setLayout} />}
         </div>
-        {layout === 'list' ? (
+        {layout === 'list' || view ? (
           <span className="faint small">Updated {updatedAt ? <Ago at={updatedAt} /> : DASH}</span>
         ) : (
           <div className="hgroup small fleet-summary">
@@ -270,20 +280,24 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
         </p>
       )}
       {layout === 'fleet' ? (
-        <Fleet waiting={waiting} active={active} detailOf={detailOf} query={q} view={view} empty={total === 0} onDone={onDone} />
+        <Fleet waiting={waiting} active={active} detailOf={detailOf} query={q} view={view} empty={total === 0} emptyText={view ? empty : null} onDone={onDone} />
       ) : (
         <>
-          <section className="stat-strip" aria-label="Today">
-            <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
-            <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
-            <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
-            <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
-          </section>
+          {!view && (
+            <section className="stat-strip" aria-label="Today">
+              <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
+              <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
+              <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
+              <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
+            </section>
+          )}
           <div className={inboxOnly ? 'monitor-body inbox-only' : 'monitor-body'}>
-            <aside className="inbox-pane" aria-label="Decision inbox">
-              <Inbox waiting={waiting} onDone={onDone} />
-              {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
-            </aside>
+            {(!view || inboxOnly) && (
+              <aside className="inbox-pane" aria-label="Decision inbox">
+                <Inbox waiting={waiting} onDone={onDone} />
+                {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
+              </aside>
+            )}
             {!inboxOnly && (
               <section className="run-list" aria-label="Runs">
                 {empty && <p className="muted empty">{empty}</p>}
