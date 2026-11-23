@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS node_visits (
 CREATE INDEX IF NOT EXISTS node_visits_run ON node_visits (run_id, id);
 CREATE TABLE IF NOT EXISTS activity (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, agent_id TEXT, at TEXT NOT NULL,
-  event TEXT NOT NULL, tool TEXT, summary TEXT);
+  event TEXT NOT NULL, tool TEXT, summary TEXT, tool_use_id TEXT, ended_at TEXT, outcome TEXT);
 CREATE INDEX IF NOT EXISTS activity_run ON activity (run_id, id);
 CREATE TABLE IF NOT EXISTS session_links (
   session_id TEXT NOT NULL, run_id TEXT NOT NULL, last_active_at TEXT NOT NULL, PRIMARY KEY (session_id, run_id));
@@ -53,8 +53,9 @@ CREATE TABLE IF NOT EXISTS session_modes (session_id TEXT PRIMARY KEY, mode TEXT
 const NEW_COLUMNS = {
   runs: ['active_json', 'joins_json', 'provider', 'codex_thread_id', 'limit_at', 'resets_at', 'limit_source', 'cwds_json'],
   agents: ['start_nodes', 'reported_nodes', 'provider'], node_visits: ['provider'],
+  activity: ['tool_use_id', 'ended_at', 'outcome'],
 };
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MAX_CWDS = 5;
 const sameCwd = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
 // A time given as epoch seconds, epoch ms or an ISO string -> ISO, else null.
@@ -390,7 +391,7 @@ export function openStore(dataDir) {
       durationMs: (r.ended_at ? Date.parse(r.ended_at) : t) - Date.parse(r.created_at),
       timeline: q('SELECT at, kind, stage, round, verdict, note FROM run_events WHERE run_id = ? ORDER BY id').all(id),
       agents: q('SELECT * FROM agents WHERE run_id = ? ORDER BY started_at, rowid').all(id).map(toAgent),
-      activity: q('SELECT at, agent_id AS agentId, event, tool, summary FROM activity WHERE run_id = ? ORDER BY id DESC LIMIT 100').all(id),
+      activity: q('SELECT id, at, agent_id AS agentId, event, tool, summary, tool_use_id AS toolUseId, ended_at AS endedAt, outcome FROM activity WHERE run_id = ? ORDER BY id DESC LIMIT 100').all(id),
     };
   }
 
@@ -424,10 +425,19 @@ export function openStore(dataDir) {
     if (list.includes(node) || list.length >= MAX_REPORTED) return;
     q('UPDATE agents SET reported_nodes = ? WHERE agent_id = ?').run(JSON.stringify([...list, node]), agentId);
   }
-  function addActivity(runId, agentId, event, tool, text) {
-    q('INSERT INTO activity (run_id, agent_id, at, event, tool, summary) VALUES (?, ?, ?, ?, ?, ?)').run(runId, agentId, now(), event, tool ?? null, text ?? null);
+  function addActivity(runId, agentId, event, tool, text, toolUseId) {
+    const useId = typeof toolUseId === 'string' && toolUseId ? toolUseId.slice(0, 200) : null;
+    q('INSERT INTO activity (run_id, agent_id, at, event, tool, summary, tool_use_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(runId, agentId, now(), event, tool ?? null, text ?? null, useId);
     q(`DELETE FROM activity WHERE run_id = ? AND id <= (SELECT id FROM activity WHERE run_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`).run(runId, runId, ACTIVITY_CAP);
     emit('activity', runId);
+  }
+  // Marks the end of a tool call ('ok' | 'error') on the row PreToolUse wrote. A missing or unknown id changes nothing.
+  function endActivity(runId, toolUseId, outcome) {
+    if (typeof toolUseId !== 'string' || !toolUseId) return;
+    const useId = toolUseId.slice(0, 200);
+    const res = q("UPDATE activity SET ended_at = ?, outcome = ? WHERE run_id = ? AND tool_use_id = ? AND event = 'tool' AND ended_at IS NULL")
+      .run(now(), outcome === 'error' ? 'error' : 'ok', runId, useId);
+    if (res.changes) emit('activity', runId);
   }
   const activityCount = (runId) => q('SELECT COUNT(*) AS n FROM activity WHERE run_id = ?').get(runId).n;
   // Everything token attribution needs for one run (pure input for attributeRun), or null.
@@ -496,6 +506,6 @@ export function openStore(dataDir) {
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
-    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, activityCount,
+    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, activityCount,
   };
 }

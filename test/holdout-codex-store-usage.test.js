@@ -24,7 +24,7 @@ test('store: a v2 database opens, gains the new columns and still works', async 
   } finally { /* closed above */ }
   const db = new DatabaseSync(path.join(dir, 'agent-monitor.db'), { readOnly: true });
   try {
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
     const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
     for (const c of ['provider', 'codex_thread_id', 'limit_at', 'resets_at', 'limit_source', 'cwds_json']) assert.ok(cols('runs').includes(c), `runs.${c}`);
     assert.ok(cols('node_visits').includes('provider'));

@@ -171,7 +171,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     }
     const { run, agentId } = who;
     if (!codex && typeof p.cwd === 'string' && (run.provider ?? 'claude') === 'claude') store.noteCwd(run.id, p.cwd);
-    const act = (event, tool, summary) => store.addActivity(run.id, agentId, event, tool, summary);
+    const act = (event, tool, summary, toolUseId) => store.addActivity(run.id, agentId, event, tool, summary, toolUseId);
     const agent = () => store.getAgent(agentId);
 
     switch (ev) {
@@ -185,7 +185,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         }
         const summary = summarize(p.tool_input);
         store.updateAgent(agentId, { last_tool: text(p.tool_name, 80), last_summary: summary, tool_calls: agent().tool_calls + 1, last_activity_at: new Date().toISOString(), waiting_permission: 0 });
-        act('tool', text(p.tool_name, 80), summary);
+        act('tool', text(p.tool_name, 80), summary, p.tool_use_id);
         if (p.tool_use_id) {
           if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
           pending.set(p.tool_use_id, { sid: p.session_id, agentId, tool: p.tool_name, key: stable(p.tool_input) });
@@ -198,8 +198,9 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         const fields = { waiting_permission: 0, last_activity_at: new Date().toISOString() };
         if (ev === 'PostToolUseFailure') {
           Object.assign(fields, { errors: agent().errors + 1, last_error: text(p.error, 200) });
-          act('error', text(p.tool_name, 80), text(p.error, 120));
+          act('error', text(p.tool_name, 80), text(p.error, 120), p.tool_use_id);
         }
+        store.endActivity(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error');
         store.updateAgent(agentId, fields);
         if (clock() - (lastRead.get(agentId) ?? 0) >= TOKEN_READ_EVERY_MS) {
           lastRead.set(agentId, clock());
