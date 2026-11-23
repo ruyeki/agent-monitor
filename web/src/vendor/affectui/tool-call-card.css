@@ -1,0 +1,484 @@
+/* Vendored from https://github.com/flohoeller/affectui/blob/20a6849d2e31373426a26e87a3bead9cedc7a2bc/components/tool-call-card-clean.tsx, MIT, see ./LICENSE.
+   Moved verbatim from the css template literal; Agent Monitor additions are at the end of the file. */
+/* Colors and motion as variables – override them on .ui-tclc / .ui-tclc-group */
+.ui-tclc,
+.ui-tclc-group {
+  --ui-tclc-card: #ffffff;
+  --ui-tclc-strong: var(--aui-ink, #000000);
+  --ui-tclc-ink: var(--aui-ink, rgba(0, 0, 0, 0.88));
+  --ui-tclc-text: var(--aui-muted, rgba(0, 0, 0, 0.61));
+  --ui-tclc-muted: var(--aui-muted, rgba(0, 0, 0, 0.45));
+  --ui-tclc-faint: var(--aui-placeholder, rgba(0, 0, 0, 0.27));
+  --ui-tclc-icon: var(--aui-muted, rgba(0, 0, 0, 0.447));
+  --ui-tclc-line: var(--aui-border, rgba(0, 0, 0, 0.06));
+  --ui-tclc-wash: var(--aui-subtle, rgba(0, 0, 0, 0.03));
+  --ui-tclc-wash-big: var(--aui-subtle, rgba(0, 0, 0, 0.015));
+  /* The code panel: a 2% black frame, kept opaque so the fade of capped blocks can end on it */
+  --ui-tclc-code: #fafafa;
+  --ui-tclc-accent: rgba(0, 96, 226, 0.765);
+  --ui-tclc-red: var(--aui-red, #f04438);
+  --ui-tclc-red-bg: color-mix(in srgb, var(--aui-red, #f04438) 4%, transparent);
+  --ui-tclc-red-line: color-mix(in srgb, var(--aui-red, #f04438) 14%, transparent);
+  --ui-tclc-key: rgba(0, 0, 0, 0.88);
+  --ui-tclc-str: color-mix(in srgb, var(--aui-cyan, #14b3f0) 90%, transparent);
+  --ui-tclc-num: var(--aui-warning, #b25e00);
+  --ui-tclc-lit: var(--aui-purple, #a651f0);
+  --ui-tclc-shine: rgba(255, 255, 255, 0.82);
+  /* Strokes are shadows: a 0.5px hairline plus a soft lift */
+  --ui-tclc-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 1px -1px rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --ui-tclc-focus: var(--aui-focus, rgba(0, 96, 226, 0.7));
+  --ui-tclc-ease: var(--aui-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  --ui-tclc-mono: var(--aui-font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  box-sizing: border-box;
+  container-type: inline-size;
+  min-width: 0;
+  color: var(--ui-tclc-ink);
+  font-family: var(--aui-font, "Inter", "InterVariable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+.ui-tclc *,
+.ui-tclc-group * { box-sizing: border-box; }
+
+.ui-tclc {
+  position: relative;
+  border-radius: var(--aui-radius-lg, 10px);
+  background: var(--aui-surface, var(--ui-tclc-card));
+  box-shadow: var(--aui-shadow-card, var(--ui-tclc-shadow));
+}
+.ui-tclc-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Header row: icon, name + summary, status, chevron – everything truncates before it overflows */
+.ui-tclc__head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--aui-radius-lg, 10px);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-radius 0ms linear 380ms;
+}
+.ui-tclc[data-open] .ui-tclc__head {
+  border-radius: var(--aui-radius-lg, 10px) var(--aui-radius-lg, 10px) 0 0;
+  transition: background-color 160ms ease;
+}
+.ui-tclc__head:focus-visible,
+.ui-tclc-group__head:focus-visible,
+.ui-tclc__copy:focus-visible,
+.ui-tclc__more:focus-visible,
+.ui-tclc__retry:focus-visible {
+  outline: 2px solid var(--ui-tclc-focus);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .ui-tclc__head:hover { background: var(--ui-tclc-wash-big); }
+  .ui-tclc__head:hover .ui-tclc__chevron { stroke: var(--ui-tclc-ink); }
+  .ui-tclc-group__head:hover { background: var(--ui-tclc-wash); color: var(--ui-tclc-ink); }
+  .ui-tclc__copy:hover { background: var(--ui-tclc-wash-big); color: var(--ui-tclc-ink); }
+  .ui-tclc__more:hover { color: var(--ui-tclc-ink); }
+  .ui-tclc__retry:hover { background: var(--ui-tclc-wash-big); }
+}
+
+/* The tool's icon: a plain 16px glyph, no tile */
+.ui-tclc__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--ui-tclc-icon);
+}
+.ui-tclc__icon > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+
+.ui-tclc__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.ui-tclc__name {
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--ui-tclc-strong);
+  font-family: var(--ui-tclc-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-tclc__summary {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-tclc-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-tclc__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--ui-tclc-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  animation: ui-tclc-in 360ms var(--ui-tclc-ease) both;
+}
+.ui-tclc[data-status="error"] .ui-tclc__status { color: var(--ui-tclc-red); font-weight: 500; }
+.ui-tclc__status > svg { width: 14px; height: 14px; flex: none; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ui-tclc__spinner circle { stroke: var(--ui-tclc-line); stroke-width: 1.6; }
+.ui-tclc__spinner path { stroke: var(--ui-tclc-accent); stroke-width: 1.6; }
+.ui-tclc__spinner { animation: ui-tclc-spin 800ms linear infinite; }
+/* Done: a solid blue dot whose white check draws itself */
+.ui-tclc__ok { animation: ui-tclc-pop 460ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.ui-tclc__ok circle { fill: var(--ui-tclc-accent); }
+.ui-tclc__ok path { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 1; stroke-dashoffset: 1; animation: ui-tclc-draw 360ms var(--ui-tclc-ease) 160ms forwards; }
+.ui-tclc__err circle { fill: var(--ui-tclc-red); }
+.ui-tclc__err path { stroke: #fff; stroke-width: 1.6; stroke-linecap: round; }
+
+.ui-tclc__chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--ui-tclc-icon);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 360ms var(--ui-tclc-ease), stroke 160ms ease;
+}
+.ui-tclc[data-open] > .ui-tclc__head .ui-tclc__chevron,
+.ui-tclc-group[data-open] > .ui-tclc-group__head .ui-tclc__chevron { transform: rotate(180deg); }
+
+/* Body: grows from 0fr to 1fr, so the height animates without measuring */
+.ui-tclc__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 380ms var(--ui-tclc-ease), opacity 240ms ease;
+}
+.ui-tclc[data-open] > .ui-tclc__body,
+.ui-tclc-group[data-open] > .ui-tclc__body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.ui-tclc__clip { min-height: 0; overflow: hidden; }
+.ui-tclc__sections {
+  display: grid;
+  gap: 14px;
+  padding: 12px 14px 14px;
+  border-top: 0.5px solid var(--ui-tclc-line);
+}
+
+.ui-tclc__section { display: grid; gap: 6px; min-width: 0; }
+.ui-tclc__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+/* Tiny uppercase labels: "ARGUMENTS", "RESULT" */
+.ui-tclc__label {
+  color: var(--ui-tclc-muted);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.ui-tclc__pending { margin: 0; color: var(--ui-tclc-muted); font-size: 12px; line-height: 16px; }
+
+/* Copy: a small white icon button with the card's hairline */
+.ui-tclc__copy {
+  all: unset;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: calc(var(--aui-radius-sm, 5px) + 1px);
+  background: var(--aui-surface, var(--ui-tclc-card));
+  box-shadow: var(--ui-tclc-shadow);
+  color: var(--ui-tclc-icon);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.ui-tclc__copy svg {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 200ms ease, transform 320ms var(--ui-tclc-ease), filter 200ms ease;
+}
+.ui-tclc__copy-icon rect { fill: currentColor; stroke: none; }
+.ui-tclc__copy-done { opacity: 0; transform: scale(0.6); filter: blur(2px); stroke-width: 1.7; }
+.ui-tclc__copy[data-copied] { color: var(--ui-tclc-accent); }
+.ui-tclc__copy[data-copied] .ui-tclc__copy-icon { opacity: 0; transform: scale(0.6); filter: blur(2px); }
+.ui-tclc__copy[data-copied] .ui-tclc__copy-done { opacity: 1; transform: none; filter: none; }
+
+/* Code: a faint panel with a 0.5px frame; wraps instead of scrolling sideways, capped blocks fade out */
+.ui-tclc__code {
+  position: relative;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+  border-radius: calc(var(--aui-radius-sm, 5px) + 3px);
+  background: var(--ui-tclc-code);
+  box-shadow: inset 0 0 0 0.5px var(--ui-tclc-line);
+  color: var(--ui-tclc-muted);
+  font-family: var(--ui-tclc-mono);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+  transition: max-height 420ms var(--ui-tclc-ease);
+}
+.ui-tclc__code code { display: block; font: inherit; }
+.ui-tclc__code::after {
+  content: "";
+  position: absolute;
+  left: 0.5px;
+  right: 0.5px;
+  bottom: 0.5px;
+  height: 56px;
+  border-radius: 0 0 calc(var(--aui-radius-sm, 5px) + 2.5px) calc(var(--aui-radius-sm, 5px) + 2.5px);
+  background: linear-gradient(to bottom, transparent, var(--ui-tclc-code));
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+}
+.ui-tclc__code[data-capped]::after { opacity: 1; }
+.ui-tclc__code[data-scroll] { overflow-y: auto; overscroll-behavior: contain; }
+.ui-tclc__t-key { color: var(--ui-tclc-key); }
+.ui-tclc__t-str { color: var(--ui-tclc-str); }
+.ui-tclc__t-num { color: var(--ui-tclc-num); }
+.ui-tclc__t-lit { color: var(--ui-tclc-lit); }
+
+.ui-tclc__more {
+  all: unset;
+  justify-self: start;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: 6px;
+  color: var(--ui-tclc-text);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+/* Error: the message on a faint red panel and an optional white Retry button */
+.ui-tclc__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 8px 8px 12px;
+  border-radius: calc(var(--aui-radius-sm, 5px) + 3px);
+  background: var(--ui-tclc-red-bg);
+  box-shadow: inset 0 0 0 0.5px var(--ui-tclc-red-line);
+}
+.ui-tclc__error > .ui-tclc__err { flex: none; align-self: flex-start; width: 16px; height: 16px; margin-top: 6px; }
+.ui-tclc__error-text {
+  flex: 1;
+  min-width: 0;
+  /* A stack trace stops at 10 lines and scrolls, so Retry and the arguments stay close */
+  max-height: 200px;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-line;
+  color: var(--ui-tclc-red);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.ui-tclc__retry {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: calc(var(--aui-radius-sm, 5px) + 1px);
+  background: var(--aui-surface, var(--ui-tclc-card));
+  box-shadow: var(--ui-tclc-shadow);
+  color: var(--ui-tclc-strong);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.ui-tclc__retry svg { width: 16px; height: 16px; fill: none; stroke: var(--ui-tclc-icon); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ui-tclc__retry:active svg { transform: rotate(-60deg); transition: transform 200ms var(--ui-tclc-ease); }
+
+/* Group: one quiet line with the tool icons stacked on small white tiles, the cards below */
+.ui-tclc-group { display: grid; }
+.ui-tclc-group__head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  max-width: 100%;
+  min-height: 32px;
+  margin-left: -6px;
+  padding: 4px 10px 4px 6px;
+  border-radius: calc(var(--aui-radius, 7px) + 1px);
+  color: var(--ui-tclc-ink);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.ui-tclc-group__stack { display: flex; flex: none; padding: 0.5px; }
+.ui-tclc-group__stack .ui-tclc__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--ui-tclc-card);
+  box-shadow: var(--ui-tclc-shadow);
+  animation: ui-tclc-pop 420ms var(--ui-tclc-ease) both;
+}
+.ui-tclc-group__stack .ui-tclc__icon + .ui-tclc__icon { margin-left: -4px; }
+.ui-tclc-group__stack .ui-tclc__icon > svg { width: 12px; height: 12px; stroke-width: 1.5; }
+.ui-tclc-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  animation: ui-tclc-in 360ms var(--ui-tclc-ease) both;
+}
+.ui-tclc-group__label {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  font-weight: 500;
+}
+.ui-tclc-group__label.ui-tclc__shine { color: var(--ui-tclc-muted); }
+.ui-tclc-group__failed { flex: none; color: var(--ui-tclc-red); }
+.ui-tclc-group__time { flex: none; color: var(--ui-tclc-faint); font-variant-numeric: tabular-nums; }
+.ui-tclc-group__list { display: grid; gap: 8px; padding: 6px 0 2px; }
+
+/* A soft light sweeping over "Using tools…" */
+.ui-tclc__shine::after {
+  content: attr(data-text);
+  content: attr(data-text) / "";
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+  color: transparent;
+  background: linear-gradient(90deg, transparent 38%, var(--ui-tclc-shine) 50%, transparent 62%) 100% 0 / 300% 100% no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: ui-tclc-sweep 1.8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ui-tclc-in {
+  from { opacity: 0; transform: translateY(3px); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes ui-tclc-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ui-tclc-spin { to { transform: rotate(360deg); } }
+@keyframes ui-tclc-draw { to { stroke-dashoffset: 0; } }
+@keyframes ui-tclc-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* Narrow (phones): a little less padding, the summary gives way first */
+@container (max-width: 360px) {
+  .ui-tclc__head { gap: 8px; padding: 0 12px; }
+  .ui-tclc__sections { padding: 12px 12px 12px; }
+}
+/* Touch screens: bigger tap targets */
+@media (pointer: coarse) {
+  .ui-tclc__head { min-height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-tclc *,
+  .ui-tclc-group *,
+  .ui-tclc *::after,
+  .ui-tclc-group *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .ui-tclc__shine::after { display: none; }
+  .ui-tclc__ok path { stroke-dashoffset: 0; }
+}
+
+/* Dark mode: follows a .dark class or data-theme="dark" on any ancestor, e.g. <html> */
+:where(.dark, [data-theme="dark"]) .ui-tclc,
+:where(.dark, [data-theme="dark"]) .ui-tclc-group {
+  --ui-tclc-card: #1c1c1e;
+  --ui-tclc-strong: var(--aui-ink, #ffffff);
+  --ui-tclc-ink: var(--aui-ink, rgba(255, 255, 255, 0.9));
+  --ui-tclc-text: var(--aui-muted, rgba(255, 255, 255, 0.62));
+  --ui-tclc-muted: var(--aui-muted, rgba(255, 255, 255, 0.46));
+  --ui-tclc-faint: var(--aui-placeholder, rgba(255, 255, 255, 0.3));
+  --ui-tclc-icon: var(--aui-muted, rgba(255, 255, 255, 0.5));
+  --ui-tclc-line: var(--aui-border, rgba(255, 255, 255, 0.08));
+  --ui-tclc-wash: var(--aui-subtle, rgba(255, 255, 255, 0.04));
+  --ui-tclc-wash-big: var(--aui-subtle, rgba(255, 255, 255, 0.025));
+  --ui-tclc-code: #212123;
+  --ui-tclc-accent: var(--aui-blue, #4fb0fe);
+  --ui-tclc-red: var(--aui-danger, #ff8a7a);
+  --ui-tclc-red-bg: color-mix(in srgb, var(--aui-red, #ff6b5f) 7%, transparent);
+  --ui-tclc-red-line: color-mix(in srgb, var(--aui-red, #ff6b5f) 18%, transparent);
+  --ui-tclc-key: rgba(255, 255, 255, 0.9);
+  --ui-tclc-str: var(--aui-cyan, #5cc6ee);
+  --ui-tclc-num: var(--aui-orange, #f2a15c);
+  --ui-tclc-lit: #cfaff5;
+  --ui-tclc-shine: #ffffff;
+  --ui-tclc-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --ui-tclc-focus: var(--aui-focus, rgba(77, 141, 255, 0.8));
+}
+
+/* Agent Monitor: the agent label in the head and the "unknown" status */
+.ui-tclc__agent {
+  flex: 0 1 auto;
+  max-width: 30%;
+  overflow: hidden;
+  color: var(--ui-tclc-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-tclc[data-status="unknown"] .ui-tclc__status { color: var(--ui-tclc-muted); }

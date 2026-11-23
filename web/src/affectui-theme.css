@@ -1,0 +1,121 @@
+/* Maps the vendored affectUI pieces (./vendor/affectui) onto Agent Monitor's tokens (styles.css).
+   Imported after styles.css. Every selector starts with :root so it out-ranks upstream's .ui-x and
+   :where(.dark, [data-theme="dark"]) .ui-x rules (both 0,1,0); the values are AM tokens, so light, OS dark
+   (no data-theme) and data-theme="dark" / "light" all follow the AM token blocks and no dark block is needed here.
+   Nothing is declared on :root itself (web/test/theme-tokens.test.js parses the :root token trios). */
+
+/* ---- --aui-* hooks (read by all three pieces), set on each component root ---- */
+:root .ui-dic,
+:root .ui-tclc,
+:root .ui-tclc-group,
+:root .ui-tlc {
+  --aui-surface: var(--surface);
+  --aui-ink: var(--text);
+  --aui-muted: var(--muted);
+  --aui-placeholder: var(--muted);
+  --aui-border: var(--border);
+  --aui-subtle: var(--surface-2);
+  --aui-red: var(--danger);
+  --aui-danger: var(--danger);
+  --aui-green: var(--ok);
+  --aui-success: var(--ok);
+  --aui-amber: var(--warn);
+  --aui-warning: var(--warn);
+  --aui-orange: var(--warn);
+  --aui-blue: var(--run-run);
+  --aui-cyan: var(--ok);
+  --aui-purple: var(--link);
+  --aui-primary: var(--accent);
+  --aui-on-primary: var(--accent-text);
+  --aui-focus: var(--focus);
+  --aui-font: var(--font-sans);
+  --aui-font-mono: var(--font-mono);
+  --aui-radius: var(--r-md);
+  --aui-radius-lg: var(--r-lg);
+  --aui-radius-sm: var(--r-sm);
+  --aui-shadow-card: 0 0 0 1px var(--border), var(--elev-1);
+}
+
+/* ---- Decision inbox ---- */
+:root .ui-dic {
+  --ui-dic-card: var(--surface);
+  --ui-dic-strong: var(--text);
+  --ui-dic-ink: var(--text);
+  --ui-dic-text: var(--text-2);
+  --ui-dic-muted: var(--muted);
+  --ui-dic-faint: var(--muted);
+  --ui-dic-line: var(--border);
+  --ui-dic-wash: var(--surface-2);
+  --ui-dic-alert: var(--warn);
+  --ui-dic-ok: var(--ok);
+  --ui-dic-ok-bg: color-mix(in srgb, var(--ok) var(--tint), transparent);
+  --ui-dic-solid: var(--accent);
+  --ui-dic-solid-hover: var(--accent-hover);
+  --ui-dic-on-solid: var(--accent-text);
+  --ui-dic-shadow: 0 0 0 1px var(--border), var(--elev-1);
+  --ui-dic-shadow-hover: 0 0 0 1px var(--border-strong), var(--elev-1);
+  --ui-dic-focus: var(--focus);
+}
+/* AM's global button rules (border, hover background) must not leak into the vendored buttons */
+:root .ui-dic button { border: 0; margin: 0; }
+:root .ui-dic .ui-dic__btn:hover:not(:disabled) { background: var(--ui-dic-card); box-shadow: var(--ui-dic-shadow-hover); }
+:root .ui-dic .ui-dic__btn--primary:hover:not(:disabled) { background: var(--ui-dic-solid-hover); box-shadow: none; }
+:root .ui-dic .ui-dic__title--folded:hover:not(:disabled) { background: var(--ui-dic-wash); color: var(--ui-dic-ink); }
+:root .ui-dic button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Tool call card ---- */
+:root .ui-tclc,
+:root .ui-tclc-group {
+  --ui-tclc-card: var(--surface);
+  --ui-tclc-strong: var(--text);
+  --ui-tclc-ink: var(--text);
+  --ui-tclc-text: var(--text-2);
+  --ui-tclc-muted: var(--muted);
+  --ui-tclc-faint: var(--muted);
+  --ui-tclc-icon: var(--muted);
+  --ui-tclc-line: var(--border);
+  --ui-tclc-wash: var(--surface-2);
+  --ui-tclc-wash-big: var(--surface-2);
+  --ui-tclc-code: var(--surface-2);
+  --ui-tclc-accent: var(--run-run);
+  --ui-tclc-red: var(--danger);
+  --ui-tclc-red-bg: color-mix(in srgb, var(--danger) var(--tint), transparent);
+  --ui-tclc-red-line: color-mix(in srgb, var(--danger) 30%, transparent);
+  --ui-tclc-key: var(--text);
+  --ui-tclc-str: var(--ok);
+  --ui-tclc-num: var(--warn);
+  --ui-tclc-lit: var(--link);
+  --ui-tclc-shine: var(--text);
+  --ui-tclc-shadow: 0 0 0 1px var(--border), var(--elev-1);
+  --ui-tclc-focus: var(--focus);
+  --ui-tclc-mono: var(--font-mono);
+}
+:root .ui-tclc__ok path,
+:root .ui-tclc__err path { stroke: var(--surface); }
+/* AM's global button hover/disabled rules (0,2,1) must not recolour the vendored buttons */
+:root .ui-tclc .ui-tclc__head:hover:not(:disabled) { background: var(--ui-tclc-wash-big); }
+:root .ui-tclc-group .ui-tclc-group__head:hover:not(:disabled) { background: var(--ui-tclc-wash); }
+:root .ui-tclc .ui-tclc__copy:hover:not(:disabled) { background: var(--ui-tclc-wash-big); }
+:root .ui-tclc .ui-tclc__retry:hover:not(:disabled) { background: var(--ui-tclc-wash-big); }
+:root .ui-tclc .ui-tclc__more:hover:not(:disabled) { background: none; }
+:root .ui-tclc .ui-tclc__head:focus-visible,
+:root .ui-tclc-group .ui-tclc-group__head:focus-visible { outline: 2px solid var(--ui-tclc-focus); outline-offset: 2px; }
+
+/* ---- Thinking loader ---- */
+:root .ui-tlc {
+  --ui-tlc-ink: var(--text);
+  --ui-tlc-text: var(--text-2);
+  --ui-tlc-accent: var(--run-run);
+  --ui-tlc-bg: var(--surface);
+  --ui-tlc-shadow: 0 0 0 1px var(--border), var(--elev-1);
+  --ui-tlc-shine: var(--text);
+}
+
+/* ---- Run view (RunSide): tool calls and the working pill ---- */
+.run-side .tool-calls { display: grid; gap: 6px; }
+.run-side .tool-calls .ui-tclc__time { display: inline-block; min-width: 4.5ch; text-align: end; }
+.run-side .tool-calls .ui-tclc__status { gap: 4px; }
+.run-side .tool-call-details { display: grid; gap: 4px; min-width: 0; }
+.run-side .tool-call-details p { margin: 0; overflow-wrap: anywhere; }
+.run-side .tool-call-summary { white-space: pre-wrap; color: var(--text-2); }
+.run-side .agent-pill { margin-top: 6px; max-width: 100%; }
