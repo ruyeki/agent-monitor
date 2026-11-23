@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS activity (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, agent_id TEXT, at TEXT NOT NULL,
   event TEXT NOT NULL, tool TEXT, summary TEXT, tool_use_id TEXT, ended_at TEXT, outcome TEXT);
 CREATE INDEX IF NOT EXISTS activity_run ON activity (run_id, id);
+CREATE TABLE IF NOT EXISTS changes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, agent_id TEXT, at TEXT NOT NULL, tool TEXT, tool_use_id TEXT,
+  input TEXT, result TEXT, outcome TEXT, ended_at TEXT);
+CREATE INDEX IF NOT EXISTS changes_run ON changes (run_id, id);
 CREATE TABLE IF NOT EXISTS session_links (
   session_id TEXT NOT NULL, run_id TEXT NOT NULL, last_active_at TEXT NOT NULL, PRIMARY KEY (session_id, run_id));
 CREATE TABLE IF NOT EXISTS agents (
@@ -70,6 +74,7 @@ const AGENT_COLUMNS = new Set([
   'cache_read_tokens', 'transcript_path', 'transcript_offset', 'last_msg_id', 'finished_at', 'last_message', 'parent_agent_id',
 ]);
 const ACTIVITY_CAP = 500;
+const CHANGES_CAP = 300;
 const MAX_REPORTED = 100;
 const ENDED = ['done', 'stopped'];
 const now = () => new Date().toISOString();
@@ -439,6 +444,22 @@ export function openStore(dataDir) {
       .run(now(), outcome === 'error' ? 'error' : 'ok', runId, useId);
     if (res.changes) emit('activity', runId);
   }
+  // Ledger rows (already redacted and truncated by the caller): one per change-worthy call, completed at Post.
+  function addChange(runId, agentId, tool, toolUseId, input) {
+    const useId = typeof toolUseId === 'string' && toolUseId ? toolUseId.slice(0, 200) : null;
+    q('INSERT INTO changes (run_id, agent_id, at, tool, tool_use_id, input) VALUES (?, ?, ?, ?, ?, ?)').run(runId, agentId ?? null, now(), tool ?? null, useId, input ?? null);
+    q('DELETE FROM changes WHERE run_id = ? AND id <= (SELECT id FROM changes WHERE run_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)').run(runId, runId, CHANGES_CAP);
+    emit('ledger', runId);
+  }
+  function endChange(runId, toolUseId, outcome, result) {
+    if (typeof toolUseId !== 'string' || !toolUseId) return;
+    const res = q('UPDATE changes SET ended_at = ?, outcome = ?, result = ? WHERE run_id = ? AND tool_use_id = ? AND ended_at IS NULL')
+      .run(now(), outcome === 'error' ? 'error' : 'ok', result ?? null, runId, toolUseId.slice(0, 200));
+    if (res.changes) emit('ledger', runId);
+  }
+  const changesOf = (runId) => q('SELECT id, agent_id AS agentId, at, tool, tool_use_id AS toolUseId, input, result, outcome, ended_at AS endedAt FROM changes WHERE run_id = ? ORDER BY id').all(runId);
+  // Every activity tool row of a run (the detail view only carries the last 100): the Ledger's fallback for older runs.
+  const toolActivity = (runId) => q("SELECT id, agent_id AS agentId, at, tool, summary, tool_use_id AS toolUseId, outcome FROM activity WHERE run_id = ? AND event = 'tool' ORDER BY id").all(runId);
   // The agent that made the Agent/Task call with this tool_use_id in the run (the parent of the subagent it started), or null.
   const agentOfToolUse = (runId, toolUseId) => (typeof toolUseId === 'string' && toolUseId
     ? q("SELECT agent_id FROM activity WHERE run_id = ? AND tool_use_id = ? AND event = 'tool' AND tool IN ('Agent', 'Task') ORDER BY id LIMIT 1")
@@ -510,6 +531,6 @@ export function openStore(dataDir) {
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
-    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, agentOfToolUse, activityCount,
+    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, addChange, endChange, changesOf, toolActivity, agentOfToolUse, activityCount,
   };
 }

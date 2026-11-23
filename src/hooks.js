@@ -1,6 +1,7 @@
 // Claude hook events -> per-agent tracking. Never throws: every problem answers {}.
 import path from 'node:path';
 import { MODES } from './exe.js';
+import { isChangeCandidate, redact } from './ledger.js';
 import { fileSize, readUsage, readMeta, subagentPath } from './transcripts.js';
 
 // Tools a Claude session may still use on a run that was handed over to Codex.
@@ -9,6 +10,8 @@ const ENDED = ['done', 'stopped'];
 const LIVE = ['active', 'waiting'];
 const TOKEN_READ_EVERY_MS = 5000;
 const MAX_PENDING = 2000;
+const MAX_CHANGE_INPUT = 2000;
+const MAX_CHANGE_RESULT = 1000;
 const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -18,6 +21,18 @@ function summarize(input) {
   if (!input || typeof input !== 'object') return '';
   const first = Object.values(input).find((v) => typeof v === 'string');
   return text(input.command ?? input.file_path ?? input.pattern ?? input.description ?? input.url ?? first, 120);
+}
+
+// Ledger text: redact first, then cut, so a secret split by the cut is never half-kept.
+const ledgerText = (v, max) => redact(v).slice(0, max);
+const SHELLS = /^(bash|powershell|pwsh|shell)$/i;
+const jsonOf = (v) => { try { return typeof v === 'string' ? v : JSON.stringify(v ?? ''); } catch { return ''; } };
+const changeInput = (tool, input) => (SHELLS.test(tool) && typeof input?.command === 'string' ? input.command : jsonOf(input));
+function changeResult(tool, resp, error) {
+  if (error != null) return String(error);
+  if (SHELLS.test(tool) && resp && typeof resp === 'object') return `${resp.stdout ?? ''}${resp.stderr ? `
+${resp.stderr}` : ''}`;
+  return jsonOf(resp);
 }
 
 const samePath = (a, b) => {
@@ -212,6 +227,9 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         const summary = summarize(p.tool_input);
         store.updateAgent(agentId, { last_tool: text(p.tool_name, 80), last_summary: summary, tool_calls: agent().tool_calls + 1, last_activity_at: new Date().toISOString(), waiting_permission: 0 });
         act('tool', text(p.tool_name, 80), summary, p.tool_use_id);
+        if (isChangeCandidate(p.tool_name, p.tool_input)) {
+          store.addChange(run.id, agentId, text(p.tool_name, 80), p.tool_use_id, ledgerText(changeInput(p.tool_name, p.tool_input), MAX_CHANGE_INPUT));
+        }
         if (p.tool_use_id) {
           if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
           pending.set(p.tool_use_id, { sid: p.session_id, agentId, tool: p.tool_name, key: stable(p.tool_input) });
@@ -227,6 +245,8 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
           act('error', text(p.tool_name, 80), text(p.error, 120), p.tool_use_id);
         }
         store.endActivity(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error');
+        store.endChange(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error',
+          ledgerText(changeResult(p.tool_name, p.tool_response, ev === 'PostToolUse' ? null : p.error), MAX_CHANGE_RESULT));
         store.updateAgent(agentId, fields);
         if (clock() - (lastRead.get(agentId) ?? 0) >= TOKEN_READ_EVERY_MS) {
           lastRead.set(agentId, clock());

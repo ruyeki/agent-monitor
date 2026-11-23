@@ -13,6 +13,7 @@ import { createCodex } from './codex.js';
 import { createClaudeResume } from './claude-resume.js';
 import { toTokens, emptyAcc } from './attribution.js';
 import { contextOf } from './context.js';
+import { classifyChanges, redact } from './ledger.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
 const MIME = {
@@ -126,6 +127,18 @@ export async function startServer({
     if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)$/))) {
       const d = store.detail(decodeURIComponent(g[1]));
       return d ? send(res, 200, withTokens(d)) : send(res, 404, { error: 'No such run.' });
+    }
+    if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)\/ledger$/))) {
+      const id = decodeURIComponent(g[1]);
+      if (!store.getRun(id)) return send(res, 404, { error: 'No such run.' });
+      const rows = store.changesOf(id);
+      const seen = new Set(rows.map((r) => r.toolUseId).filter(Boolean));
+      // Older runs have no changes rows: fall back to the activity log (summary as input, no result).
+      for (const a of store.toolActivity(id)) {
+        if (a.toolUseId && seen.has(a.toolUseId)) continue;
+        rows.push({ id: `a${a.id}`, agentId: a.agentId, at: a.at, tool: a.tool, input: redact(a.summary), result: null, outcome: a.outcome });
+      }
+      return send(res, 200, classifyChanges(rows));
     }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/respond$/))) {
       const b = await body();

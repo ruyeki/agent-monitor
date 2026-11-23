@@ -140,3 +140,9 @@ Each run's tokens come from the indexer, never from the old per-agent counters. 
 
 - **parentId** says which agent started this one. The server reads the subagent's `meta.json` (`toolUseId`) and finds the `Agent`/`Task` call with that id in the run's activity; the agent that made the call is the parent. If there is no meta yet, at `SubagentStart` it uses the Agent/Task calls still open in the same session, but only when they all belong to one agent. The meta file is read again on later token reads and then wins over that guess. An agent is never its own parent. If nothing is known, `parentId` is `null` (the UI shows no line).
 - **context** is `{tokens, window, pct}`: the agent's latest message from the usage index (input + cache write + cache read tokens; the main agent uses the latest main-session message), the model's context window (`src/context.js`; unknown models count as 200k) and `pct` capped at 100. When no message is known yet, or for Codex agents, it is `null`: unknown is hidden, never shown as 0%.
+
+## Ledger
+
+The Ledger tab answers "what did this run change?". The hooks record only change-worthy tool calls (git commit/push/merge, `gh pr create/merge`, database backups and upgrades, server restarts, worktree add/remove, Hephaestus status updates); read-only commands never appear. Each recorded call keeps its command (2000 characters) and its result (1000 characters) with passwords, tokens, keys and `user:pass@` URLs masked as `***` before anything is stored, at most 300 per run. Runs from before the Ledger fall back to the activity log (command summary only).
+
+`GET /api/runs/:id/ledger` returns `{items, summary}`, newest first. Each item has a `category` (`code`, `tasks`, `machines`) and a `tag`: `permanent` ("Can't undo"), `backup` ("Backup kept"), `reversible` ("Can change back") or `info`. Failed calls are skipped.
