@@ -84,7 +84,7 @@ describe('RunView', () => {
     expect(nodeEl('plan').textContent).not.toContain('tokens');
   });
 
-  it('side panel: running agents only, last activity, totals and timeline', async () => {
+  it('side panel: running agents only, tool calls, totals and timeline', async () => {
     render(<RunView id="my-run" />);
     const agents = within(await screen.findByRole('region', { name: 'Active agents' }));
     expect(agents.getByText('worker')).toBeTruthy();
@@ -92,7 +92,7 @@ describe('RunView', () => {
     expect(agents.getByText(/idle 7s/)).toBeTruthy();
     expect(agents.getByText('npm test')).toBeTruthy();
     expect(agents.queryByText('lead')).toBeNull();
-    expect(within(screen.getByRole('region', { name: 'Last activity' })).getByText('npm test')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Tool calls' })).getAllByText('npm test').length).toBeGreaterThan(0);
     const totals = screen.getByRole('region', { name: 'Totals' }).textContent;
     expect(totals).toContain('Tokens: 6.3k'); // the run total from detail.tokens
     expect(totals).toContain('Duration: 1m 5s');
