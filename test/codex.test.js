@@ -304,7 +304,7 @@ test('schema migration 2 -> 3 on a v2 database keeps data and adds the Codex col
   const cols = (table) => check.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   assert.ok(NEW.every((c) => cols('runs').includes(c)));
   assert.ok(cols('node_visits').includes('provider') && cols('agents').includes('provider'));
-  assert.equal(check.prepare('PRAGMA user_version').get().user_version, 4);
+  assert.equal(check.prepare('PRAGMA user_version').get().user_version, 5);
   check.close();
   const old = store.summary(store.getRun(run.id));
   assert.equal(old.provider, 'claude');

@@ -237,6 +237,20 @@ export async function openUsage({ dataDir, projectsDir }) {
         cacheWrite: r.cache_write, cacheWrite1h: r.cache_write_1h, cacheRead: r.cache_read }));
   }
 
+  // Latest message (by ts) per requested agent, and the latest main-session (agent_id NULL) message per requested session:
+  // {model, tokens} with tokens = input + cache_write + cache_read, the prompt the model saw. Claude rows only.
+  function latestContext({ agentIds = [], sessionIds = [] } = {}) {
+    const latest = (where, col, ids) => {
+      const out = {};
+      if (!ids.length) return out;
+      const sql = `SELECT ${col} AS k, model, input + cache_write + cache_read AS tokens, MAX(ts) AS ts FROM usage_messages
+        WHERE provider = 'claude' AND ${where} AND ${col} IN (${ids.map(() => '?').join(',')}) GROUP BY ${col}`;
+      for (const r of db.prepare(sql).all(...ids)) out[r.k] = { model: r.model, tokens: r.tokens };
+      return out;
+    };
+    return { agents: latest('agent_id IS NOT NULL', 'agent_id', agentIds), sessions: latest('agent_id IS NULL', 'session_id', sessionIds) };
+  }
+
   function daily({ from, to } = {}) {
     const where = [];
     const args = [];
@@ -310,5 +324,5 @@ export async function openUsage({ dataDir, projectsDir }) {
   const status = () => ({ files: countFiles.get().n, messages: countMessages.get().n, scanning: !!state.scanning,
     lastScanAt: state.lastScanAt, lastScanMs: state.lastScanMs, backfillMs: state.backfillMs, generation: state.generation });
 
-  return { scan, start, stop, close, status, messages, totals, daily, prices, setPrices, addCodexTurn, codexTotals };
+  return { scan, start, stop, close, status, messages, totals, latestContext, daily, prices, setPrices, addCodexTurn, codexTotals };
 }

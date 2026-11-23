@@ -374,6 +374,6 @@ test('migration: runs once, adds the new agent columns, and survives a reopen', 
   assert.equal(s.versions().length, 2);
   s.close();
   const db = new DatabaseSync(path.join(dir, 'agent-monitor.db'));
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
   db.close();
 });

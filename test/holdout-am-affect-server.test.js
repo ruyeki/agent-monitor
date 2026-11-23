@@ -170,7 +170,7 @@ function v3Database() {
   return { dir, rid };
 }
 
-test('migration: a version-3 database keeps its rows, gains the three columns and moves to user_version 4', () => {
+test('migration: a version-3 database keeps its rows, gains the three columns and moves to user_version 5', () => {
   const { dir, rid } = v3Database();
   const before = new DatabaseSync(path.join(dir, 'agent-monitor.db'), { readOnly: true });
   assert.deepEqual(before.prepare('PRAGMA table_info(activity)').all().map((c) => c.name).filter((c) => ['tool_use_id', 'ended_at', 'outcome'].includes(c)), [], 'fixture lacks the columns');
@@ -194,7 +194,7 @@ test('migration: a version-3 database keeps its rows, gains the three columns an
   const db = new DatabaseSync(path.join(dir, 'agent-monitor.db'), { readOnly: true });
   const names = db.prepare('PRAGMA table_info(activity)').all().map((c) => c.name);
   for (const c of ['tool_use_id', 'ended_at', 'outcome']) assert.ok(names.includes(c), c);
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM runs').get().n, runsBefore);
   db.close();
 });

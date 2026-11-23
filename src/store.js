@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS agents (
   input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
   cache_creation_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
   transcript_path TEXT, transcript_offset INTEGER NOT NULL DEFAULT 0, last_msg_id TEXT,
-  started_at TEXT NOT NULL, finished_at TEXT, last_message TEXT, start_nodes TEXT, reported_nodes TEXT, provider TEXT);
+  started_at TEXT NOT NULL, finished_at TEXT, last_message TEXT, start_nodes TEXT, reported_nodes TEXT, provider TEXT, parent_agent_id TEXT);
 CREATE INDEX IF NOT EXISTS agents_run ON agents (run_id);
 CREATE TABLE IF NOT EXISTS run_accounts (run_id TEXT PRIMARY KEY, account TEXT, hit_account TEXT, session_id TEXT, resumed_at TEXT);
 CREATE TABLE IF NOT EXISTS session_modes (session_id TEXT PRIMARY KEY, mode TEXT, at TEXT);
@@ -52,10 +52,10 @@ CREATE TABLE IF NOT EXISTS session_modes (session_id TEXT PRIMARY KEY, mode TEXT
 // Columns added after v1: an older database gets them in the migration.
 const NEW_COLUMNS = {
   runs: ['active_json', 'joins_json', 'provider', 'codex_thread_id', 'limit_at', 'resets_at', 'limit_source', 'cwds_json'],
-  agents: ['start_nodes', 'reported_nodes', 'provider'], node_visits: ['provider'],
+  agents: ['start_nodes', 'reported_nodes', 'provider', 'parent_agent_id'], node_visits: ['provider'],
   activity: ['tool_use_id', 'ended_at', 'outcome'],
 };
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const MAX_CWDS = 5;
 const sameCwd = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
 // A time given as epoch seconds, epoch ms or an ISO string -> ISO, else null.
@@ -67,7 +67,7 @@ const isoOf = (v) => {
 const AGENT_COLUMNS = new Set([
   'run_id', 'type', 'model', 'description', 'status', 'last_tool', 'last_summary', 'last_activity_at', 'tool_calls',
   'errors', 'last_error', 'waiting_permission', 'input_tokens', 'output_tokens', 'cache_creation_tokens',
-  'cache_read_tokens', 'transcript_path', 'transcript_offset', 'last_msg_id', 'finished_at', 'last_message',
+  'cache_read_tokens', 'transcript_path', 'transcript_offset', 'last_msg_id', 'finished_at', 'last_message', 'parent_agent_id',
 ]);
 const ACTIVITY_CAP = 500;
 const MAX_REPORTED = 100;
@@ -84,7 +84,7 @@ const toAgent = (a) => ({
   lastTool: a.last_tool, lastSummary: a.last_summary, lastActivityAt: a.last_activity_at,
   toolCalls: a.tool_calls, errors: a.errors, lastError: a.last_error, waitingPermission: !!a.waiting_permission,
   tokens: { input: a.input_tokens, output: a.output_tokens, cacheCreation: a.cache_creation_tokens, cacheRead: a.cache_read_tokens },
-  startedAt: a.started_at, finishedAt: a.finished_at, provider: a.provider ?? 'claude',
+  startedAt: a.started_at, finishedAt: a.finished_at, provider: a.provider ?? 'claude', parentId: a.parent_agent_id ?? null,
 });
 
 const LIMITS = { nodes: 100, edges: 300, actions: 10, label: 80, edgeId: 120 };
@@ -439,6 +439,10 @@ export function openStore(dataDir) {
       .run(now(), outcome === 'error' ? 'error' : 'ok', runId, useId);
     if (res.changes) emit('activity', runId);
   }
+  // The agent that made the Agent/Task call with this tool_use_id in the run (the parent of the subagent it started), or null.
+  const agentOfToolUse = (runId, toolUseId) => (typeof toolUseId === 'string' && toolUseId
+    ? q("SELECT agent_id FROM activity WHERE run_id = ? AND tool_use_id = ? AND event = 'tool' AND tool IN ('Agent', 'Task') ORDER BY id LIMIT 1")
+      .get(runId, toolUseId.slice(0, 200))?.agent_id ?? null : null);
   const activityCount = (runId) => q('SELECT COUNT(*) AS n FROM activity WHERE run_id = ?').get(runId).n;
   // Everything token attribution needs for one run (pure input for attributeRun), or null.
   function attributionInput(id) {
@@ -506,6 +510,6 @@ export function openStore(dataDir) {
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
-    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, activityCount,
+    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, agentOfToolUse, activityCount,
   };
 }

@@ -133,3 +133,10 @@ Each run's tokens come from the indexer, never from the old per-agent counters. 
 - `GET /api/stats/usage?days=30|90` (default 90): `{indexer, periods: {today, week, month, avg30}, daily, unpricedModels}`. Weeks start on Monday, local time. `avg30` averages the latest 30 local days that have data and adds `days`.
 - `GET /api/stats/versions`: per workflow version (newest first), finished runs, average tokens and duration, and the same per node. `GET /api/workflow/versions` adds a short `stats` to each version.
 - `GET /api/prices`, `PUT /api/prices {prices: [...]}`: read or replace the price table (USD per million tokens; 400 on bad rows).
+
+## Crew: parent link and context fill
+
+`GET /api/runs/:id` gives every agent a `parentId` and a `context`.
+
+- **parentId** says which agent started this one. The server reads the subagent's `meta.json` (`toolUseId`) and finds the `Agent`/`Task` call with that id in the run's activity; the agent that made the call is the parent. If there is no meta yet, at `SubagentStart` it uses the Agent/Task calls still open in the same session, but only when they all belong to one agent. The meta file is read again on later token reads and then wins over that guess. An agent is never its own parent. If nothing is known, `parentId` is `null` (the UI shows no line).
+- **context** is `{tokens, window, pct}`: the agent's latest message from the usage index (input + cache write + cache read tokens; the main agent uses the latest main-session message), the model's context window (`src/context.js`; unknown models count as 200k) and `pct` capped at 100. When no message is known yet, or for Codex agents, it is `null`: unknown is hidden, never shown as 0%.

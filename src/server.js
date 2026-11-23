@@ -12,6 +12,7 @@ import { usageStats, versionStats, runAttribution, sum } from './stats.js';
 import { createCodex } from './codex.js';
 import { createClaudeResume } from './claude-resume.js';
 import { toTokens, emptyAcc } from './attribution.js';
+import { contextOf } from './context.js';
 
 const MAX_BODY = 5 * 1024 * 1024;
 const MIME = {
@@ -188,6 +189,16 @@ export async function startServer({
     for (const [id, t] of Object.entries(att.nodes)) (d.nodes[id] ??= { visits: 0, durationMs: 0 }).tokens = t;
     const none = toTokens(emptyAcc());
     d.agents = d.agents.map((a) => ({ ...a, tokens: (a.id.startsWith('main:') ? att.mainBySession[a.id.slice(5)] : att.agents[a.id]?.tokens) ?? none }));
+    // Context fill: one batched usage query; Codex agents and agents with no message yet get null.
+    const claude = d.agents.filter((a) => a.provider !== 'codex');
+    const ctx = usage.latestContext({
+      agentIds: claude.filter((a) => !a.id.startsWith('main:')).map((a) => a.id),
+      sessionIds: claude.filter((a) => a.id.startsWith('main:')).map((a) => a.id.slice(5)),
+    });
+    d.agents = d.agents.map((a) => {
+      const m = a.provider === 'codex' ? null : a.id.startsWith('main:') ? ctx.sessions[a.id.slice(5)] : ctx.agents[a.id];
+      return { ...a, context: m ? contextOf(m.model ?? a.model, m.tokens) : null };
+    });
     d.tokens = { nodes: att.nodes, main: att.main, unattributed: att.unattributed, total: att.total, codex: sum(usage.codexTotals(d.run.id), usage.prices()) };
     return d;
   }

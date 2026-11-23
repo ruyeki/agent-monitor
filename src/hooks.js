@@ -9,6 +9,7 @@ const ENDED = ['done', 'stopped'];
 const LIVE = ['active', 'waiting'];
 const TOKEN_READ_EVERY_MS = 5000;
 const MAX_PENDING = 2000;
+const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const str = (v) => (typeof v === 'string' && v ? v : null);
@@ -46,11 +47,33 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
   const selfApi = port ? new RegExp(`(?:127\\.\\d+\\.\\d+\\.\\d+|localhost|\\[::1\\]|0\\.0\\.0\\.0):${port}(?!\\d)`, 'i') : null;
   const pending = new Map(); // tool_use_id -> {sid, agentId, tool, key}
   const lastRead = new Map(); // agent id -> ms of the last transcript read
+  const guessed = new Set(); // subagents whose parent came from the pending-call fallback (meta.json may still correct it)
   const modes = new Map(); // session id -> last permission mode written (skips repeat writes)
   const headlessDeny = (runId, sessionId) => {
     const ra = store.headlessRun(runId);
     return ra && ra.session_id !== sessionId ? deny(`Agent Monitor: run ${runId} continues headless on Claude account ${ra.account ?? 'unknown'}. Stop work and report back.`) : null;
   };
+
+  // The parent from the subagent's meta.json toolUseId (the most reliable source), else null. Never the agent itself.
+  function parentFromMeta(a, meta) {
+    const parent = store.agentOfToolUse(a.run_id, str(meta?.toolUseId));
+    return parent && parent !== a.agent_id ? parent : null;
+  }
+  function setParent(a, parent, viaFallback) {
+    if (!parent || parent === a.agent_id || parent === a.parent_agent_id) return;
+    store.updateAgent(a.agent_id, { parent_agent_id: parent });
+    if (!viaFallback) guessed.delete(a.agent_id);
+    else {
+      if (guessed.size >= MAX_PENDING) guessed.delete(guessed.values().next().value);
+      guessed.add(a.agent_id);
+    }
+  }
+  // Fallback: the Agent/Task calls still open in the same session; one agent behind all of them -> that agent.
+  function parentFromPending(a) {
+    const owners = new Set();
+    for (const c of pending.values()) if (c.sid === a.session_id && SPAWN_TOOLS.has(c.tool) && c.agentId !== a.agent_id) owners.add(c.agentId);
+    return owners.size === 1 ? [...owners][0] : null;
+  }
 
   function readTokens(agentId, overridePath) {
     const a = store.getAgent(agentId);
@@ -66,9 +89,12 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
       cache_creation_tokens: base.cache_creation_tokens + u.cacheCreation, cache_read_tokens: base.cache_read_tokens + u.cacheRead,
     };
     if (u.model) fields.model = u.model;
-    if (!a.description && a.type !== 'main') {
+    // meta.json is read while the description or the parent is still missing (or only guessed).
+    const wantParent = !a.parent_agent_id || guessed.has(agentId);
+    if (a.type !== 'main' && (!a.description || wantParent)) {
       const meta = readMeta(file, projectsDir);
-      if (meta) Object.assign(fields, { description: str(meta.description), model: fields.model ?? a.model ?? str(meta.model) });
+      if (meta && !a.description) Object.assign(fields, { description: str(meta.description), model: fields.model ?? a.model ?? str(meta.model) });
+      if (meta && wantParent) setParent(a, parentFromMeta(a, meta), false);
     }
     store.updateAgent(agentId, fields);
   }
@@ -218,9 +244,16 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         store.addActivity(run.id, id, 'permission', text(p.tool_name, 80), summarize(p.tool_input));
         break;
       }
-      case 'SubagentStart':
+      case 'SubagentStart': {
         act('subagent_start', null, text(p.agent_type, 80));
+        const a = agent();
+        if (a && !codex && a.type !== 'main') {
+          const fromMeta = parentFromMeta(a, readMeta(a.transcript_path, projectsDir));
+          if (fromMeta) setParent(a, fromMeta, false);
+          else if (!a.parent_agent_id) setParent(a, parentFromPending(a), true);
+        }
         break;
+      }
       case 'SubagentStop': {
         store.updateAgent(agentId, { status: 'finished', finished_at: new Date().toISOString(), last_message: text(p.last_assistant_message, 300), waiting_permission: 0 });
         act('subagent_stop', null, text(p.last_assistant_message, 120));

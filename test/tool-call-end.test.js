@@ -126,7 +126,7 @@ test('schema 3 -> 4: a v3 database without the activity columns keeps its rows a
   const check = new DatabaseSync(file);
   const cols = check.prepare('PRAGMA table_info(activity)').all().map((c) => c.name);
   assert.ok(['tool_use_id', 'ended_at', 'outcome'].every((c) => cols.includes(c)));
-  assert.equal(check.prepare('PRAGMA user_version').get().user_version, 4);
+  assert.equal(check.prepare('PRAGMA user_version').get().user_version, 5);
   check.close();
   const [row] = store.detail(run.id).activity;
   assert.equal(row.summary, 'ls');
