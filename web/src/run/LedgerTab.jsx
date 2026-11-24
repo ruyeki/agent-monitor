@@ -74,12 +74,28 @@ function Row({ item }) {
   );
 }
 
-function Stat({ label, children }) {
+function Stat({ label, children, sub }) {
   return (
     <div>
       <div className="faint small">{label}</div>
       <div className="strong lg-stat">{children}</div>
+      {sub && <div className="faint small lg-sub">{sub}</div>}
     </div>
+  );
+}
+
+// One tile per change kind: a tile with a zero count is not drawn, so the tiles add up to the total.
+const TILES = [['commits', 'Commits'], ['pushes', 'Pushes'], ['prs', 'Pull requests'], ['merges', 'Merges'], ['worktrees', 'Worktrees'], ['databases', 'Database'], ['tasks', 'Tasks updated'], ['restarts', 'Restarts']];
+
+// The Commits tile's second line: files and lines of the commits whose stats are known ("–" when none are, never 0).
+function commitSub(s) {
+  const known = s.commitsWithStats ?? s.commits; // an older server sends no commitsWithStats
+  if (!known) return <>{'–'} files {'·'} {'–'} lines</>;
+  return (
+    <>
+      {nf(s.files)} {s.files === 1 ? 'file' : 'files'} {'·'} <span className="ok">+{nf(s.insertions)}</span> <span className="bad">{'−'}{nf(s.deletions)}</span>
+      {known < s.commits && <span className="faint"> from {nf(known)} of {nf(s.commits)} commits</span>}
+    </>
   );
 }
 
@@ -144,16 +160,17 @@ export function LedgerTab({ detail, tick = 0 }) {
             <h3>Summary</h3>
             <span className="faint small">{data ? `${total} ${total === 1 ? 'change' : 'changes'}` : '–'}</span>
           </div>
-          <div className="pad lg-stats">
-            <Stat label="Commits">{nf(s.commits)}</Stat>
-            <Stat label="Files">{nf(s.files)}</Stat>
-            <Stat label="Lines">
-              <span className="ok">+{nf(s.insertions)}</span> <span className="bad">{'−'}{nf(s.deletions)}</span>
-            </Stat>
-            <Stat label="Pushes">{nf(s.pushes)}</Stat>
-            <Stat label="Tasks updated">{nf(s.tasks)}</Stat>
-            <Stat label="Restarts">{nf(s.restarts)}</Stat>
-          </div>
+          {data && !total ? (
+            <p className="muted pad">No changes to count yet.</p>
+          ) : (
+            <div className="pad lg-stats">
+              {TILES.filter(([k]) => s[k] > 0).map(([k, label]) => (
+                <Stat key={k} label={label} sub={k === 'commits' ? commitSub(s) : null}>
+                  {nf(s[k])}
+                </Stat>
+              ))}
+            </div>
+          )}
         </section>
         <section className="card side-card" aria-label="Can't be undone">
           <div className="cardhead">

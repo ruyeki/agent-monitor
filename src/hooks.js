@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { MODES } from './exe.js';
 import { isChangeCandidate, isHephaestusUpdate, hephInfo, ledgerText, ledgerResult, redact, SHELL_TOOLS } from './ledger.js';
+import { planFill, readCommits, postOnlyStart } from './commitfill.js';
 import { fileSize, readUsage, readMeta, subagentPath } from './transcripts.js';
 
 // Tools a Claude session may still use on a run that was handed over to Codex.
@@ -40,8 +41,12 @@ function changeInput(tool, input) {
 }
 function changeResult(tool, resp, error) {
   if (error != null) return String(error);
-  if (SHELL_TOOLS.test(tool) && resp && typeof resp === 'object') return `${resp.stdout ?? ''}${resp.stderr ? `
+  if (SHELL_TOOLS.test(tool) && resp && typeof resp === 'object') {
+    // GitHub's remote: banner lines would push the push and PR lines out of the 1000-char cap, so they are dropped here.
+    const out = `${resp.stdout ?? ''}${resp.stderr ? `
 ${resp.stderr}` : ''}`;
+    return out.split('\n').filter((line) => !line.startsWith('remote:')).join('\n');
+  }
   return jsonOf(resp);
 }
 
@@ -255,6 +260,16 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
       return true;
     };
 
+    // A commit whose `[branch hash]` line the output hid: read it back from git later (deferred, one call, best effort).
+    const fillCommits = (runId, useId, p, startedAt, failed) => {
+      try {
+        if (!useId || !SHELL_TOOLS.test(p.tool_name || '')) return;
+        const plan = planFill(p.tool_input?.command, p.cwd, changeResult(p.tool_name, p.tool_response, failed ? p.error : null));
+        if (!plan) return;
+        defer(() => readCommits(plan, startedAt).then((block) => { if (block) store.appendChangeResult(runId, useId, redact(block)); }).catch(() => {}));
+      } catch { /* the fill is best effort */ }
+    };
+
     switch (ev) {
       case 'PreToolUse': {
         if (!codex && run.provider === 'codex' && !ENDED.includes(run.status) && !READ_TOOLS.has(tool)) {
@@ -270,7 +285,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         }
         if (p.tool_use_id) {
           if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
-          pending.set(p.tool_use_id, { sid: p.session_id, agentId, tool: p.tool_name, key: stable(p.tool_input) });
+          pending.set(p.tool_use_id, { sid: p.session_id, agentId, tool: p.tool_name, key: stable(p.tool_input), at: clock() });
         }
         break;
       }
@@ -279,6 +294,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         const useId = str(p.tool_use_id);
         // Without PreToolUse this is the only event of the call: record it now (not the call that just linked this run).
         const fresh = Boolean(useId) && !pending.has(useId) && !store.hasToolCall(run.id, useId) && (!tool || before === run.id);
+        const startedAt = pending.get(p.tool_use_id)?.at ?? postOnlyStart(clock());
         pending.delete(p.tool_use_id);
         const candidate = fresh && recordCall();
         const fields = { waiting_permission: 0, last_activity_at: new Date().toISOString() };
@@ -290,6 +306,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         if (openChanges.delete(p.tool_use_id) || candidate) {
           store.endChange(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error',
             ledgerResult(changeResult(p.tool_name, p.tool_response, ev === 'PostToolUse' ? null : p.error), MAX_CHANGE_RESULT));
+          fillCommits(run.id, useId, p, startedAt, ev !== 'PostToolUse');
         }
         store.updateAgent(agentId, fields);
         // The spawning call's Post names the parent of a child whose meta.json only had a toolUseId.

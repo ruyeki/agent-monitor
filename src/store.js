@@ -461,6 +461,12 @@ export function openStore(dataDir) {
       .run(now(), outcome === 'error' ? 'error' : 'ok', result ?? null, runId, toolUseId.slice(0, 200));
     if (res.changes) emit('ledger', runId);
   }
+  // Adds text (already redacted by the caller) to the end of a row's result, finished or not: the commit fill uses it.
+  function appendChangeResult(runId, toolUseId, text) {
+    if (typeof toolUseId !== 'string' || !toolUseId || typeof text !== 'string' || !text) return;
+    const res = q("UPDATE changes SET result = COALESCE(result, '') || ? WHERE run_id = ? AND tool_use_id = ?").run(text, runId, toolUseId.slice(0, 200));
+    if (res.changes) emit('ledger', runId);
+  }
   const changesOf = (runId) => q('SELECT id, agent_id AS agentId, at, tool, tool_use_id AS toolUseId, input, result, outcome, ended_at AS endedAt FROM changes WHERE run_id = ? ORDER BY id').all(runId);
   // Every activity tool row of a run (the detail view only carries the last 100): the Ledger's fallback for older runs.
   const toolActivity = (runId) => q("SELECT id, agent_id AS agentId, at, tool, summary, tool_use_id AS toolUseId, outcome FROM activity WHERE run_id = ? AND event = 'tool' ORDER BY id").all(runId);
@@ -541,6 +547,6 @@ export function openStore(dataDir) {
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
-    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, addChange, endChange, changesOf, toolActivity, agentOfToolUse, hasToolCall, agentActivity, activityCount,
+    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, addChange, endChange, appendChangeResult, changesOf, toolActivity, agentOfToolUse, hasToolCall, agentActivity, activityCount,
   };
 }

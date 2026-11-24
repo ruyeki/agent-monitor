@@ -27,7 +27,7 @@ const ledger = () => ({
     item('4', { kind: 'commit', category: 'code', title: 'Committed fix the thing', chips: ['git'], stats: null, tag: 'reversible', tagLabel: 'Can change back' }),
     item('3', { kind: 'worktree-add', category: 'machines', title: 'Created a worktree', chips: ['this laptop', 'C:\\wt\\x'], tag: 'reversible', tagLabel: 'Can change back' }),
   ],
-  summary: { commits: 2, files: 4, insertions: 4577, deletions: 295, pushes: 1, tasks: 1, restarts: 1, total: 7, permanent: [{ id: '7', title: 'Pushed main to GitHub', at: iso(NOW) }] },
+  summary: { commits: 2, commitsWithStats: 1, files: 4, insertions: 4577, deletions: 295, pushes: 1, prs: 0, merges: 0, worktrees: 1, databases: 1, tasks: 1, restarts: 1, total: 7, permanent: [{ id: '7', title: 'Pushed main to GitHub', at: iso(NOW) }] },
 });
 
 let led;
@@ -122,14 +122,36 @@ describe('Ledger tab', () => {
     await loaded();
     const sum = screen.getByRole('region', { name: 'Summary' });
     expect(sum.textContent).toContain('7 changes');
-    for (const [label, value] of [['Commits', '2'], ['Files', '4'], ['Pushes', '1'], ['Tasks updated', '1'], ['Restarts', '1']]) {
+    for (const [label, value] of [['Commits', '2'], ['Pushes', '1'], ['Worktrees', '1'], ['Database', '1'], ['Tasks updated', '1'], ['Restarts', '1']]) {
       expect(within(sum).getByText(label).nextElementSibling.textContent).toBe(value);
     }
-    expect(within(sum).getByText('Lines').nextElementSibling.textContent).toBe('+4,577 \u2212295');
+    // the tiles add up to the total, and a kind with no changes has no tile
+    const counts = [...sum.querySelectorAll('.lg-stat')].map((e) => Number(e.textContent));
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(7);
+    for (const gone of ['Pull requests', 'Merges', 'Files', 'Lines']) expect(within(sum).queryByText(gone)).toBeNull();
+    // files and lines live in the Commits tile, from the commits whose stats are known
+    const sub = within(sum).getByText('Commits').parentElement.querySelector('.lg-sub');
+    expect(sub.textContent).toContain('4 files');
+    expect(sub.textContent).toContain('+4,577 −295');
+    expect(sub.textContent).toContain('from 1 of 2 commits');
     const perm = screen.getByRole('region', { name: "Can't be undone" });
     expect(perm.textContent).toContain('Pushed main to GitHub');
     expect(perm.querySelector('.tag').textContent).toBe('1');
     expect(document.body.textContent).toContain('Built from the tool calls Agent Monitor already logs');
+  });
+
+  it('Commits tile shows "–" for files and lines when no commit has stats, never 0', async () => {
+    led.summary = { ...led.summary, commitsWithStats: 0, files: 0, insertions: 0, deletions: 0 };
+    await loaded();
+    const sub = within(screen.getByRole('region', { name: 'Summary' })).getByText('Commits').parentElement.querySelector('.lg-sub');
+    expect(sub.textContent).toBe('– files · – lines');
+  });
+
+  it('an empty summary draws no tiles', async () => {
+    led = { items: [], summary: { commits: 0, commitsWithStats: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, prs: 0, merges: 0, worktrees: 0, databases: 0, tasks: 0, restarts: 0, total: 0, permanent: [] } };
+    render(<RunView id="r1" tab="ledger" />);
+    await screen.findByText('Nothing changed yet.');
+    expect(document.querySelectorAll('.lg-stat')).toHaveLength(0);
   });
 
   it('empty ledger: "Nothing changed yet." and "Every change in this run can be undone."', async () => {

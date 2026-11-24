@@ -386,7 +386,7 @@ test('summary counts and the permanent list', () => {
 });
 
 test('empty and junk input', () => {
-  assert.deepEqual(classifyChanges([]), { items: [], summary: { commits: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, tasks: 0, restarts: 0, total: 0, permanent: [] } });
+  assert.deepEqual(classifyChanges([]), { items: [], summary: { commits: 0, commitsWithStats: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, prs: 0, merges: 0, worktrees: 0, databases: 0, tasks: 0, restarts: 0, total: 0, permanent: [] } });
   assert.deepEqual(classifyChanges(null).items, []);
   assert.deepEqual(classifyChanges([{ id: 1, at: 1, tool: 'Read', input: 'git push' }, { id: 2, at: 2, tool: 'Bash', input: null }]).items, []);
 });

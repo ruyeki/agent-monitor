@@ -362,6 +362,7 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
 .tag[data-tag='backup'], .tag[data-tag='reversible'] { color: var(--ok); background: var(--green-bg); }
 .lg-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .lg-stat { font-size: 17px; font-variant-numeric: tabular-nums; }
+.lg-stat + .lg-sub { margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .lg-perm ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .lg-foot { margin: 0; padding: 0 4px; }
 .now-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }

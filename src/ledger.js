@@ -94,9 +94,10 @@ function scan(text) {
     has = false;
     quoted = false;
   };
-  const flushStmt = () => {
+  let depth = 0; // ( ) nesting; each statement remembers it and the separator that ended it (cd tracking needs both)
+  const flushStmt = (sep) => {
     flushWord();
-    if (words.length) stmts.push(words);
+    if (words.length) { words.sep = sep; words.depth = depth; stmts.push(words); }
     words = [];
   };
   const n = text.length;
@@ -114,12 +115,16 @@ function scan(text) {
         cur += text[i++];
       }
     } else if (c === '\n' || c === ';' || c === '|' || c === '(' || c === ')') {
-      if (c === '|' && text[i + 1] === '|') i++;
-      flushStmt();
+      let sep = c;
+      if (c === '|' && text[i + 1] === '|') { i++; sep = '||'; }
+      flushStmt(sep);
+      if (c === '(') depth++;
+      else if (c === ')' && depth) depth--;
     } else if (c === '&') {
       if (text[i - 1] === '>' || text[i + 1] === '>') { cur += c; has = true; continue; }
-      if (text[i + 1] === '&') i++;
-      flushStmt();
+      let sep = '&';
+      if (text[i + 1] === '&') { i++; sep = '&&'; }
+      flushStmt(sep);
     } else if (c === ' ' || c === '\t' || c === '\r') {
       flushWord();
     } else if (c === '#' && !has) {
@@ -130,7 +135,7 @@ function scan(text) {
       has = true;
     }
   }
-  flushStmt();
+  flushStmt('end');
   return stmts;
 }
 
@@ -176,17 +181,26 @@ function valueOf(args, ...names) {
 const DB_FILE = /\.(db|sqlite3?)$/i;
 const AGENT_MONITOR = /agent[-_ ]?monitor|\b4747\b/i;
 
-function gitAction(w) {
+// A directory word joined onto the one before it: absolute, `~` and drive paths stand alone.
+const joinDir = (base, d) => (!base || !d || /^([/\\~]|[A-Za-z]:)/.test(d) ? d : `${base.replace(/[/\\]+$/, '')}/${d}`);
+
+function gitAction(w, ctx = {}) {
   let i = 1;
+  let gitC;
   while (i < w.length) {
     const a = w[i];
+    if (a === '-C') gitC = joinDir(gitC ?? ctx.cwd, w[i + 1]);
     if (['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path'].includes(a)) i += 2;
     else if (a.startsWith('-')) i++;
     else break;
   }
   const sub = w[i];
   const args = w.slice(i + 1);
-  if (sub === 'commit') return hasFlag(args, '--dry-run') ? null : { kind: 'commit', args };
+  if (sub === 'commit') {
+    if (hasFlag(args, '--dry-run')) return null;
+    const unknown = ctx.unknown && !(gitC && /^([/\\~]|[A-Za-z]:)/.test(gitC)); // unknown cwd matters unless -C is absolute
+    return { kind: 'commit', args, dir: gitC ?? ctx.cwd, ...(unknown ? { unknown: true } : {}) };
+  }
   if (sub === 'push') {
     if (hasFlag(args, '--dry-run', '-n')) return null;
     const pos = nonFlags(args, ['--repo', '-o', '--push-option', '--receive-pack', '--exec']);
@@ -246,7 +260,18 @@ function statementAction(words, ctx, depth) {
   const head = base(w[0]);
   const joined = w.map((x, i) => (i === 0 ? head : x)).join(' ');
 
-  if (head === 'git') return gitAction(w);
+  if (head === 'cd' || head === 'pushd' || head === 'set-location' || head === 'sl') {
+    const d = head === 'set-location' || head === 'sl' ? valueOf(w, '-Path', '-LiteralPath') ?? nonFlags(w.slice(1))[0] : nonFlags(w.slice(1))[0];
+    // Only a plain top-level `cd X` that always runs (after start, `;` or a newline; before `&&`, `;` or a newline) is trusted.
+    // Anything else (subshell, `||`, `if ... then cd`, pipe, `cd -`, no argument) leaves the directory unknown.
+    const plain = !words.depth && !/^(if|then|else|elif|fi|do|done|while|until|for|case)$/.test(raw[0]) && ['start', ';', '\n'].includes(ctx.prevSep) && ['&&', ';', '\n'].includes(words.sep);
+    if (plain && d && d !== '-') {
+      if (/^([/\\~]|[A-Za-z]:)/.test(d)) { ctx.cwd = d; ctx.unknown = false; } else if (!ctx.unknown) ctx.cwd = joinDir(ctx.cwd, d);
+    } else ctx.unknown = true;
+    return null;
+  }
+  if (head === 'popd' || head === 'pop-location') { ctx.unknown = true; return null; }
+  if (head === 'git') return gitAction(w, ctx);
   if (head === 'gh') return ghAction(w);
   if (head === 'cp' || head === 'copy' || head === 'copy-item' || head === 'cpi') return copyAction(w);
   if (head === 'pg_dump' || head === 'pg_dumpall') {
@@ -283,7 +308,10 @@ function statementAction(words, ctx, depth) {
   // containers: look inside `docker exec <c> pg_dump ...`
   if ((head === 'docker' || head === 'kubectl') && w.includes('exec')) {
     const j = w.findIndex((x, k) => k > w.indexOf('exec') && /^(pg_dump|pg_dumpall|sqlite3|alembic|flask|python3?|npm|node|git|gh)$/.test(x));
-    if (j > 0) return statementAction(w.slice(j).map((t) => ({ t, q: false })), ctx, depth);
+    if (j > 0) {
+      const a = statementAction(w.slice(j).map((t) => ({ t, q: false })), ctx, depth);
+      return a ? { ...a, inner: true } : a; // runs in a container, not here
+    }
   }
 
   // shells and ssh: the real command is inside a quoted argument
@@ -299,14 +327,15 @@ function statementAction(words, ctx, depth) {
 }
 
 function analyze(text, depth = 0) {
-  const ctx = { kill: false, start: false, inner: [] };
+  const ctx = { kill: false, start: false, inner: [], cwd: undefined, unknown: false, prevSep: 'start' };
   const cleaned = dropHereStrings(dropData(text.slice(0, MAX_TEXT).replace(/\\\r?\n/g, ' ')));
   const actions = [];
   for (const words of scan(cleaned)) {
     const a = statementAction(words, ctx, depth);
     if (a) actions.push(a);
+    ctx.prevSep = words.sep;
   }
-  if (depth < 3) for (const inner of ctx.inner) actions.push(...analyze(inner, depth + 1));
+  if (depth < 3) for (const inner of ctx.inner) actions.push(...analyze(inner, depth + 1).map((a) => ({ ...a, inner: true })));
   if (ctx.kill && ctx.start && !actions.some((a) => a.kind === 'restart')) {
     actions.push({ kind: 'restart', name: undefined, text: cleaned });
   }
@@ -316,6 +345,17 @@ function analyze(text, depth = 0) {
 function hostOf(text) {
   const m = /ssh_run\.py\s+(\w[\w.-]*)/.exec(text) || /\bssh\s+(?:-\S+\s+)*(?:\w+@)?(\w[\w.-]*)/.exec(text);
   return m ? m[1] : 'this laptop';
+}
+
+// What the commit fill needs to know: how many commits a command makes and in which one directory.
+// local is false when any commit is nested (ssh, bash -c, docker exec), runs elsewhere, targets two directories or uses a variable path.
+export function commitTarget(input) {
+  const text = shellText(input);
+  const commits = text ? analyze(text).filter((a) => a.kind === 'commit') : [];
+  const dirs = new Set(commits.map((a) => a.dir ?? ''));
+  const dir = commits.length ? commits[0].dir ?? null : null;
+  const local = commits.length > 0 && !commits.some((a) => a.inner || a.unknown) && hostOf(text) === 'this laptop' && dirs.size === 1 && !/[$%]/.test(dir || '');
+  return { count: commits.length, dir, local };
 }
 
 // ---------- public: candidate check ----------
@@ -407,8 +447,16 @@ function parseCommit(result, nth) {
   };
 }
 
-function parsePush(result) {
-  if (!result) return {};
+// The nth push of a command: its result is split at each `To <url>` / `Everything up-to-date` marker.
+function pushPart(result, nth) {
+  const marks = [...result.matchAll(/^(?:To\s+\S+|Everything up-to-date)/gm)].map((m) => m.index);
+  if (!marks.length) return result;
+  return nth < marks.length ? result.slice(marks[nth], marks[nth + 1]) : '';
+}
+
+function parsePush(whole, nth = 0) {
+  if (!whole) return {};
+  const result = pushPart(whole, nth);
   const out = {};
   const to = /^To\s+(\S+)/m.exec(result);
   if (to) out.remote = to[1];
@@ -460,7 +508,7 @@ function buildItem(a, row, ctx) {
       };
     }
     case 'push': {
-      const p = parsePush(row.result);
+      const p = parsePush(row.result, nth);
       if (p.upToDate) return null;
       const spec = a.refspec ? a.refspec.replace(/^\+/, '').split(':').pop() : null;
       const branch = p.branch || spec;
@@ -482,7 +530,7 @@ function buildItem(a, row, ctx) {
     case 'merge':
       return { ...common, category: 'code', title: a.branch ? `Merged ${a.branch}` : 'Merged a branch', chips: ['git'], detail: '', ...tagged('reversible') };
     case 'pr-create': {
-      const url = /https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/pull\/(\d+)/.exec(result);
+      const url = [...result.matchAll(/https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/pull\/(\d+)/g)][nth];
       const title = valueOf(a.args, '--title', '-t');
       return {
         ...common, category: 'code',
@@ -579,17 +627,22 @@ export function classifyChanges(rows) {
   }
 
   items.reverse();
-  const summary = { commits: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, tasks: 0, restarts: 0, total: items.length, permanent: [] };
+  const summary = { commits: 0, commitsWithStats: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, prs: 0, merges: 0, worktrees: 0, databases: 0, tasks: 0, restarts: 0, total: items.length, permanent: [] };
   for (const it of items) {
     if (it.kind === 'commit') {
       summary.commits++;
       if (it.stats) {
+        summary.commitsWithStats++;
         summary.files += it.stats.files;
         summary.insertions += it.stats.insertions;
         summary.deletions += it.stats.deletions;
       }
     }
     if (it.kind === 'push') summary.pushes++;
+    if (it.kind === 'pr-create' || it.kind === 'pr-merge') summary.prs++;
+    if (it.kind === 'merge') summary.merges++;
+    if (it.kind === 'worktree-add' || it.kind === 'worktree-remove') summary.worktrees++;
+    if (it.kind === 'db-backup' || it.kind === 'db-upgrade') summary.databases++;
     if (it.kind === 'task-status') summary.tasks++;
     if (it.kind === 'restart') summary.restarts++;
     if (it.tag === 'permanent') summary.permanent.push({ id: it.id, title: it.title, at: it.at });
