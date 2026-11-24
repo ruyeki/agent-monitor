@@ -4,6 +4,7 @@ import { Ago } from './Ago.jsx';
 import { CodexTag } from './RunList.jsx';
 import { ClockIcon } from './RunBits.jsx';
 import { parseAsk, splitCode } from './lib/ask.js';
+import { EndConfirm } from './EndConfirm.jsx';
 
 function Code({ text }) {
   return splitCode(text).map((s, i) => (s.code ? <code key={i}>{s.text}</code> : s.text));
@@ -34,8 +35,10 @@ export function WaitingCard({ run, onDone }) {
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState(null);
+  const [confirming, setConfirming] = useState(null); // the ending answer waiting for its second click
 
   async function send(action) {
+    setConfirming(null);
     setPosting(true);
     setError(null);
     try {
@@ -73,11 +76,15 @@ export function WaitingCard({ run, onDone }) {
         />
       )}
       <div className="actions">
-        {(run.actions || []).map((a) => (
-          <button key={a.label} type="button" disabled={posting} onClick={() => send(a.label)}>
-            {a.label}
-          </button>
-        ))}
+        {confirming ? (
+          <EndConfirm answer={confirming} disabled={posting} confirm={() => send(confirming)} cancel={() => setConfirming(null)} />
+        ) : (
+          (run.actions || []).map((a) => (
+            <button key={a.label} type="button" className={a.ends ? 'danger' : undefined} disabled={posting} onClick={() => (a.ends ? setConfirming(a.label) : send(a.label))}>
+              {a.label}
+            </button>
+          ))
+        )}
       </div>
       {error && (
         <p className="error" role="alert">

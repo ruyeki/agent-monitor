@@ -111,6 +111,18 @@ describe('Decision inbox on the Monitor', () => {
     expect(post).toHaveBeenCalledWith('/api/runs/w1/respond', { action: 'Stop run', text: 'because' });
   });
 
+  it('the end-confirm takes focus on Cancel and, on Cancel, hands it back to the answer that opened it', () => {
+    post = vi.fn(() => res({}));
+    renderMonitor([mk('w1', { actions: [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }] })]);
+    const w1 = item('Run w1');
+    fireEvent.click(within(w1).getByRole('button', { name: 'Stop run' }));
+    const group = within(w1).getByRole('group', { name: 'Confirm stop' });
+    expect(document.activeElement).toBe(within(group).getByRole('button', { name: 'Cancel' }));
+    expect(within(group).getByRole('status').textContent).toContain('Stop the run?');
+    fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }));
+    return Promise.resolve().then(() => expect(document.activeElement).toBe(within(w1).getByRole('button', { name: 'Stop run' })));
+  });
+
   it('a non-ending answer ("Agree spec") is still one click', async () => {
     post = vi.fn(() => res({}));
     renderMonitor([mk('w1', { actions: [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }] })]);

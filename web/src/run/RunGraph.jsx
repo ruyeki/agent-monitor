@@ -31,7 +31,7 @@ function useNarrow() {
 }
 
 // The run's pinned graph, read-only: each node coloured by its latest visit (see runState.js), with fails, visits and tokens.
-// Every gate has a "Stop run" edge to an End node; they are hidden until the legend toggle asks for them, so the edge
+// Every gate has a "Stop run" edge to the End node 'stopped'; they are hidden until the legend toggle asks for them, so the edge
 // labels at a gate do not pile up. The graph opens framed on the stage the run is at (running or waiting).
 export function RunGraph({ detail }) {
   const [showStop, setShowStop] = useState(false);
@@ -40,11 +40,10 @@ export function RunGraph({ detail }) {
     const codex = new Set((detail.visits ?? []).filter((v) => v.provider === 'codex').map((v) => v.node));
     const info = runState(detail);
     const wf = detail.workflow;
-    const ends = new Set((wf.nodes ?? []).filter((n) => n.type === 'end').map((n) => n.id));
     return {
       graph: toFlow(wf, { runInfo: info, codex }),
       activeIds: Object.keys(info).filter((id) => LIVE_STATES.has(info[id].state)),
-      stopIds: new Set((wf.edges ?? []).filter((e) => ends.has(e.to) && /^stop/i.test(e.on)).map((e) => e.id)),
+      stopIds: new Set((wf.edges ?? []).filter((e) => e.to === 'stopped').map((e) => e.id)),
     };
   }, [detail]);
   const edges = showStop ? graph.edges : graph.edges.filter((e) => !stopIds.has(e.id));

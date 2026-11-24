@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { respond } from './api.js';
 import { useNow } from './hooks.js';
 import { Elapsed } from './Ago.jsx';
-import { agentCall, agentLabel, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
+import { agentCall, agentLabels, agentName, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
 import { parseAsk } from './lib/ask.js';
 import { formatCost, roundsLabel } from './lib/format.js';
 import { runHref } from './lib/route.js';
@@ -136,6 +136,7 @@ function RunCard({ run, detail, open, onToggle, toggleRef, onDone, now }) {
 function CrewStrip({ run, detail, now }) {
   const crew = sortCrew(agentsOf(detail));
   const working = crew.filter((a) => a.status === 'running').length;
+  const labels = agentLabels(crew);
   return (
     <section className="card crew-strip" id={`crew-${run.id}`} aria-label={`Crew of ${run.id}`}>
       <div className="crew-head">
@@ -162,7 +163,7 @@ function CrewStrip({ run, detail, now }) {
             <li key={a.id} className={a.status === 'running' ? 'crew-card on' : 'crew-card'} data-agent-id={a.id}>
               <div className="crew-card-head">
                 <Avatar agent={a} />
-                <span className="strong crew-name">{agentLabel(a, crew)}</span>
+                <span className="strong crew-name">{labels.get(a.id) ?? agentName(a)}</span>
                 <AgentPill agent={a} />
               </div>
               <span className="small muted crew-task">{agentCall(detail, a, now) || a.description || '–'}</span>

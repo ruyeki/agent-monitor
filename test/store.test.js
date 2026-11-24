@@ -45,6 +45,21 @@ test('run ids: slug argument, slugified title, collision suffixes', () => {
   assert.match(s.startRun({ title: '  ' }).error, /title/);
 });
 
+test('only an answer that enters the End node stopped is flagged ends (a spine last gate that finishes is not)', () => {
+  const s = open();
+  const spine = { stages: [
+    { id: 'work', name: 'Work', kind: 'step', runner: 'worker' },
+    { id: 'gate', name: 'Gate', kind: 'gate', ask: 'Ship?', actions: [{ label: 'Ship it', goto: 'next' }, { label: 'Stop run', goto: 'stop' }] },
+  ], loop: { afterFix: 'work', resumeAt: 'work' } };
+  s.saveDraft(fromSpine(spine));
+  assert.deepEqual(s.publish(), { version: 2 });
+  s.startRun({ title: 'A' });
+  advance(s, 'a', 'gate');
+  const r = s.summary(s.getRun('a'));
+  assert.equal(r.status, 'waiting');
+  assert.deepEqual(r.actions, [{ label: 'Ship it' }, { label: 'Stop run', ends: true }]);
+});
+
 test('start_run moves through the engine and records a timeline', () => {
   const s = open();
   const { run } = s.startRun({ title: 'A', repo: 'r', branch: 'b', note: 'hello' });

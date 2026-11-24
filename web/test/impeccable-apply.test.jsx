@@ -135,7 +135,9 @@ describe('stages-graph-framing: stop edges are behind a toggle', () => {
     expect(btn.getAttribute('aria-pressed')).toBe('false');
     const ids = (el) => el.getAttribute('data-edges').split(',');
     const hidden = ids(flow);
-    expect(hidden).toHaveLength(sample().edges.length - 1); // gate2 -Stop run-> done is left out
+    expect(hidden).toHaveLength(sample().edges.length - 1); // gate2 -Stop run-> stopped is left out; an edge into done stays
+    expect(hidden).toContain('pr>done:done');
+    expect(hidden).not.toContain('gate2>stopped:Stop run');
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-pressed')).toBe('true');
     expect(ids(screen.getByTestId('flow'))).toHaveLength(sample().edges.length);

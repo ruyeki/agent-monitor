@@ -197,8 +197,9 @@ export function openStore(dataDir) {
 
   const runAccount = (runId) => q('SELECT * FROM run_accounts WHERE run_id = ?').get(String(runId)) ?? null;
 
-  // True when answering `label` at this gate follows an edge into an End node (the answer ends the run).
-  const endsRun = (wf, gate, label) => wf.edges.some((e) => e.from === gate.id && e.on === label && nodeOf(wf, e.to)?.type === 'end');
+  // True when answering `label` at this gate follows an edge into the End node 'stopped' (the engine stops the run there;
+  // any other End node means the run is done).
+  const endsRun = (wf, gate, label) => wf.edges.some((e) => e.from === gate.id && e.on === label && e.to === 'stopped');
 
   function summary(r) {
     const wf = version(r.workflow_version);

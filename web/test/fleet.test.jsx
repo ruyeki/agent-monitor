@@ -187,6 +187,18 @@ describe('Fleet (C2)', () => {
     expect(post).toHaveBeenCalledTimes(2);
   });
 
+  it('the end-confirm takes focus on Cancel and Cancel hands it back to the answer button', async () => {
+    const run = waitingRun('w1', 10, { actions: [{ label: 'Accept' }, { label: 'Stop run', ends: true }] });
+    mount({ waiting: [run], active: [], finished: [] });
+    const c = card('w1');
+    fireEvent.click(within(c).getByRole('button', { name: 'Stop run' }));
+    const group = within(c).getByRole('group', { name: 'Confirm stop' });
+    expect(document.activeElement).toBe(within(group).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }));
+    await Promise.resolve();
+    expect(document.activeElement).toBe(within(c).getByRole('button', { name: 'Stop run' }));
+  });
+
   it('a click in the answers area (the end-confirm text, the quick answers) does not toggle the crew strip', () => {
     const run = waitingRun('w1', 10, { actions: [{ label: 'Accept' }, { label: 'Stop run', ends: true }] });
     mount({ waiting: [run], active: [], finished: [] });
