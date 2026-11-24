@@ -37,7 +37,10 @@
 }
 
 /* ---- Tool-call rail: the agent label needs room to tell same-named agents apart ---- */
-:root .run-side .ui-tclc__agent { flex: none; max-width: 60%; font-size: 12px; } /* the number must stay visible: the summary gives way, not the label */
+/* The header row wraps: the summary keeps at least 14ch, and when the agent label would squeeze it, the label drops under the tool name. */
+:root .ui-tclc__main { flex-wrap: wrap; row-gap: 0; }
+:root .ui-tclc__summary { flex: 1 1 14ch; }
+:root .run-side .ui-tclc__agent { flex: none; max-width: 100%; font-size: 12px; } /* the number must stay visible: the label wraps to its own line instead of squeezing the summary */
 :root .ui-tclc__agent { font-size: 12px; }
 
 /* ---- Agent Monitor: the vendored success check overshoots (bounce-easing); settle it instead ---- */

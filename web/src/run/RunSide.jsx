@@ -1,6 +1,6 @@
 import { useNow } from '../hooks.js';
 import { Ago } from '../Ago.jsx';
-import { formatCost, formatDuration, formatElapsed, formatTokens } from '../lib/format.js';
+import { costOfUsage, formatCost, formatDuration, formatElapsed, formatTokens } from '../lib/format.js';
 import { pillLabel, toolCalls } from '../lib/toolCalls.js';
 import { agentLabels, agentName, modelLabel } from '../lib/crew.js';
 import { toMs } from '../lib/time.js';
@@ -65,7 +65,8 @@ export function Totals({ detail }) {
   const t = tokens.total || {};
   const agents = Array.isArray(detail.agents) ? detail.agents : [];
   const agentTokens = agents.reduce((n, a) => n + (Number(a?.tokens?.total) || 0), 0);
-  const unpriced = !(Number(t.total) > 0) && agentTokens > 0; // agents report tokens, the run total is not in yet
+  const read = Number(t.total) > 0;
+  const unpriced = !read && agentTokens > 0; // agents report tokens, the run total is not in yet
   return (
     <section className="card side-card" aria-label="Totals">
       <div className="cardhead">
@@ -75,11 +76,11 @@ export function Totals({ detail }) {
       <div className="pad totals-grid">
         <div>
           <div className="muted small">Tokens</div>
-          <strong className="big">{formatTokens(unpriced ? agentTokens : t.total)}</strong>
+          <strong className="big">{read ? formatTokens(t.total) : unpriced ? formatTokens(agentTokens) : '–'}</strong>
         </div>
         <div>
           <div className="muted small">Cost</div>
-          <strong className="big">{unpriced ? '–' : formatCost(t.cost)}</strong>
+          <strong className="big">{costOfUsage(t)}</strong>
         </div>
         <div>
           <div className="muted small">Duration</div>

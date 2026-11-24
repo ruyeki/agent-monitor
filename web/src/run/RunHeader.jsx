@@ -1,5 +1,5 @@
 import { Elapsed } from '../Ago.jsx';
-import { formatCost, isEnded, roundsLabel } from '../lib/format.js';
+import { costOfUsage, isEnded, roundsLabel } from '../lib/format.js';
 import { runHref } from '../lib/route.js';
 import { CodexTag, stageLabel } from '../RunList.jsx';
 import { StatusPill } from '../RunBits.jsx';
@@ -51,7 +51,7 @@ export function RunHeader({ detail, tab = 'stages', error, onChanged }) {
             {agents} {agents === 1 ? 'agent' : 'agents'}
           </span>
           <span className="sep" aria-hidden="true" />
-          <strong>{formatCost(detail.tokens?.total?.cost)}</strong>
+          <strong>{costOfUsage(detail.tokens?.total)}</strong>
           <span className="sep" aria-hidden="true" />
           <span className="muted">
             <Elapsed from={run.createdAt} to={live ? null : run.endedAt || run.updatedAt} />

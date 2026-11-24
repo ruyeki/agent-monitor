@@ -3,10 +3,10 @@ import { Elapsed } from '../Ago.jsx';
 import { getAgentActivity } from '../api.js';
 import { useNow, useThrottledTick } from '../hooks.js';
 import { agentCall, agentLabels, agentName, contextPct, crewTree, modelLabel } from '../lib/crew.js';
-import { formatCost } from '../lib/format.js';
 import { toolCalls } from '../lib/toolCalls.js';
 import { AgentPill, Avatar } from '../RunBits.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
+import { costOfUsage } from '../lib/format.js';
 import { ToolCallList, Totals } from './RunSide.jsx';
 
 const MAX_CALLS = 10;
@@ -60,7 +60,7 @@ function AgentCard({ node, view }) {
           )}
           <div className="agfoot">
             <span>
-              {formatCost(a.tokens?.cost)} · <Elapsed from={a.startedAt} to={a.status === 'running' ? null : a.finishedAt || a.lastActivityAt} />
+              {costOfUsage(a.tokens)} · <Elapsed from={a.startedAt} to={a.status === 'running' ? null : a.finishedAt || a.lastActivityAt} />
             </span>
             <span>{node.children.length ? plural(node.children.length, 'helper', 'helpers') : nCalls ? plural(nCalls, 'tool call', 'tool calls') : '–'}</span>
           </div>
@@ -134,7 +134,7 @@ export function CrewTab({ detail, onChanged }) {
         <div className="cardhead">
           <h2>Crew</h2>
           <span className="small muted">
-            {plural(total, 'agent', 'agents')} · <span className="live-text">{running} running</span> · <strong className="strong">{formatCost(detail.tokens?.total?.cost)}</strong>
+            {plural(total, 'agent', 'agents')} · <span className="live-text">{running} running</span> · <strong className="strong">{costOfUsage(detail.tokens?.total)}</strong>
           </span>
         </div>
         {total ? (

@@ -54,3 +54,7 @@ export function formatCost(n) {
   if (v > 0 && v < 0.01) return '<$0.01';
   return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+// The server sends tokens 0 and cost 0 for usage it has not read yet. Every real agent uses tokens, so a zero token
+// total means "not read yet": show a dash, never a confident "$0.00". A real cost on real tokens still shows.
+export const costOfUsage = (usage) => (Number(usage?.total) > 0 ? formatCost(usage.cost) : '–');

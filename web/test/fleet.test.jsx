@@ -27,7 +27,7 @@ const detailOf = (run) => ({
     { id: 'main:s1', type: 'main', status: 'running', model: 'claude-opus-5-5', description: null, lastActivityAt: iso(NOW - 60_000), tokens: tk(10, 0.41) },
     { id: 'a-lead', type: 'fable-lead', status: 'running', model: 'claude-opus-5-5', description: 'Lead: steer the build', lastActivityAt: iso(NOW - 30_000), tokens: tk(10, 0.96) },
     { id: 'a-ver', type: 'sonnet-engineer', status: 'running', model: 'claude-sonnet-5-5', description: 'Verifier: run the tests', lastActivityAt: iso(NOW - 2000), tokens: tk(10, 0.31) },
-    { id: 'a-old', type: 'sonnet-engineer', status: 'finished', model: 'claude-sonnet-5-5', description: 'Build the first piece', lastActivityAt: iso(NOW - 400_000), tokens: tk(10, 0.18) },
+    { id: 'a-old', type: 'sonnet-engineer', status: 'finished', model: 'claude-sonnet-5-5', description: 'Build the first piece', lastActivityAt: iso(NOW - 400_000), tokens: tk(0, 0) },
   ],
   activity: [{ id: 9, at: iso(NOW - 2000), agentId: 'a-ver', event: 'tool', tool: 'Bash', summary: 'npx vitest run', toolUseId: 'u9', endedAt: null, outcome: null }],
   tokens: { total: tk(40, 1.86) },
@@ -242,6 +242,7 @@ describe('Fleet (C2)', () => {
     const old = strip().querySelector('[data-agent-id="a-old"]');
     expect(old.textContent).toContain('Done');
     expect(old.textContent).toContain('Build the first piece');
+    expect(old.textContent).toContain('Sonnet 5.5 · –'); // zero tokens: usage not read yet, so no $0.00
 
     fireEvent.keyDown(toggleOf('a2'), { key: 'Enter' });
     expect(toggleOf('a2').getAttribute('aria-expanded')).toBe('true');

@@ -339,7 +339,7 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
   .agbody > .agtask { flex: 1.6 1 0; min-width: 0; }
   .agbody > .act { flex: 1.2 1 0; }
   .agbody > .ctx { flex: 0 0 130px; }
-  .agfoot { flex: none; flex-direction: column; align-items: flex-end; gap: 0; white-space: nowrap; }
+  .agfoot { flex: none; flex-direction: column; align-items: flex-end; gap: 0; white-space: nowrap; margin-left: auto; }
 }
 .crew-hint { margin: 0; padding: 0 16px 14px; }
 /* Ledger tab: one row per change (icon, text, chips, tag), then the rail (summary, what cannot be undone). */

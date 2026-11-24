@@ -117,13 +117,30 @@ describe('unknown-cost-shows-zero', () => {
     expect(totals).toContain('Tokens400k');
   });
 
-  it('a real zero stays $0.00 when nothing reported tokens', async () => {
-    current = detail({ agents: [], tokens: { nodes: tk(0), main: tk(0), unattributed: tk(0), total: tk(0, 0) } });
+  it('zero tokens means "not read yet": cards, the Crew header and Totals show a dash, not $0.00', async () => {
+    current = detail({
+      agents: [agent('e1', 'sonnet-engineer', { tokens: tk(0, 0) })],
+      tokens: { nodes: tk(0), main: tk(0), unattributed: tk(0), total: tk(0, 0) },
+    });
     render(<RunView id="r1" tab="crew" />);
     await screen.findByRole('region', { name: 'Crew' });
+    expect(document.querySelector('article[data-agent-id="e1"] .agfoot').textContent).toMatch(/^–/);
+    expect(screen.getByRole('region', { name: 'Crew' }).querySelector('.cardhead').textContent).not.toContain('$');
     const totals = screen.getByRole('region', { name: 'Totals' }).textContent;
-    expect(totals).toContain('Cost$0.00');
+    expect(totals).toContain('Cost–');
+    expect(totals).toContain('Tokens–');
     expect(totals).not.toContain('Not priced yet');
+  });
+
+  it('real tokens at zero cost still read $0.00', async () => {
+    current = detail({
+      agents: [agent('e1', 'sonnet-engineer', { tokens: tk(1200, 0) })],
+      tokens: { nodes: tk(0), main: tk(0), unattributed: tk(0), total: tk(1200, 0) },
+    });
+    render(<RunView id="r1" tab="crew" />);
+    await screen.findByRole('region', { name: 'Crew' });
+    expect(document.querySelector('article[data-agent-id="e1"] .agfoot').textContent).toContain('$0.00');
+    expect(screen.getByRole('region', { name: 'Totals' }).textContent).toContain('Cost$0.00');
   });
 });
 

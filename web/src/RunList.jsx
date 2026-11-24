@@ -1,5 +1,5 @@
 import { useNow } from './hooks.js';
-import { formatCost, isEnded, roundsLabel } from './lib/format.js';
+import { costOfUsage, isEnded, roundsLabel } from './lib/format.js';
 import { nowWorking } from './lib/crew.js';
 import { runHref } from './lib/route.js';
 import { Elapsed } from './Ago.jsx';
@@ -50,7 +50,7 @@ const ENDED_LABEL = { done: 'Done', stopped: 'Stopped' };
 
 function RowBody({ run, detail }) {
   const ended = isEnded(run);
-  const cost = detail?.tokens?.total ? formatCost(detail.tokens.total.cost) : '–';
+  const cost = costOfUsage(detail?.tokens?.total);
   // An ended run's stage label often is its end state ("Stopped") and the end pill already says it; a run that never
   // looped has no rounds worth showing.
   const stage = stageLabel(run);

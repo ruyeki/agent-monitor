@@ -4,13 +4,13 @@ import { useNow } from './hooks.js';
 import { Elapsed } from './Ago.jsx';
 import { agentCall, agentLabels, agentName, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
 import { parseAsk } from './lib/ask.js';
-import { formatCost, roundsLabel } from './lib/format.js';
+import { costOfUsage, roundsLabel } from './lib/format.js';
 import { runHref } from './lib/route.js';
 import { EndConfirm } from './EndConfirm.jsx';
 import { CodexTag, stageLabel } from './RunList.jsx';
 import { AgentPill, Avatar, Avatars, StageStepper, StatusPill } from './RunBits.jsx';
 
-const costOf = (detail) => (detail?.tokens?.total ? formatCost(detail.tokens.total.cost) : '–');
+const costOf = (detail) => costOfUsage(detail?.tokens?.total);
 const agentsOf = (detail) => (Array.isArray(detail?.agents) ? detail.agents : []);
 
 // One answer button per gate action; the answer goes out with an empty reply (the inbox and the run page take text).
@@ -168,7 +168,7 @@ function CrewStrip({ run, detail, now }) {
               </div>
               <span className="small muted crew-task">{agentCall(detail, a, now) || a.description || '–'}</span>
               <span className="small faint">
-                {modelLabel(a.model)} · {formatCost(a.tokens?.cost)}
+                {modelLabel(a.model)} · {costOfUsage(a.tokens)}
               </span>
             </li>
           ))}
