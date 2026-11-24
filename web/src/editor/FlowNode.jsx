@@ -1,6 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
 import { formatTokens } from '../lib/format.js';
+import { StatusIcon } from '../RunList.jsx';
 import { typeName } from './model.js';
+
+// A run node's state (see run/runState.js) -> the StatusIcon that stands beside its status words.
+const STATE_ICON = { passed: 'done', failed: 'stopped', decision: 'stopped', waiting: 'waiting', running: 'running', halted: 'idle', idle: 'idle' };
 
 const ICONS = {
   step: <path d="M3 4h10M3 8h10M3 12h6" />,
@@ -54,7 +58,12 @@ export function FlowNode({ data, selected }) {
       {data.stats && <div className="muted fnode-stats">{data.stats}</div>}
       {run && (
         <div className="fnode-row">
-          {run.status && <span className="fnode-status">{run.status}</span>}
+          {run.status && (
+            <span className="fnode-status">
+              <StatusIcon status={STATE_ICON[run.state] ?? 'idle'} size={12} decorative />
+              {run.status}
+            </span>
+          )}
           {run.fails > 0 && <span className="badge fails">{run.fails} {run.fails === 1 ? 'fail' : 'fails'}</span>}
           {run.tokens != null && <span className="badge">{formatTokens(run.tokens)} tokens</span>}
           {run?.codex && <span className="badge codex">Codex</span>}

@@ -13,25 +13,25 @@ const of = (d, id) => runState(d)[id];
 
 describe('runState', () => {
   it('marks nodes the run is on: running, waiting at a gate, decision needed at the loop decision', () => {
-    expect(of(detail({ active: ['plan'] }), 'plan')).toMatchObject({ state: 'running', status: '▶ running' });
+    expect(of(detail({ active: ['plan'] }), 'plan')).toMatchObject({ state: 'running', status: 'running' });
     const g = detail({ active: ['gate2'] });
     g.workflow.loop.decision = 'x';
-    expect(of(g, 'gate2')).toMatchObject({ state: 'waiting', status: '⏸ waiting on Ryan' });
-    expect(of(detail({ active: ['gate2'] }), 'gate2')).toMatchObject({ state: 'decision', status: '✕ decision needed' }); // sample loop.decision = gate2
+    expect(of(g, 'gate2')).toMatchObject({ state: 'waiting', status: 'waiting on you' });
+    expect(of(detail({ active: ['gate2'] }), 'gate2')).toMatchObject({ state: 'decision', status: 'decision needed' }); // sample loop.decision = gate2
   });
 
   it('colours by the latest visit: pass/done green, failure outcomes red, stopped/cancelled grey', () => {
-    expect(of(detail({ visits: [v('plan', 'done')] }), 'plan')).toMatchObject({ state: 'passed', status: '✓ done' });
-    expect(of(detail({ visits: [v('verify', 'pass')] }), 'verify')).toMatchObject({ state: 'passed', status: '✓ pass' });
+    expect(of(detail({ visits: [v('plan', 'done')] }), 'plan')).toMatchObject({ state: 'passed', status: 'done' });
+    expect(of(detail({ visits: [v('verify', 'pass')] }), 'verify')).toMatchObject({ state: 'passed', status: 'pass' });
     for (const o of ['fail', 'finding', 'regression', 'env', 'stuck']) {
-      expect(of(detail({ visits: [v('verify', o)] }), 'verify')).toMatchObject({ state: 'failed', status: `✕ ${o}` });
+      expect(of(detail({ visits: [v('verify', o)] }), 'verify')).toMatchObject({ state: 'failed', status: o });
     }
-    expect(of(detail({ visits: [v('verify', 'stopped')] }), 'verify')).toMatchObject({ state: 'halted', status: '– stopped' });
-    expect(of(detail({ visits: [v('verify', 'cancelled')] }), 'verify')).toMatchObject({ state: 'halted', status: '– cancelled' });
+    expect(of(detail({ visits: [v('verify', 'stopped')] }), 'verify')).toMatchObject({ state: 'halted', status: 'stopped' });
+    expect(of(detail({ visits: [v('verify', 'cancelled')] }), 'verify')).toMatchObject({ state: 'halted', status: 'cancelled' });
   });
 
   it('an answered gate is passed with its label; an unvisited node is idle with no status', () => {
-    expect(of(detail({ visits: [v('gate2', 'Accept')] }), 'gate2')).toMatchObject({ state: 'passed', status: '✓ Accept' });
+    expect(of(detail({ visits: [v('gate2', 'Accept')] }), 'gate2')).toMatchObject({ state: 'passed', status: 'Accept' });
     expect(of(detail(), 'pr')).toMatchObject({ state: 'idle', status: null, fails: 0 });
   });
 
@@ -44,8 +44,8 @@ describe('runState', () => {
   });
 
   it('an end node is passed when the run is done, halted otherwise', () => {
-    expect(of(detail({ status: 'done', visits: [v('done', null)] }), 'done')).toMatchObject({ state: 'passed', status: '✓ done' });
-    expect(of(detail({ status: 'stopped', visits: [v('done', null)] }), 'done')).toMatchObject({ state: 'halted', status: '– stopped' });
+    expect(of(detail({ status: 'done', visits: [v('done', null)] }), 'done')).toMatchObject({ state: 'passed', status: 'done' });
+    expect(of(detail({ status: 'stopped', visits: [v('done', null)] }), 'done')).toMatchObject({ state: 'halted', status: 'stopped' });
   });
 
   it('split/join have no visits: passed once a direct target has one, idle before', () => {

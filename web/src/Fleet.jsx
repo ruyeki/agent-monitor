@@ -68,7 +68,8 @@ function RunCard({ run, detail, open, onToggle, toggleRef, onDone, now }) {
   const heading = waiting ? parseAsk(run.ask).heading : '';
   const stripId = `crew-${run.id}`;
   // A click (or Enter / Space) anywhere on the card that is not on one of its own controls toggles the crew strip.
-  const own = (e) => !e.target.closest?.('button, a, textarea, input, select');
+  // The answers area (quick answers and the end-confirm text) is a control area too: a click in it never toggles.
+  const own = (e) => !e.target.closest?.('button, a, textarea, input, select, .rc-actions');
   const onCardClick = (e) => own(e) && onToggle();
   const onCardKey = (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && own(e)) {

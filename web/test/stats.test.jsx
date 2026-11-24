@@ -481,6 +481,16 @@ describe('spend by model', () => {
     expect(lineSeries().sort()).toEqual([...keys].sort());
   });
 
+  it('Other says "1 model" for a single folded model', async () => {
+    const u = usage();
+    const names = ['a', 'b', 'c', 'd', 'e', 'f'];
+    u.daily = names.map((n, i) => row('2026-10-27', `claude-${n}-1`, 1, 1, 1, 1, 10 - i));
+    fetchMock.mockImplementation((url) => (url.startsWith('/api/stats/usage') ? res(u) : url === '/api/stats/versions' ? res([]) : url === '/api/runs' ? res([]) : res(prices())));
+    render(<StatsPage />);
+    await loaded();
+    expect(sec().querySelector('li[data-model="Other"]').textContent).toContain('Other (1 model)');
+  });
+
   it('writes under 1% with one decimal', async () => {
     const u = usage();
     u.daily = [row('2026-10-27', 'claude-opus-5-5', 1000, 0, 0, 0, 100), row('2026-10-27', 'claude-sonnet-5', 1, 0, 0, 0, 0.4)];

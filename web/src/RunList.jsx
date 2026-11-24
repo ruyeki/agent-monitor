@@ -18,13 +18,16 @@ const ICONS = {
   },
   done: { label: 'Done', cls: 'si-done', paths: [<circle key="c" cx="12" cy="12" r="9" />, <path key="p" d="m8 12 3 3 5-6" />] },
   stopped: { label: 'Stopped', cls: 'si-stopped', paths: [<circle key="c" cx="12" cy="12" r="9" />, <path key="p" d="m9 9 6 6M15 9l-6 6" />] },
+  idle: { label: 'Not reached', cls: 'si-idle', paths: [<circle key="c" cx="12" cy="12" r="9" />, <path key="p" d="M8 12h8" />] },
 };
 
 // Status as icon + accessible name; the colour is a second cue, never the only one. The running arc turns (not when reduced motion is asked for).
-export function StatusIcon({ status, size = 16 }) {
+// `decorative` hides the icon from assistive tech where the words come right beside it (the graph legend, a node's status).
+export function StatusIcon({ status, size = 16, decorative = false }) {
   const i = ICONS[ICONS[status] ? status : 'running'];
+  const a11y = decorative ? { 'aria-hidden': 'true' } : { role: 'img', 'aria-label': i.label };
   return (
-    <svg className={`status-icon ${i.cls}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={i.label}>
+    <svg className={`status-icon ${i.cls}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" {...a11y}>
       {i.paths}
     </svg>
   );
@@ -48,6 +51,11 @@ const ENDED_LABEL = { done: 'Done', stopped: 'Stopped' };
 function RowBody({ run, detail }) {
   const ended = isEnded(run);
   const cost = detail?.tokens?.total ? formatCost(detail.tokens.total.cost) : '–';
+  // An ended run's stage label often is its end state ("Stopped") and the end pill already says it; a run that never
+  // looped has no rounds worth showing.
+  const stage = stageLabel(run);
+  const sameAsEnd = ended && [run.status, ENDED_LABEL[run.status]].some((w) => w && String(stage).toLowerCase() === w.toLowerCase());
+  const noRounds = ended && !(Number(run.round) > 0);
   return (
     <>
       <StatusIcon status={run.status} />
@@ -58,10 +66,12 @@ function RowBody({ run, detail }) {
         </span>
         <span className="row-meta">
           <span className="mono">{run.id}</span>
-          <span className="stage-pill">{stageLabel(run)}</span>
-          <span className="run-rounds">
-            round <span>{roundsLabel(run)}</span>
-          </span>
+          {!sameAsEnd && <span className="stage-pill">{stage}</span>}
+          {!noRounds && (
+            <span className="run-rounds">
+              round <span>{roundsLabel(run)}</span>
+            </span>
+          )}
         </span>
       </span>
       {ended ? (

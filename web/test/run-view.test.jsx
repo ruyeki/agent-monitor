@@ -66,7 +66,7 @@ describe('RunView', () => {
     const legend = screen.getByRole('group', { name: 'Colour legend' });
     expect(legend.className).toContain('run-legend');
     expect(graph.contains(legend)).toBe(false);
-    expect(legend.textContent).toMatch(/Passed.*Failed or decision needed.*Waiting on Ryan.*Running.*Not reached \/ stopped/);
+    expect(legend.textContent).toMatch(/Passed.*Failed or decision needed.*Waiting on you.*Running.*Not reached \/ stopped/);
   });
 
   it('is read-only: nodes are not draggable and handles cannot start a connection', async () => {

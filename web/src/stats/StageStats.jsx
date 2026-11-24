@@ -52,6 +52,8 @@ export function StageStats({ versions, metric }) {
         <>
           {version.finishedRuns === 0 ? (
             <p className="muted">No finished runs on v{version.version} yet.</p>
+          ) : !(total > 0) ? (
+            <p className="muted">No finished run has token data yet. Stage costs appear once a run finishes with usage recorded.</p>
           ) : (
             <>
               <p className="muted stage-summary">

@@ -36,10 +36,10 @@ describe('Ledger tab', () => {
       expect(row.textContent, title).toContain(label);
     }
   });
-  it('filter group: All, Code, Tasks, Machines with aria-pressed; All is on first; a filter hides the other categories; All restores', async () => {
+  it('filter group: All, Code, Tasks, Servers & data with aria-pressed; All is on first; a filter hides the other categories; All restores', async () => {
     setup();
     await screen.findAllByText('Pushed to main');
-    expect(within(filter()).getAllByRole('button').map((b) => b.textContent.trim())).toEqual(['All', 'Code', 'Tasks', 'Machines']);
+    expect(within(filter()).getAllByRole('button').map((b) => b.textContent.trim())).toEqual(['All', 'Code', 'Tasks', 'Servers & data']);
     const b = (n) => within(filter()).getByRole('button', { name: n });
     expect(b('All').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(b('Tasks'));
@@ -47,7 +47,7 @@ describe('Ledger tab', () => {
     expect(screen.getByText('Set Hephaestus #2289 status')).toBeTruthy();
     expect(b('Tasks').getAttribute('aria-pressed')).toBe('true');
     expect(b('All').getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(b('Machines'));
+    fireEvent.click(b('Servers & data'));
     await waitFor(() => expect(screen.getByText('Restarted the server')).toBeTruthy());
     expect(screen.queryByText('Set Hephaestus #2289 status')).toBeNull();
     fireEvent.click(b('Code'));

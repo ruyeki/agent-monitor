@@ -75,7 +75,7 @@ describe('Monitor today', () => {
     const strip = document.querySelector('section.stat-strip');
     const val = (label) => [...strip.querySelectorAll('.stat')].find((s) => s.querySelector('.stat-label').textContent === label).querySelector('.stat-value').textContent;
     expect(val('Running')).toBe('2');
-    expect(val('Needs you')).toBe('1');
+    expect([...strip.querySelectorAll('.stat-label')].map((l) => l.textContent)).not.toContain('Needs you'); // the inbox shows it while something waits
     await waitFor(() => expect(val('Tokens today')).not.toBe('–'));
   });
 

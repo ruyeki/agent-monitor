@@ -105,7 +105,7 @@ describe('list layout', () => {
     expect(inbox()).toBeNull();
     expect(group('Running')).toBeNull();
     expect(group('Finished')).toBeTruthy();
-    expect(document.querySelector('details.finished').open).toBe(true);
+    expect(document.querySelector('details.finished')).toBeNull(); // plain header in this view
     expect(screen.getByText('Charlie done')).toBeTruthy();
     expect(layoutToggle()).toBeNull();
     again(G, { view: 'finished', query: 'nope' });

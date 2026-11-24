@@ -46,43 +46,43 @@ describe('run view node states', () => {
     await mount(detail({ active: ['verify'], visits: [visit('verify', null, true)] }));
     expect(state('verify')).toBe('running');
     expect(el('verify').className).toContain('run-running');
-    expect(status('verify')).toBe('▶ running');
+    expect(status('verify')).toBe('running');
   });
-  it('waiting: an active normal gate is amber, "waiting on Ryan"', async () => {
+  it('waiting: an active normal gate is amber, "waiting on you"', async () => {
     await mount(detail({ active: ['gate1'], status: 'waiting', visits: [visit('frame', 'done'), visit('gate1', null, true)] }));
     expect(state('gate1')).toBe('waiting');
     expect(el('gate1').className).toContain('run-waiting');
-    expect(status('gate1')).toBe('⏸ waiting on Ryan');
+    expect(status('gate1')).toBe('waiting on you');
   });
   it('decision: the loop.decision gate while active is red, "decision needed"', async () => {
     await mount(detail({ active: ['decision'], status: 'waiting', visits: [visit('verify', 'regression'), visit('decision', null, true)] }));
     expect(state('decision')).toBe('decision');
     expect(el('decision').className).toContain('run-decision');
-    expect(status('decision')).toBe('✕ decision needed');
+    expect(status('decision')).toBe('decision needed');
   });
   it.each(['fail', 'finding', 'regression', 'env', 'stuck'])('failed: latest outcome %s is red with the outcome in the text', async (o) => {
     await mount(detail({ active: ['fix'], visits: [visit('verify', o), visit('fix', null, true)] }));
     expect(state('verify')).toBe('failed');
     expect(el('verify').className).toContain('run-failed');
-    expect(status('verify')).toBe(`✕ ${o}`);
+    expect(status('verify')).toBe(o);
   });
   it.each(['pass', 'done'])('passed: latest outcome %s is green with a check mark', async (o) => {
     await mount(detail({ active: ['gate1'], status: 'waiting', visits: [visit('plan', o), visit('gate1', null, true)] }));
     expect(state('plan')).toBe('passed');
     expect(el('plan').className).toContain('run-passed');
-    expect(status('plan')).toBe(`✓ ${o}`);
+    expect(status('plan')).toBe(o);
   });
   it('an answered gate is passed and shows the action label', async () => {
     await mount(detail({ active: ['plan'], visits: [visit('gate1', 'Agree spec'), visit('plan', null, true)] }));
     expect(state('gate1')).toBe('passed');
-    expect(status('gate1')).toBe('✓ Agree spec');
+    expect(status('gate1')).toBe('Agree spec');
   });
   it('halted: stopped / cancelled are grey with a dash text', async () => {
     await mount(detail({ status: 'stopped', visits: [visit('implement', 'cancelled'), visit('verify', 'stopped')] }));
     expect(state('implement')).toBe('halted');
-    expect(status('implement')).toBe('– cancelled');
+    expect(status('implement')).toBe('cancelled');
     expect(state('verify')).toBe('halted');
-    expect(status('verify')).toBe('– stopped');
+    expect(status('verify')).toBe('stopped');
     expect(el('verify').className).toContain('run-halted');
   });
   it('idle: no visit is grey with no status text', async () => {
@@ -181,7 +181,9 @@ describe('card DOM contract', () => {
     const lg = document.querySelector('.run-legend');
     expect(lg).toBeTruthy();
     expect(lg.getAttribute('aria-label')).toBe('Colour legend');
-    for (const w of [/passed/i, /failed/i, /waiting on ryan/i, /running/i, /not reached|stopped/i, /✓/, /✕/, /⏸/, /▶/]) expect(lg.textContent).toMatch(w);
+    for (const w of [/passed/i, /failed/i, /waiting on you/i, /running/i, /not reached|stopped/i]) expect(lg.textContent).toMatch(w);
+    expect(lg.querySelectorAll('svg.status-icon').length).toBe(5); // an SVG icon per state, no Unicode glyphs
+    expect(lg.textContent).not.toMatch(/[✓✕⏸▶]/);
   });
 });
 

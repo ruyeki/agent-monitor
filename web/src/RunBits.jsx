@@ -80,10 +80,7 @@ export function AgentPill({ agent }) {
   if (agent?.waitingPermission) return <span className="pill wait">Needs permission</span>;
   if (agent?.status === 'running')
     return (
-      <span className="pill run">
-        <span className="ring" aria-hidden="true" />
-        Running
-      </span>
+      <span className="pill run">Running</span>
     );
   if (agent?.status === 'finished') return <span className="pill done">Done</span>;
   return <span className="pill idle">{agent?.status ? agent.status[0].toUpperCase() + agent.status.slice(1) : 'Idle'}</span>;

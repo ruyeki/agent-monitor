@@ -1,22 +1,22 @@
 const FAIL = new Set(['fail', 'finding', 'regression', 'env', 'stuck']);
 const PASS = new Set(['pass', 'done']);
 
-// Where one node stands, from its visits (in order; the last is the latest) and whether the run is on it now.
+// Where one node stands (`status` is words only: FlowNode draws the icon from the state), from its visits (in order; the last is the latest) and whether the run is on it now.
 function stateOf(n, visits, { isActive, decision, runStatus, targetVisited }) {
   if (isActive) {
-    if (n.id === decision) return ['decision', '✕ decision needed'];
-    return n.type === 'gate' ? ['waiting', '⏸ waiting on Ryan'] : ['running', '▶ running'];
+    if (n.id === decision) return ['decision', 'decision needed'];
+    return n.type === 'gate' ? ['waiting', 'waiting on you'] : ['running', 'running'];
   }
-  if (n.type === 'split' || n.type === 'join') return targetVisited ? ['passed', '✓ done'] : ['idle', null];
+  if (n.type === 'split' || n.type === 'join') return targetVisited ? ['passed', 'done'] : ['idle', null];
   const last = visits.at(-1);
   if (!last) return ['idle', null];
-  if (n.type === 'end') return runStatus === 'done' ? ['passed', '✓ done'] : ['halted', '– stopped'];
+  if (n.type === 'end') return runStatus === 'done' ? ['passed', 'done'] : ['halted', 'stopped'];
   const o = last.outcome;
-  if (FAIL.has(o)) return ['failed', `✕ ${o}`];
-  if (PASS.has(o)) return ['passed', `✓ ${o}`];
-  if (o === 'stopped' || o === 'cancelled') return ['halted', `– ${o}`];
-  if (!o) return ['running', '▶ running']; // an open visit the run no longer lists as active
-  return ['passed', `✓ ${o}`]; // an answered gate: the label of the action
+  if (FAIL.has(o)) return ['failed', o];
+  if (PASS.has(o)) return ['passed', o];
+  if (o === 'stopped' || o === 'cancelled') return ['halted', o];
+  if (!o) return ['running', 'running']; // an open visit the run no longer lists as active
+  return ['passed', o]; // an answered gate: the label of the action
 }
 
 // Run detail -> {[nodeId]: {state, status, fails, visits, tokens}} for toFlow's runInfo. The latest visit decides the state;

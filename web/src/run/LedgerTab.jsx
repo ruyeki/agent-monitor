@@ -3,7 +3,7 @@ import { Ago } from '../Ago.jsx';
 import { getLedger } from '../api.js';
 import { useThrottledTick } from '../hooks.js';
 
-const FILTERS = [['all', 'All'], ['code', 'Code'], ['tasks', 'Tasks'], ['machines', 'Machines']];
+const FILTERS = [['all', 'All'], ['code', 'Code'], ['tasks', 'Tasks'], ['machines', 'Servers & data']];
 const svg = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' };
 const ICONS = {
   commit: [<circle key="a" cx="12" cy="12" r="3.5" />, <path key="b" d="M3 12h5.5M15.5 12H21" />],
@@ -170,7 +170,7 @@ export function LedgerTab({ detail, tick = 0 }) {
                 ))}
               </ul>
             ) : (
-              <span>Nothing here can't be undone.</span>
+              <span>Every change in this run can be undone.</span>
             )}
           </div>
         </section>

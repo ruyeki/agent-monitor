@@ -41,7 +41,7 @@ function AgentCard({ node, view }) {
           <AgentPill agent={a} />
         </div>
         <div className="agbody">
-          {a.description && <p className="agtask">{a.description}</p>}
+          {a.description && a.description !== agentLabel(a, crew) && <p className="agtask">{a.description}</p>}
           {call && (
             <div className="act">
               <span className="ring" aria-hidden="true" />

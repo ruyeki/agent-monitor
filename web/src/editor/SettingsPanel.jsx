@@ -8,7 +8,7 @@ function EdgePanel({ wf, edge, edit, onDelete }) {
     <section aria-label={`Edge ${edge.id}`}>
       <h3>Edge settings</h3>
       <p className="muted">
-        {edge.from} to {edge.to}
+        {nameOf(wf, edge.from)} to {nameOf(wf, edge.to)}
       </p>
       <Field label="On">
         <select value={edge.on} onChange={(e) => edit(patchEdge(wf, edge.id, { on: e.target.value }))}>
@@ -51,6 +51,9 @@ function LoopPanel({ wf, edit }) {
   );
 }
 
+const nameOf = (wf, id) => wf.nodes.find((n) => n.id === id)?.name || id;
+const onLabel = (on) => (on === '*' ? 'any' : on);
+
 function Outline({ wf, onSelect }) {
   return (
     <nav aria-label="Outline">
@@ -69,7 +72,7 @@ function Outline({ wf, onSelect }) {
         {wf.edges.map((e) => (
           <li key={e.id}>
             <button type="button" onClick={() => onSelect({ kind: 'edge', id: e.id })}>
-              {e.from} -{e.on}-&gt; {e.to}
+              {nameOf(wf, e.from)} -{onLabel(e.on)}→ {nameOf(wf, e.to)}
             </button>
           </li>
         ))}

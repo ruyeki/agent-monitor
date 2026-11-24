@@ -43,8 +43,8 @@ describe('inbox baseline contracts', () => {
     expect(post).toHaveBeenCalledWith('/api/runs/w1/respond', { action: 'Stop run', text: 'hi' });
     await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
-  it('KPI strip: Needs you counts the waiting runs', () => {
+  it('KPI strip: no Needs you tile while the inbox shows the waiting runs (the inbox heading carries the count)', () => {
     render(<Monitor groups={groups} {...props} />);
-    expect(screen.getByRole('region', { name: 'Today' }).textContent).toMatch(/Needs you\s*2/);
+    expect(screen.getByRole('region', { name: 'Today' }).textContent).not.toMatch(/Needs you/);
   });
 });

@@ -1,8 +1,9 @@
 // The P1 / P2 findings of the Impeccable critique (2026-11-23) that change behaviour: agent labels, the quiet Now card, the
 // shared Totals, unknown cost, the stop-edge toggle, phone scrolling, the sidebar and the inbox order.
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Monitor } from '../src/Monitor.jsx';
+import { StageStats } from '../src/stats/StageStats.jsx';
 import { RunView } from '../src/run/RunView.jsx';
 import { Sidebar } from '../src/Sidebar.jsx';
 import { sample } from './fixtures.js';
@@ -206,5 +207,107 @@ describe('inbox-below-kpis', () => {
     unmount();
     mount({ waiting: [], active: [], finished: [] });
     expect(before(screen.getByRole('region', { name: 'Today' }), screen.getByRole('complementary', { name: 'Decision inbox' }))).toBe(true);
+  });
+});
+
+describe('P3: the Now card names an agent once', () => {
+  it('the main session shows "Main session" once, even when its description says the same', async () => {
+    current = detail({ agents: [agent('main:s1', 'main', { description: 'Main session' }), agent('e1', 'sonnet-engineer', { description: 'Restyle the Monitor' })] });
+    render(<RunView id="r1" tab="stages" />);
+    const now = await screen.findByRole('region', { name: 'Active agents' });
+    const line = now.querySelector('li .agent-line');
+    expect(line.textContent.match(/Main session/g)).toHaveLength(1);
+    expect(now.textContent).toContain('Restyle the Monitor'); // a description that adds something stays
+    cleanup();
+    render(<RunView id="r1" tab="crew" />);
+    await screen.findByRole('region', { name: 'Crew' });
+    expect(document.querySelector('article[data-agent-id="main:s1"]').textContent.match(/Main session/g)).toHaveLength(1);
+  });
+});
+
+describe('P3: run tabs follow the ARIA tab pattern', () => {
+  const tabs = () => within(screen.getByRole('tablist', { name: 'Run views' })).getAllByRole('tab');
+  it('only the selected tab is in the tab order; arrows, Home and End move focus and open the tab', async () => {
+    render(<RunView id="r1" tab="stages" />);
+    await screen.findByRole('tablist', { name: 'Run views' });
+    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, 0, -1]); // Crew, Stages, Ledger
+    tabs()[1].focus();
+    fireEvent.keyDown(tabs()[1], { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tabs()[2]);
+    expect(window.location.hash).toBe('#/runs/r1/ledger');
+    fireEvent.keyDown(tabs()[2], { key: 'ArrowRight' }); // wraps
+    expect(document.activeElement).toBe(tabs()[0]);
+    expect(window.location.hash).toBe('#/runs/r1/crew');
+    fireEvent.keyDown(tabs()[0], { key: 'ArrowLeft' }); // wraps back
+    expect(document.activeElement).toBe(tabs()[2]);
+    fireEvent.keyDown(tabs()[2], { key: 'Home' });
+    expect(document.activeElement).toBe(tabs()[0]);
+    fireEvent.keyDown(tabs()[0], { key: 'End' });
+    expect(document.activeElement).toBe(tabs()[2]);
+    expect(window.location.hash).toBe('#/runs/r1/ledger');
+  });
+});
+
+describe('P3: copy', () => {
+  it('the timeline names the stage, not its id', async () => {
+    current = detail({ timeline: [{ at: iso(NOW - 5000), kind: 'answer', stage: 'gate2', round: 0 }] });
+    render(<RunView id="r1" tab="stages" />);
+    const tl = within(await screen.findByRole('region', { name: 'Timeline' }));
+    expect(tl.getByText('GATE2')).toBeTruthy(); // sample() names its nodes in capitals; the id is "gate2"
+    expect(tl.queryByText(/gate2/)).toBeNull();
+  });
+
+  it('the graph legend says "you" and draws SVG icons, no Unicode glyphs', async () => {
+    render(<RunView id="r1" tab="stages" />);
+    const legend = await screen.findByRole('group', { name: 'Colour legend' });
+    expect(legend.textContent).toContain('Waiting on you');
+    expect(legend.textContent).not.toMatch(/Ryan|[✓✕⏸▶]/);
+    expect(legend.querySelectorAll('svg')).toHaveLength(5);
+  });
+
+  it('Stats: no finished token data shows one line, not an empty donut', () => {
+    const v = [{ version: 1, publishedAt: iso(NOW), finishedRuns: 2, avgTokens: 0, avgCost: 0, avgDurationMs: 0, nodes: [{ id: 'plan', name: 'PLAN', runs: 2, avgTokens: 0, avgCost: 0, avgDurationMs: 0 }] }];
+    render(<StageStats versions={v} metric="cost" />);
+    expect(screen.getByText(/No finished run has token data yet/)).toBeTruthy();
+    expect(document.querySelector('svg[role="img"]')).toBeNull();
+  });
+});
+
+describe('P3: finished rows and the Finished view', () => {
+  const done = (id, over = {}) => ({ id, title: `Run ${id}`, stage: 'done', stageName: 'Done', round: 0, maxRounds: 5, status: 'done', updatedAt: iso(NOW - 1000), createdAt: iso(NOW - 9000), endedAt: iso(NOW - 1000), ...over });
+  const mount = (finished, view = null) => render(<Monitor groups={{ waiting: [], active: [], finished }} query="" view={view} loadError={null} updatedAt={iso(NOW)} tick={0} onDone={() => {}} />);
+
+  it('a finished row does not repeat its end state as a stage pill, and hides "round 0"', () => {
+    mount([done('a'), done('b', { status: 'stopped', stageName: 'Verify', round: 2 })], 'finished');
+    const row = (id) => document.querySelector(`a.run-row[href^="#/runs/${id}"]`);
+    expect(row('a').querySelector('.stage-pill')).toBeNull();
+    expect(row('a').querySelector('.run-rounds')).toBeNull();
+    expect(row('b').querySelector('.stage-pill').textContent).toBe('Verify'); // a stage that says something new stays
+    expect(row('b').querySelector('.run-rounds').textContent).toContain('2/5');
+  });
+
+  it('the Finished view has a plain header; on Monitor the group folds, with an SVG chevron', () => {
+    const { unmount } = mount([done('a')], 'finished');
+    expect(document.querySelector('details.finished')).toBeNull();
+    expect(document.querySelector('.run-group .group-head')).toBeTruthy();
+    expect(document.querySelector('.group-chevron')).toBeNull();
+    unmount();
+    mount([done('a')]);
+    expect(document.querySelector('details.finished .group-head svg.group-chevron')).toBeTruthy();
+  });
+});
+
+describe('P3: the waiting count', () => {
+  const waiting = { id: 'w1', title: 'Wait', stage: 'gate1', stageName: 'Gate', round: 1, maxRounds: 5, status: 'waiting', ask: 'Q?', actions: [{ label: 'Agree' }], textField: false, updatedAt: iso(NOW - 5000), createdAt: iso(NOW - 9000) };
+  const mount = (waitingRuns) => render(<Monitor groups={{ waiting: waitingRuns, active: [], finished: [] }} query="" view={null} loadError={null} updatedAt={iso(NOW)} tick={0} onDone={() => {}} />);
+  const labels = () => [...document.querySelectorAll('section.stat-strip .stat-label')].map((l) => l.textContent);
+
+  it('the Needs you tile is dropped while the inbox shows the question (the note keeps the oldest wait); it stays when nothing waits', () => {
+    const { unmount } = mount([waiting]);
+    expect(labels()).not.toContain('Needs you');
+    expect(document.querySelector('.inbox-note').textContent).toMatch(/Oldest waiting 5s ago\. Answered questions confirm, then fold away\./);
+    unmount();
+    mount([]);
+    expect(labels()).toContain('Needs you');
   });
 });

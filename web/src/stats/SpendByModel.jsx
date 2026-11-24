@@ -19,7 +19,7 @@ export function SpendByModel({ rows, metric, slots, range }) {
     color: seriesColor(t.slot),
     row: (
       <>
-        <span className="legend-label">{t.key === 'Other' ? `Other (${t.count} models)` : t.label}</span>
+        <span className="legend-label">{t.key === 'Other' ? `Other (${t.count} ${t.count === 1 ? 'model' : 'models'})` : t.label}</span>
         <span className="legend-value">{fmt(t[key])}</span>
         <span className="legend-share">{shareLabel(total ? (t[key] / total) * 100 : 0)}</span>
         <span className="legend-other muted">{metric === 'cost' ? `${formatTokens(t.tokens)} tokens` : `≈ ${formatCost(t.cost)}`}</span>

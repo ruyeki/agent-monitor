@@ -6,7 +6,7 @@ export const DRAG_TYPE = 'application/x-agent-monitor-node';
 const HINT = {
   step: 'An agent does work',
   check: 'An agent checks the work',
-  gate: "Waits for Ryan's answer",
+  gate: "Waits for your answer",
   split: 'Starts parallel branches',
   join: 'Waits for every branch',
   end: 'Ends the run',

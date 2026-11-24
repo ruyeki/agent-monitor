@@ -385,7 +385,7 @@ export function ledgerResult(v, max) {
 // ---------- public: classification ----------
 
 const TAGS = {
-  permanent: "Can't undo",
+  permanent: "Can't be undone",
   backup: 'Backup kept',
   reversible: 'Can change back',
 };

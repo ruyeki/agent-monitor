@@ -26,12 +26,13 @@ function ActiveAgents({ detail, now }) {
     <ul className="agent-list">
       {running.map((a) => {
         const label = pillLabel(detail, a, now, stageLabel(run));
+        const name = agentLabel(a, agents);
         return (
           <li key={a.id} className="agent-item">
             <div className="agent-line">
               <Avatar agent={a} />
-              <strong>{agentLabel(a, agents)}</strong>
-              {a.description && <span className="muted agent-desc"> {a.description}</span>}
+              <strong>{name}</strong>
+              {a.description && a.description !== name && <span className="muted agent-desc"> {a.description}</span>}
             </div>
             <div className="muted small">
               {a.provider === 'codex' && <span className="badge codex">Codex</span>} {modelLabel(a.model)}
@@ -166,6 +167,7 @@ function CodexInfo({ run, codex }) {
 export function RunSide({ detail, onChanged }) {
   const { run, timeline = [] } = detail;
   const now = useNow(10000);
+  const stageName = (id) => detail.workflow?.nodes?.find((n) => n.id === id)?.name || id; // the stage's name, not its id
   const calls = toolCalls(detail, now);
   return (
     <aside className="run-side" aria-label="Run details">
@@ -206,7 +208,7 @@ export function RunSide({ detail, onChanged }) {
             {timeline.map((e, i) => (
               <li key={i}>
                 <span className="muted"><Ago at={e.at} /></span> <strong>{e.kind}</strong>
-                {e.stage && <> {e.stage}</>}
+                {e.stage && <> {stageName(e.stage)}</>}
                 {e.verdict && <> · {e.verdict}</>}
                 {e.round > 0 && <> · round {e.round}</>}
                 {e.note && <div className="pre">{e.note}</div>}

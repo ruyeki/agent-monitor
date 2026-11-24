@@ -156,7 +156,7 @@ test('push: parses refs, remote, GitHub title, permanent tag', () => {
   assert.equal(it.title, 'Pushed main to GitHub');
   assert.deepEqual(it.chips, ['ruyeki/agent-monitor', '4ec2e9f \u2192 3a44b3a']);
   assert.equal(it.tag, 'permanent');
-  assert.equal(it.tagLabel, "Can't undo");
+  assert.equal(it.tagLabel, "Can't be undone");
 });
 
 test('push: new branch and https remote, force push stays permanent', () => {
@@ -184,7 +184,7 @@ test('push makes earlier commits Pushed and counts them', () => {
     row('git commit -m c', '[m 3333333] c\n 1 file changed, 1 insertion(+)\n'),
   ]).items;
   assert.deepEqual(items.map((i) => i.kind), ['commit', 'push', 'commit', 'commit']);
-  assert.deepEqual(items.map((i) => i.tagLabel), ['Can change back', "Can't undo", 'Pushed', 'Pushed']);
+  assert.deepEqual(items.map((i) => i.tagLabel), ['Can change back', "Can't be undone", 'Pushed', 'Pushed']);
   assert.equal(items[2].tag, 'info');
   assert.match(items[1].detail, /Carries 2 commits/);
 });
@@ -229,7 +229,7 @@ test('gh pr create is reversible; gh pr merge is permanent', () => {
   const [m] = one('gh pr merge 57 --squash', '\u2713 Squashed and merged pull request #57\n');
   assert.equal(m.title, 'Merged pull request #57');
   assert.equal(m.tag, 'permanent');
-  assert.equal(m.tagLabel, "Can't undo");
+  assert.equal(m.tagLabel, "Can't be undone");
 });
 
 test('worktree add is reversible, remove is Cleaned up', () => {
@@ -266,7 +266,7 @@ test('db upgrade without an earlier backup is permanent, and later backup does n
   ]);
   const up = items.find((i) => i.kind === 'db-upgrade');
   assert.equal(up.tag, 'permanent');
-  assert.equal(up.tagLabel, "Can't undo");
+  assert.equal(up.tagLabel, "Can't be undone");
   assert.equal(summary.permanent.length, 1);
   assert.equal(summary.permanent[0].title, 'Upgraded the database');
 });

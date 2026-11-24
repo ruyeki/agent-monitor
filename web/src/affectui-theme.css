@@ -38,6 +38,15 @@
 
 /* ---- Tool-call rail: the agent label needs room to tell same-named agents apart ---- */
 :root .run-side .ui-tclc__agent { flex: none; max-width: 60%; font-size: 12px; } /* the number must stay visible: the summary gives way, not the label */
+:root .ui-tclc__agent { font-size: 12px; }
+
+/* ---- Agent Monitor: the vendored success check overshoots (bounce-easing); settle it instead ---- */
+:root .ui-tclc__ok { animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ---- Agent Monitor: tool calls in the rail are rows of one card, not cards inside a card ---- */
+:root .run-side .tool-calls { gap: 0; }
+:root .run-side .tool-calls .ui-tclc { box-shadow: none; border-radius: 0; border-top: 1px solid var(--border); }
+:root .run-side .tool-calls .ui-tclc:first-child { border-top: 0; }
 
 /* ---- Decision inbox ---- */
 :root .ui-dic {

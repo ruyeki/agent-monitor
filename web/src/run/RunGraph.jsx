@@ -3,14 +3,15 @@ import { Background, Controls, ReactFlow } from '@xyflow/react';
 import { useEffect, useMemo, useState } from 'react';
 import { FIT_VIEW, nodeTypes } from '../editor/Canvas.jsx';
 import { toFlow } from '../editor/toFlow.js';
+import { StatusIcon } from '../RunList.jsx';
 import { runState } from './runState.js';
 
 const LEGEND = [
-  ['passed', '✓', 'Passed'],
-  ['failed', '✕', 'Failed or decision needed'],
-  ['waiting', '⏸', 'Waiting on Ryan'],
-  ['running', '▶', 'Running'],
-  ['idle', '–', 'Not reached / stopped'],
+  ['passed', 'done', 'Passed'],
+  ['failed', 'stopped', 'Failed or decision needed'],
+  ['waiting', 'waiting', 'Waiting on you'],
+  ['running', 'running', 'Running'],
+  ['idle', 'idle', 'Not reached / stopped'],
 ];
 
 const LIVE_STATES = new Set(['running', 'waiting', 'decision']);
@@ -53,9 +54,9 @@ export function RunGraph({ detail }) {
       <div className="cardhead">
         <h2>Stages</h2>
         <div className="run-legend" role="group" aria-label="Colour legend">
-          {LEGEND.map(([state, glyph, label]) => (
+          {LEGEND.map(([state, icon, label]) => (
             <span key={state} className={`legend-item run-${state}`}>
-              <span aria-hidden="true">{glyph}</span> {label}
+              <StatusIcon status={icon} size={12} decorative /> {label}
             </span>
           ))}
           {stopIds.size > 0 && (

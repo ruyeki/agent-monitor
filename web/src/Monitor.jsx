@@ -81,12 +81,20 @@ export function LayoutToggle({ layout, onChange }) {
   );
 }
 
-function Group({ id, name, dot, runs, detailOf, collapsible, forceOpen, onOpen, more, onMore }) {
+const Chevron = () => (
+  <svg className="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 6 6 6-6 6" />
+  </svg>
+);
+
+// `plain` draws the group header without the fold (the Finished view: folding away the page's only content is no use).
+function Group({ id, name, dot, runs, detailOf, collapsible, plain, forceOpen, onOpen, more, onMore }) {
   const head = (
     <h2 className="group-head" id={`group-${id}`}>
       <span className={`dot ${dot}`} aria-hidden="true" />
       <span>{name}</span>
       <span className="group-count">{runs.length}</span>
+      {collapsible && !plain && <Chevron />}
     </h2>
   );
   const list = (
@@ -103,7 +111,7 @@ function Group({ id, name, dot, runs, detailOf, collapsible, forceOpen, onOpen, 
   );
   return (
     <section className="run-group" aria-labelledby={`group-${id}`}>
-      {collapsible ? (
+      {collapsible && !plain ? (
         <details className="finished" key={forceOpen ? 'open' : 'closed'} open={forceOpen} onToggle={(e) => onOpen(e.currentTarget.open)}>
           <summary>{head}</summary>
           {list}
@@ -249,7 +257,8 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
 
   const working = agentsWorking([...waiting, ...active], detailOf);
   const cache = cacheShare(today);
-  // The inbox (the question that needs the user) comes before the summary numbers while something is waiting. The inbox
+  // While something waits, the inbox carries the "needs you" count and the oldest wait, so the tile is dropped (it showed the
+// same number a fourth time). The inbox (the question that needs the user) comes before the summary numbers while something is waiting. The inbox
   // always sits first inside .monitor-body, so an answered question's confirmation is not remounted when the last
   // waiting run leaves and the numbers move back above it.
   const statsFirst = !view && waiting.length === 0;
@@ -257,7 +266,7 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
   const stats = (
     <section className="stat-strip" aria-label="Today">
       <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
-      <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
+      {waiting.length === 0 && <Stat label="Needs you" dot="dot-waiting" value={0} />}
       <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
       <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
     </section>
@@ -265,7 +274,16 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
   const inboxPane = (
     <aside className="inbox-pane" aria-label="Decision inbox">
       <Inbox waiting={waiting} onDone={onDone} />
-      {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
+      {waiting.length > 0 && (
+        <p className="inbox-note">
+          {oldest && (
+            <>
+              Oldest waiting <Ago at={oldest} />.{' '}
+            </>
+          )}
+          Answered questions confirm, then fold away.
+        </p>
+      )}
     </aside>
   );
 
@@ -321,6 +339,7 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
                     runs={shown[id]}
                     detailOf={detailOf}
                     collapsible={id === 'finished'}
+                    plain={view === 'finished'}
                     forceOpen={id === 'finished' && forceOpen}
                     onOpen={setFinishedOpen}
                     more={more}

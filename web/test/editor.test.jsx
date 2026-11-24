@@ -130,7 +130,7 @@ describe('WorkflowEditor', () => {
 
   it('an edge offers the valid on choices for its source and a fix round checkbox', async () => {
     await open();
-    fireEvent.click(outline().getByRole('button', { name: 'gate2 -Accept-> pr' }));
+    fireEvent.click(outline().getByRole('button', { name: /^GATE2 -Accept→ PR$/i }));
     const on = screen.getByLabelText('On');
     expect([...on.options].map((o) => o.value)).toEqual(['Accept', 'Stop run']);
     fireEvent.change(on, { target: { value: 'Stop run' } });

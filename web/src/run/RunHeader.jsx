@@ -8,6 +8,21 @@ import { StopButton } from '../StopButton.jsx';
 // The tabs of the run view, in this order.
 const TABS = [['crew', 'Crew'], ['stages', 'Stages'], ['ledger', 'Ledger']];
 
+// The ARIA tab pattern: Left / Right move to the neighbouring tab (wrapping), Home / End jump to the first / last. The
+// tabs are links, so moving also opens the tab (the hash route); only the selected tab is in the tab order.
+function onTabKeys(e, runId) {
+  const keys = { ArrowRight: 1, ArrowLeft: -1, Home: 'first', End: 'last' };
+  if (!(e.key in keys) || e.altKey || e.ctrlKey || e.metaKey) return;
+  const tabs = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+  const at = tabs.indexOf(document.activeElement);
+  if (at < 0) return;
+  const step = keys[e.key];
+  const next = step === 'first' ? 0 : step === 'last' ? tabs.length - 1 : (at + step + tabs.length) % tabs.length;
+  e.preventDefault();
+  tabs[next].focus();
+  window.location.hash = runHref(runId, TABS[next][0]);
+}
+
 // Shared header of every run tab (contract C5): breadcrumb, title, status, stage, agents, cost, run time, Stop run, tabs.
 export function RunHeader({ detail, tab = 'stages', error, onChanged }) {
   const { run } = detail;
@@ -59,9 +74,9 @@ export function RunHeader({ detail, tab = 'stages', error, onChanged }) {
           )}
         </div>
       )}
-      <div className="tabs" role="tablist" aria-label="Run views">
+      <div className="tabs" role="tablist" aria-label="Run views" onKeyDown={(e) => onTabKeys(e, run.id)}>
         {TABS.map(([id, label]) => (
-          <a key={id} id={`tab-${id}`} role="tab" href={runHref(run.id, id)} aria-selected={tab === id} aria-controls={`panel-${id}`} className={tab === id ? 'on' : ''}>
+          <a key={id} id={`tab-${id}`} role="tab" href={runHref(run.id, id)} aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} aria-controls={`panel-${id}`} className={tab === id ? 'on' : ''}>
             {label}
           </a>
         ))}

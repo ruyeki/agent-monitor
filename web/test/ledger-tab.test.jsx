@@ -21,7 +21,7 @@ const ledger = () => ({
   items: [
     item('9', { kind: 'restart', category: 'machines', title: 'Restarted the Agent Monitor server', chips: ['this laptop'], tag: 'info', tagLabel: 'Ran once', at: iso(NOW - 3_120_000) }),
     item('8', { kind: 'db-upgrade', category: 'machines', title: 'Upgraded the database', chips: ['agent-monitor.db', 'schema v3 \u2192 v4'], detail: 'Backup: agent-monitor.db.bak', tag: 'backup', tagLabel: 'Backup kept' }),
-    item('7', { kind: 'push', category: 'code', title: 'Pushed main to GitHub', chips: ['ruyeki/agent-monitor'], detail: 'Carries the commit below', tag: 'permanent', tagLabel: "Can't undo" }),
+    item('7', { kind: 'push', category: 'code', title: 'Pushed main to GitHub', chips: ['ruyeki/agent-monitor'], detail: 'Carries the commit below', tag: 'permanent', tagLabel: "Can't be undone" }),
     item('6', { kind: 'task-status', category: 'tasks', title: 'Set Hephaestus #2288 status', chips: ['Hephaestus', 'Done'], tag: 'reversible', tagLabel: 'Can change back' }),
     item('5', { kind: 'commit', category: 'code', title: 'Committed 274eae5 Answer waiting runs in a Decision Inbox', chips: ['git \u00b7 main', '+169', '\u2212120', '4 files'], stats: { files: 4, insertions: 169, deletions: 120 }, tag: 'info', tagLabel: 'Pushed' }),
     item('4', { kind: 'commit', category: 'code', title: 'Committed fix the thing', chips: ['git'], stats: null, tag: 'reversible', tagLabel: 'Can change back' }),
@@ -73,7 +73,7 @@ describe('Ledger tab', () => {
     expect(within(p).getByRole('heading', { name: 'What this run changed' })).toBeTruthy();
     const push = rows()[2];
     expect(push.getAttribute('data-tag')).toBe('permanent');
-    expect(push.querySelector('.tag').textContent).toBe("Can't undo");
+    expect(push.querySelector('.tag').textContent).toBe("Can't be undone");
     expect(push.querySelector('.tag').getAttribute('data-tag')).toBe('permanent');
     expect(push.textContent).toContain('Pushed main to GitHub');
     expect(push.textContent).toContain('ruyeki/agent-monitor');
@@ -100,11 +100,11 @@ describe('Ledger tab', () => {
     expect(bare.textContent).toContain('Committed fix the thing');
   });
 
-  it('the filter group keeps aria-pressed and shows All / Code / Tasks / Machines', async () => {
+  it('the filter group keeps aria-pressed and shows All / Code / Tasks / Servers & data', async () => {
     const p = await loaded();
     const group = within(p).getByRole('group', { name: 'Filter' });
     const btn = (n) => within(group).getByRole('button', { name: n });
-    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Code', 'Tasks', 'Machines']);
+    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Code', 'Tasks', 'Servers & data']);
     expect(btn('All').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(btn('Code'));
     expect(btn('Code').getAttribute('aria-pressed')).toBe('true');
@@ -112,7 +112,7 @@ describe('Ledger tab', () => {
     expect(rows().map((r) => r.getAttribute('data-category'))).toEqual(['code', 'code', 'code']);
     fireEvent.click(btn('Tasks'));
     expect(rows()).toHaveLength(1);
-    fireEvent.click(btn('Machines'));
+    fireEvent.click(btn('Servers & data'));
     expect(rows()).toHaveLength(3);
     fireEvent.click(btn('All'));
     expect(rows()).toHaveLength(7);
@@ -132,11 +132,11 @@ describe('Ledger tab', () => {
     expect(document.body.textContent).toContain('Built from the tool calls Agent Monitor already logs');
   });
 
-  it('empty ledger: "Nothing changed yet." and "Nothing here can\'t be undone."', async () => {
+  it('empty ledger: "Nothing changed yet." and "Every change in this run can be undone."', async () => {
     led = { items: [], summary: { commits: 0, files: 0, insertions: 0, deletions: 0, pushes: 0, tasks: 0, restarts: 0, total: 0, permanent: [] } };
     render(<RunView id="r1" tab="ledger" />);
     expect(await screen.findByText('Nothing changed yet.')).toBeTruthy();
-    expect(screen.getByText("Nothing here can't be undone.")).toBeTruthy();
+    expect(screen.getByText('Every change in this run can be undone.')).toBeTruthy();
     expect(rows()).toHaveLength(0);
   });
 
@@ -152,7 +152,7 @@ describe('Ledger tab', () => {
     await loaded();
     const names = screen.getAllByRole('button').map((b) => b.textContent);
     expect(names.filter((n) => /undo|revert|restore|roll ?back/i.test(n))).toEqual([]);
-    expect(within(document.querySelector('.ledger-main')).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Code', 'Tasks', 'Machines']);
+    expect(within(document.querySelector('.ledger-main')).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Code', 'Tasks', 'Servers & data']);
   });
 
   it('item text is plain text: markup in a title, chip or detail is not parsed', async () => {

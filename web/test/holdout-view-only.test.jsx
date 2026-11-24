@@ -68,7 +68,7 @@ describe('Finished', () => {
     noKpi();
     expect(inbox()).toBeNull();
     expect(groupHeads()).toEqual(['Finished']);
-    expect(document.querySelector('details.finished').open).toBe(true);
+    expect(document.querySelector('details.finished')).toBeNull(); // a plain header: folding away the only content is no use
     expect(text()).toContain('Done f1');
     expect(text()).not.toContain('Busy a1');
   });
