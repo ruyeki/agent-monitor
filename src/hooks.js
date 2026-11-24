@@ -1,7 +1,7 @@
 // Claude hook events -> per-agent tracking. Never throws: every problem answers {}.
 import path from 'node:path';
 import { MODES } from './exe.js';
-import { isChangeCandidate, isHephaestusUpdate, hephInfo, ledgerText, ledgerResult, SHELL_TOOLS } from './ledger.js';
+import { isChangeCandidate, isHephaestusUpdate, hephInfo, ledgerText, ledgerResult, redact, SHELL_TOOLS } from './ledger.js';
 import { fileSize, readUsage, readMeta, subagentPath } from './transcripts.js';
 
 // Tools a Claude session may still use on a run that was handed over to Codex.
@@ -18,10 +18,14 @@ const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const str = (v) => (typeof v === 'string' && v ? v : null);
 
-function summarize(input) {
+// The one-line summary of a call: masked like the Ledger copy, then cut to 120 chars (masking first, so a cut cannot split a secret).
+function rawSummary(input) {
   if (!input || typeof input !== 'object') return '';
   const first = Object.values(input).find((v) => typeof v === 'string');
-  return text(input.command ?? input.file_path ?? input.pattern ?? input.description ?? input.url ?? first, 120);
+  return text(input.command ?? input.file_path ?? input.pattern ?? input.description ?? input.url ?? first, 600);
+}
+function summarize(input) {
+  return redact(rawSummary(input)).slice(0, 120);
 }
 
 const jsonOf = (v) => { try { return typeof v === 'string' ? v : JSON.stringify(v ?? ''); } catch { return ''; } };
@@ -84,7 +88,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     // The spawning call's row, else a depth-2+ meta's parentAgentId, else a depth-1 child's main session.
     const parent = known(store.agentOfToolUse(a.run_id, useId)) ?? known(str(meta?.parentAgentId))
       ?? (meta?.spawnDepth === 1 ? known(`main:${a.session_id}`) : null);
-    if (!parent && useId) {
+    if (!parent && useId && !orphans.has(useId)) {
       if (orphans.size >= MAX_PENDING) orphans.delete(orphans.keys().next().value);
       orphans.set(useId, a.agent_id);
     }
@@ -225,7 +229,8 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     }
     if (!codex && ev === 'UserPromptSubmit' && !str(p.agent_id) && typeof p.session_id === 'string') store.releaseSession(p.session_id);
     // An agent-monitor tool whose link() moves this event onto a run it was not on before (start_run) is the linking call: not counted.
-    const before = tool ? runOf(p, provider) : null;
+    // (Mirrors resolve(): the run this call was on before link() may move it. Only Post events count a call.)
+    const before = tool && (ev === 'PostToolUse' || ev === 'PostToolUseFailure') ? runOf(p, provider) : null;
     if (tool && ev === 'PostToolUse') link(p, provider);
     const who = resolve(p, provider);
     if (!who) {

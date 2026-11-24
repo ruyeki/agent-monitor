@@ -160,6 +160,7 @@ test('the activity endpoint: one agent, newest first, limit clamped, 400 and 404
     assert.equal((await b.api('GET', url('?agent=sub1&limit=9999'))).json.length, 200);
     assert.equal((await b.api('GET', url('?agent=sub1&limit=0'))).json.length, 1);
     assert.equal((await b.api('GET', url('?agent=sub1&limit=abc'))).json.length, 50);
+    assert.equal((await b.api('GET', url('?agent=sub1&limit='))).json.length, 50, 'an empty limit means the default');
     assert.equal((await b.api('GET', url('?agent=sub2'))).json.length, 1);
     assert.deepEqual((await b.api('GET', url('?agent=nobody'))).json, []);
     r = await b.api('GET', url(''));

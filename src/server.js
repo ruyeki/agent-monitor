@@ -153,7 +153,7 @@ export async function startServer({
       if (!store.getRun(id)) return send(res, 404, { error: 'No such run.' });
       const agent = url.searchParams.get('agent');
       if (!agent) return send(res, 400, { error: 'agent is required.' });
-      return send(res, 200, store.agentActivity(id, agent, url.searchParams.get('limit') ?? 50));
+      return send(res, 200, store.agentActivity(id, agent, url.searchParams.get('limit') || 50));
     }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/respond$/))) {
       const b = await body();
