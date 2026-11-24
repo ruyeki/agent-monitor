@@ -21,12 +21,14 @@ const TYPE_ROLES = [
   [/engineer|worker/, 'engineer'],
 ];
 
-const SPECIFIC_TYPE = /lead|verif|white|review/;
+// The first four TYPE_ROLES name a role in the type itself (lead, verifier, white-hat, reviewer): they win over the description.
+const SPECIFIC_ROLES = TYPE_ROLES.slice(0, 4);
 
 export function roleOf(agent) {
   const type = String(agent?.type ?? '').toLowerCase();
   if (type === 'main' || String(agent?.id ?? '').startsWith('main:')) return 'main';
-  if (SPECIFIC_TYPE.test(type)) return TYPE_ROLES.find(([re]) => re.test(type))[1];
+  const specific = SPECIFIC_ROLES.find(([re]) => re.test(type));
+  if (specific) return specific[1];
   const desc = String(agent?.description ?? '');
   const hits = DESC_ROLES.map(([re, role]) => [desc.search(re), role]).filter(([at]) => at >= 0);
   if (hits.length) return hits.sort((x, y) => x[0] - y[0])[0][1];

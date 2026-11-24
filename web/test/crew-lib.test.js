@@ -7,6 +7,12 @@ const iso = (ms) => new Date(ms).toISOString();
 const ag = (id, type, over = {}) => ({ id, type, description: '', status: 'running', lastActivityAt: iso(NOW - 5000), ...over });
 
 describe('roleOf / avatarOf', () => {
+  it('a role named in the type wins over the description; plain types fall through', () => {
+    expect(roleOf(ag('a', 'fable-lead', { description: 'Verifier: write tests' }))).toBe('lead');
+    expect(roleOf(ag('a', 'white-hat-agent'))).toBe('white-hat');
+    expect(roleOf(ag('a', 'code-reviewer'))).toBe('reviewer');
+    expect(roleOf(ag('a', 'sonnet-engineer'))).toBe('engineer');
+  });
   it('description words win over the type (verifier and white-hat run as sonnet-engineer)', () => {
     expect(roleOf(ag('a', 'sonnet-engineer', { description: 'Verifier: baseline and holdout tests' }))).toBe('verifier');
     expect(roleOf(ag('a', 'sonnet-engineer', { description: 'White-hat pass on the diff' }))).toBe('white-hat');

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Elapsed } from '../Ago.jsx';
 import { getAgentActivity } from '../api.js';
 import { useNow, useThrottledTick } from '../hooks.js';
-import { agentCall, agentLabel, contextPct, crewTree, modelLabel } from '../lib/crew.js';
+import { agentCall, agentLabels, agentName, contextPct, crewTree, modelLabel } from '../lib/crew.js';
 import { formatCost } from '../lib/format.js';
 import { toolCalls } from '../lib/toolCalls.js';
 import { AgentPill, Avatar } from '../RunBits.jsx';
@@ -16,13 +16,14 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // (aria-pressed on its name button, also by clicking anywhere on the card) to show that agent's tool calls.
 // Wide cards lay the second row out in columns; narrow ones stack it (container query in styles.css).
 function AgentCard({ node, view }) {
-  const { detail, now, selectedId, onSelect } = view;
-  const crew = detail.agents;
+  const { detail, now, selectedId, onSelect, labels } = view;
   const a = node.agent;
+  const label = labels.get(a.id) ?? agentName(a);
   const selected = selectedId === a.id;
   const pct = contextPct(a);
   const call = agentCall(detail, a, now);
-  const own = (e) => !e.target.closest?.('button, a');
+  // A click that ends a text selection (copying the task text) does not select the agent.
+  const own = (e) => !e.target.closest?.('button, a') && !window.getSelection?.()?.toString();
   const nCalls = Number(a.toolCalls) || 0; // the server's per-agent count (the activity list holds only the last 100 rows)
   return (
     <div className="tn-card">
@@ -31,7 +32,7 @@ function AgentCard({ node, view }) {
           <Avatar agent={a} />
           <span className="agwho">
             <button type="button" className="ag-hit nm" aria-pressed={selected} onClick={() => onSelect(a.id)}>
-              {agentLabel(a, crew)}
+              {label}
             </button>
             <span className="md">
               {modelLabel(a.model)}
@@ -41,7 +42,7 @@ function AgentCard({ node, view }) {
           <AgentPill agent={a} />
         </div>
         <div className="agbody">
-          {a.description && a.description !== agentLabel(a, crew) && <p className="agtask">{a.description}</p>}
+          {a.description && a.description !== label && <p className="agtask">{a.description}</p>}
           {call && (
             <div className="act">
               <span className="ring" aria-hidden="true" />
@@ -124,7 +125,8 @@ export function CrewTab({ detail, onChanged }) {
     setPicked((cur) => (cur === id ? null : id));
     if (id !== selected && window.matchMedia?.('(max-width: 768px)').matches) callsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   };
-  const view = { detail, now, selectedId: selected, onSelect };
+  const labels = agentLabels(detail.agents);
+  const view = { detail, now, selectedId: selected, onSelect, labels };
 
   return (
     <div className="run-body crew-body" role="tabpanel" id="panel-crew" aria-labelledby="tab-crew">
@@ -157,7 +159,7 @@ export function CrewTab({ detail, onChanged }) {
             <h3>Tool calls</h3>
             {chosen ? (
               <button type="button" className="sm" onClick={() => setPicked(null)}>
-                Clear filter ({agentLabel(chosen, detail.agents)})
+                Clear filter ({labels.get(chosen.id) ?? agentName(chosen)})
               </button>
             ) : (
               <span className="faint small">newest first</span>

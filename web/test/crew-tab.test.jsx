@@ -168,6 +168,19 @@ describe('Crew tab', () => {
     expect(shown()).toBe(3);
   });
 
+  it('a click that ends a text selection (copying the task text) does not select the agent', async () => {
+    render(<RunView id="r1" tab="crew" />);
+    await crewCard();
+    const pressed = () => within(card('e1')).getByRole('button', { name: 'sonnet-engineer' }).getAttribute('aria-pressed');
+    const spy = vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'Restyle' });
+    fireEvent.click(card('e1').querySelector('.agtask'));
+    expect(pressed()).toBe('false');
+    spy.mockReturnValue({ toString: () => '' });
+    fireEvent.click(card('e1').querySelector('.agtask'));
+    expect(pressed()).toBe('true');
+    spy.mockRestore();
+  });
+
   it('rail: no Now card (the tree shows who works), Totals shows tokens, cost and the four counts', async () => {
     render(<RunView id="r1" tab="crew" />);
     await crewCard();

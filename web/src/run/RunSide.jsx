@@ -2,7 +2,7 @@ import { useNow } from '../hooks.js';
 import { Ago } from '../Ago.jsx';
 import { formatCost, formatDuration, formatElapsed, formatTokens } from '../lib/format.js';
 import { pillLabel, toolCalls } from '../lib/toolCalls.js';
-import { agentLabel, agentLabels, modelLabel } from '../lib/crew.js';
+import { agentLabels, agentName, modelLabel } from '../lib/crew.js';
 import { toMs } from '../lib/time.js';
 import { stageLabel } from '../RunList.jsx';
 import { Avatar, StatusPill } from '../RunBits.jsx';
@@ -22,11 +22,12 @@ function ActiveAgents({ detail, now }) {
   const { run, agents = [] } = detail;
   const running = agents.filter((a) => a.status === 'running');
   if (!running.length) return <p className="muted">No agent is running.</p>;
+  const labels = agentLabels(agents);
   return (
     <ul className="agent-list">
       {running.map((a) => {
         const label = pillLabel(detail, a, now, stageLabel(run));
-        const name = agentLabel(a, agents);
+        const name = labels.get(a.id) ?? agentName(a);
         return (
           <li key={a.id} className="agent-item">
             <div className="agent-line">

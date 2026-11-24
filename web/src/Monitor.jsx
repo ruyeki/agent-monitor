@@ -257,10 +257,8 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
 
   const working = agentsWorking([...waiting, ...active], detailOf);
   const cache = cacheShare(today);
-  // While something waits, the inbox carries the "needs you" count and the oldest wait, so the tile is dropped (it showed the
-// same number a fourth time). The inbox (the question that needs the user) comes before the summary numbers while something is waiting. The inbox
-  // always sits first inside .monitor-body, so an answered question's confirmation is not remounted when the last
-  // waiting run leaves and the numbers move back above it.
+  // While something waits, the inbox sits first inside .monitor-body and carries the "needs you" count, so the summary numbers
+  // come after it; the inbox stays first when the last waiting run leaves, so an answered question's confirmation is not remounted.
   const statsFirst = !view && waiting.length === 0;
   const statsInBody = !view && waiting.length > 0;
   const stats = (
