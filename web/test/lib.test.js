@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDuration, formatTokens, splitRuns } from '../src/lib/format.js';
+import { formatCost, formatDuration, formatTokens, splitRuns } from '../src/lib/format.js';
 import { parseRoute, runHref } from '../src/lib/route.js';
 import { idleTime, relativeTime } from '../src/lib/time.js';
 
@@ -55,5 +55,12 @@ describe('parseRoute', () => {
     expect(parseRoute('#/runs/%E0%A4%A')).toEqual({ name: 'monitor' });
     expect(parseRoute('#/nope')).toEqual({ name: 'monitor' });
     expect(runHref('a b')).toBe('#/runs/a%20b');
+  });
+});
+
+describe('formatCost', () => {
+  it('a real zero is $0.00, an unknown cost is a dash (never "free")', () => {
+    expect([formatCost(12.345), formatCost(0), formatCost(0.004), formatCost(1234.5)]).toEqual(['$12.35', '$0.00', '<$0.01', '$1,234.50']);
+    expect([formatCost(undefined), formatCost(null)]).toEqual(['\u2013', '\u2013']);
   });
 });

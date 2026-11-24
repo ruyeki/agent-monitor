@@ -1,13 +1,22 @@
 import { useNow } from '../hooks.js';
-import { Ago, Idle } from '../Ago.jsx';
-import { formatCost, formatDuration, formatTokens } from '../lib/format.js';
+import { Ago } from '../Ago.jsx';
+import { formatCost, formatDuration, formatElapsed, formatTokens } from '../lib/format.js';
 import { pillLabel, toolCalls } from '../lib/toolCalls.js';
-import { agentName } from '../lib/crew.js';
+import { agentLabel, agentLabels, modelLabel } from '../lib/crew.js';
+import { toMs } from '../lib/time.js';
 import { stageLabel } from '../RunList.jsx';
 import { Avatar, StatusPill } from '../RunBits.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
 import { ThinkingLoader } from '../vendor/affectui/thinking-loader.tsx';
 import { ToolCallCard } from '../vendor/affectui/tool-call-card.tsx';
+
+const QUIET_MS = 60_000; // a running agent is called quiet only after a full minute without activity
+
+// "no activity for 2m", or nothing while the agent has been active within the last minute ("idle 14s" read like a stall).
+function Quiet({ since, now }) {
+  const t = toMs(since);
+  return t != null && now - t >= QUIET_MS ? <> · no activity for {formatElapsed(now - t)}</> : null;
+}
 
 function ActiveAgents({ detail, now }) {
   const { run, agents = [] } = detail;
@@ -21,11 +30,12 @@ function ActiveAgents({ detail, now }) {
           <li key={a.id} className="agent-item">
             <div className="agent-line">
               <Avatar agent={a} />
-              <strong>{agentName(a)}</strong>
+              <strong>{agentLabel(a, agents)}</strong>
               {a.description && <span className="muted agent-desc"> {a.description}</span>}
             </div>
             <div className="muted small">
-              {a.provider === 'codex' && <span className="badge codex">Codex</span>} {a.model || 'model unknown'} · idle <Idle since={a.lastActivityAt} />
+              {a.provider === 'codex' && <span className="badge codex">Codex</span>} {modelLabel(a.model)}
+              <Quiet since={a.lastActivityAt} now={now} />
               {a.waitingPermission && <span className="badge status-waiting">waiting for permission</span>}
             </div>
             {a.lastTool && (
@@ -46,32 +56,59 @@ function ActiveAgents({ detail, now }) {
   );
 }
 
-// Run token figures: the total's breakdown, the main session apart from the stages, and the estimate.
-function RunTokens({ tokens }) {
+// The run's totals, one design for the Crew and Stages tabs: big figures (tokens, cost, time), the breakdown, the main
+// session apart from the stages. A cost that is not known yet reads "–" with a note, never "$0.00".
+export function Totals({ detail }) {
+  const tokens = detail.tokens || {};
   const t = tokens.total || {};
+  const agents = Array.isArray(detail.agents) ? detail.agents : [];
+  const agentTokens = agents.reduce((n, a) => n + (Number(a?.tokens?.total) || 0), 0);
+  const unpriced = !(Number(t.total) > 0) && agentTokens > 0; // agents report tokens, the run total is not in yet
   return (
-    <div className="run-tokens">
-      <p className="muted">
-        Input {formatTokens(t.input)} · Output {formatTokens(t.output)} · Cache write {formatTokens(t.cacheWrite)} · Cache read {formatTokens(t.cacheRead)}
-      </p>
-      <p>
-        Main session (not on any stage): <strong>{formatTokens(tokens.main?.total)}</strong>
-      </p>
-      {tokens.unattributed?.total > 0 && (
-        <p>
-          Unattributed: <strong>{formatTokens(tokens.unattributed.total)}</strong>
+    <section className="card side-card" aria-label="Totals">
+      <div className="cardhead">
+        <h3>Totals</h3>
+        <span className="muted small">API-equivalent estimate</span>
+      </div>
+      <div className="pad totals-grid">
+        <div>
+          <div className="muted small">Tokens</div>
+          <strong className="big">{formatTokens(unpriced ? agentTokens : t.total)}</strong>
+        </div>
+        <div>
+          <div className="muted small">Cost</div>
+          <strong className="big">{unpriced ? '–' : formatCost(t.cost)}</strong>
+        </div>
+        <div>
+          <div className="muted small">Duration</div>
+          <strong className="big">{formatDuration(detail.durationMs)}</strong>
+        </div>
+        {unpriced && <p className="muted small totals-split">Not priced yet: the agents report tokens, but the run's cost is not worked out.</p>}
+        <p className="muted small totals-split">
+          Input {formatTokens(t.input)} · Output {formatTokens(t.output)} · Cache write {formatTokens(t.cacheWrite)} · Cache read {formatTokens(t.cacheRead)}
         </p>
-      )}
-      <p className="muted">≈ {formatCost(t.cost)} API-equivalent (estimate)</p>
-    </div>
+        <p className="small totals-split">
+          Main session (not on any stage): <strong>{formatTokens(tokens.main?.total)}</strong>
+        </p>
+        {tokens.unattributed?.total > 0 && (
+          <p className="small totals-split">
+            Unattributed: <strong>{formatTokens(tokens.unattributed.total)}</strong>
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
 const when = (iso) => new Date(iso).toLocaleString();
 
 // The tool-call cards (vendored ToolCallCard), newest first; shared by the Stages and Crew tabs.
-export function ToolCallList({ calls, empty = 'No tool calls yet.' }) {
+// `agents` names each call's agent by its distinguishing label; `hideAgent` drops the agent column when the list is
+// already filtered to one agent.
+export function ToolCallList({ calls, empty = 'No tool calls yet.', agents, hideAgent = false }) {
   if (!calls.length) return <p className="muted">{empty}</p>;
+  const labels = agentLabels(agents);
+  const who = (c) => labels.get(c.agentId) ?? c.agent;
   return (
     <div className="tool-calls">
       {calls.map((c) => (
@@ -79,7 +116,7 @@ export function ToolCallList({ calls, empty = 'No tool calls yet.' }) {
           key={c.id}
           name={c.tool || 'tool'}
           summary={c.summary || undefined}
-          agent={c.agent ?? undefined}
+          agent={hideAgent ? undefined : who(c) ?? undefined}
           status={c.status}
           startedAt={Date.parse(c.at)}
           duration={c.durationMs ?? undefined}
@@ -89,7 +126,7 @@ export function ToolCallList({ calls, empty = 'No tool calls yet.' }) {
           <div className="tool-call-details">
             {c.summary && <p className="tool-call-summary">{c.summary}</p>}
             <p className="muted">
-              Agent <span className="mono">{c.agent ?? 'unknown'}</span> · started {when(c.at)}
+              Agent <span className="mono">{who(c) ?? 'unknown'}</span> · started {when(c.at)}
             </p>
           </div>
         </ToolCallCard>
@@ -155,21 +192,10 @@ export function RunSide({ detail, onChanged }) {
           <span className="faint small">newest first</span>
         </div>
         <div className="pad">
-          <ToolCallList calls={calls} />
+          <ToolCallList calls={calls} agents={detail.agents} />
         </div>
       </section>
-      <section className="card side-card" aria-label="Totals">
-        <div className="cardhead">
-          <h3>Totals</h3>
-          <strong className="small">{formatCost(detail.tokens?.total?.cost)}</strong>
-        </div>
-        <div className="pad">
-          <p>
-            Tokens: <strong>{formatTokens(detail.tokens.total.total)}</strong> · Duration: <strong>{formatDuration(detail.durationMs)}</strong>
-          </p>
-          <RunTokens tokens={detail.tokens} />
-        </div>
-      </section>
+      <Totals detail={detail} />
       <section className="card side-card" aria-label="Timeline">
         <div className="cardhead">
           <h3>Timeline</h3>

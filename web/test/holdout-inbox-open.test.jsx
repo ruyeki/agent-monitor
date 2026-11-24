@@ -135,15 +135,15 @@ describe('inbox: answering one card', () => {
 });
 
 describe('inbox: layout contract in the DOM, empty state, note', () => {
-  it('the inbox sits after the KPI strip and BEFORE the run list, inside .monitor-body', () => {
+  it('with something waiting, the inbox sits BEFORE the KPI strip and the run list, inside .monitor-body', () => {
     renderMonitor([mk('w1'), mk('w2')]);
     const strip = document.querySelector('section.stat-strip');
     const list = document.querySelector('section.run-list');
     expect(strip && list).toBeTruthy();
     expect(inbox().closest('.monitor-body')).toBe(list.closest('.monitor-body'));
     const P = Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(strip.compareDocumentPosition(inbox()) & P).toBeTruthy();
-    expect(inbox().compareDocumentPosition(list) & P).toBeTruthy();
+    expect(inbox().compareDocumentPosition(strip) & P).toBeTruthy();
+    expect(strip.compareDocumentPosition(list) & P).toBeTruthy();
   });
 
   it('view=waiting: same inbox, all open, no run list', () => {

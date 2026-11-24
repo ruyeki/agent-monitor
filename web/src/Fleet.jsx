@@ -2,10 +2,11 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { respond } from './api.js';
 import { useNow } from './hooks.js';
 import { Elapsed } from './Ago.jsx';
-import { agentCall, agentName, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
+import { agentCall, agentLabel, modelLabel, nowWorking, sortCrew } from './lib/crew.js';
 import { parseAsk } from './lib/ask.js';
 import { formatCost, roundsLabel } from './lib/format.js';
 import { runHref } from './lib/route.js';
+import { EndConfirm } from './EndConfirm.jsx';
 import { CodexTag, stageLabel } from './RunList.jsx';
 import { AgentPill, Avatar, Avatars, StageStepper, StatusPill } from './RunBits.jsx';
 
@@ -16,7 +17,9 @@ const agentsOf = (detail) => (Array.isArray(detail?.agents) ? detail.agents : []
 function QuickAnswers({ run, onDone }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
+  const [confirming, setConfirming] = useState(null); // the ending answer waiting for its second click
   const answer = async (label) => {
+    setConfirming(null);
     setSending(true);
     setError(null);
     try {
@@ -33,11 +36,21 @@ function QuickAnswers({ run, onDone }) {
   return (
     <>
       <div className="rc-actions">
-        {actions.map((a, i) => (
-          <button key={`${i}:${a.label}`} type="button" className={i === 0 ? 'primary sm' : 'sm'} disabled={sending} onClick={() => answer(a.label)}>
-            {a.label}
-          </button>
-        ))}
+        {confirming ? (
+          <EndConfirm answer={confirming} disabled={sending} confirm={() => answer(confirming)} cancel={() => setConfirming(null)} />
+        ) : (
+          actions.map((a, i) => (
+            <button
+              key={`${i}:${a.label}`}
+              type="button"
+              className={[i === 0 ? 'primary sm' : 'sm', a.ends && 'danger'].filter(Boolean).join(' ')}
+              disabled={sending}
+              onClick={() => (a.ends ? setConfirming(a.label) : answer(a.label))}
+            >
+              {a.label}
+            </button>
+          ))
+        )}
       </div>
       {error && (
         <p className="error rc-error" role="alert">
@@ -148,7 +161,7 @@ function CrewStrip({ run, detail, now }) {
             <li key={a.id} className={a.status === 'running' ? 'crew-card on' : 'crew-card'} data-agent-id={a.id}>
               <div className="crew-card-head">
                 <Avatar agent={a} />
-                <span className="strong crew-name">{agentName(a)}</span>
+                <span className="strong crew-name">{agentLabel(a, crew)}</span>
                 <AgentPill agent={a} />
               </div>
               <span className="small muted crew-task">{agentCall(detail, a, now) || a.description || '–'}</span>

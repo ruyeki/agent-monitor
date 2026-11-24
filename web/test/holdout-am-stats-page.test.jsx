@@ -449,9 +449,9 @@ describe('Runs panel', () => {
     const table = within(sec()).getByRole('table', { name: 'Runs per day table' });
     expect(table).toBeTruthy();
     const out = (k) => sec().querySelector(`[data-outcome="${k}"]`).textContent;
-    expect(out('finished')).toMatch(/finished/i); expect(out('finished')).toContain('3');
+    expect(out('finished')).toMatch(/done/i); expect(out('finished')).toContain('3');
     expect(out('stopped')).toMatch(/stopped/i); expect(out('stopped')).toContain('1');
-    expect(out('open')).toMatch(/open/i); expect(out('open')).toContain('2');
+    expect(out('open')).toMatch(/running or waiting/i); expect(out('open')).toContain('2');
     const stat = (label) => [...sec().querySelectorAll('*')].filter((e) => e.children.length === 0 && e.textContent.trim() === label).map((e) => e.parentElement.textContent)[0];
     expect(stat('Median duration')).toContain(formatDuration(20 * 60000)); // 10, 20, 40 minutes
     expect(stat('Avg fix rounds')).toContain('1.0'); // rounds 0, 1, 2 over finished runs

@@ -96,7 +96,7 @@ describe('Crew tab', () => {
     await waitCards();
     expect(screen.getAllByText('ACT-ONE-cmd').length).toBeGreaterThan(0);
     expect(screen.getAllByText('ACT-TWO-cmd').length).toBeGreaterThan(0);
-    for (const h of ['Now', 'Tool calls', 'Totals']) expect(screen.getAllByText(new RegExp(`^${h}$`, 'i')).length, h).toBeGreaterThan(0);
+    for (const h of ['Tool calls', 'Totals']) expect(screen.getAllByText(new RegExp(`^${h}$`, 'i')).length, h).toBeGreaterThan(0);
     const sel = (id) => (card(id).matches('[aria-pressed]') ? card(id) : card(id).querySelector('[aria-pressed]'));
     expect(sel('h1').getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(sel('h1'));

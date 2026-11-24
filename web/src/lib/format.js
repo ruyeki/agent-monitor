@@ -47,8 +47,9 @@ export function formatElapsed(ms) {
   return h < 24 ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-// 12.345 -> "$12.35"; 0.004 -> "<$0.01"; 0 -> "$0.00"
+// 12.345 -> "$12.35"; 0.004 -> "<$0.01"; 0 -> "$0.00"; unknown (null / undefined) -> "–", never a made-up "$0.00"
 export function formatCost(n) {
+  if (n == null) return '–';
   const v = Number(n) || 0;
   if (v > 0 && v < 0.01) return '<$0.01';
   return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

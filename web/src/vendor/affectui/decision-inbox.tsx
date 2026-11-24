@@ -43,6 +43,10 @@ export type Decision = {
   actions: string[];
   /** Agent Monitor: shown between the detail and the answers, e.g. a reply box; a function gets { disabled } */
   extra?: ReactNode | ((s: { disabled: boolean }) => ReactNode);
+  /** Agent Monitor: answers (labels from `actions`) that end the run: the first click asks `renderConfirm` instead of sending */
+  ends?: string[];
+  /** Agent Monitor: the confirmation shown in place of the answers while an ending answer waits for its second click */
+  renderConfirm?: (p: { answer: string; confirm: () => void; cancel: () => void; disabled: boolean }) => ReactNode;
   /** Agent Monitor: shown after the answers, e.g. a link */
   footer?: ReactNode;
   /** Agent Monitor: extra attributes for the row, e.g. aria-label and data-* */
@@ -61,7 +65,7 @@ export type DecisionInboxProps = {
 
 // Agent Monitor: `pending`, `error`, the decision kept while it is answered (`d`), a token per answer (`tok`), whether it
 // left `decisions` while answered (`left`) and whether it has folded away (`folded`)
-type State = { open: boolean; answered?: string; gone?: boolean; pending?: boolean; error?: string; d?: Decision; tok?: object; left?: boolean; folded?: boolean };
+type State = { open: boolean; confirming?: string; answered?: string; gone?: boolean; pending?: boolean; error?: string; d?: Decision; tok?: object; left?: boolean; folded?: boolean };
 type States = Record<string, State>;
 
 // Agent Monitor: the row's fold transition (460 ms) plus a little; after it an answered row may leave the DOM
@@ -281,20 +285,36 @@ export function DecisionInbox({ decisions, onDecide, className }: DecisionInboxP
                               <DoneIcon />
                               <span dir="auto">{s.answered}</span>
                             </span>
+                          ) : s.confirming && d.renderConfirm ? (
+                            // Agent Monitor: an ending answer asks once more before it is sent
+                            d.renderConfirm({
+                              answer: s.confirming,
+                              disabled: !!s.pending,
+                              cancel: () => patch(d.id, { confirming: undefined }),
+                              confirm: () => {
+                                patch(d.id, { confirming: undefined });
+                                decide(d, s.confirming as string);
+                              },
+                            })
                           ) : (
-                            // Agent Monitor: one button per action, disabled while pending; the first also carries Agent Monitor's `primary` class
-                            d.actions.map((a, i) => (
-                              <button
-                                key={`${i}:${a}`}
-                                type="button"
-                                className={i === 0 ? "ui-dic__btn ui-dic__btn--primary primary" : "ui-dic__btn"}
-                                dir="auto"
-                                disabled={!!s.pending}
-                                onClick={() => decide(d, a)}
-                              >
-                                {a}
-                              </button>
-                            ))
+                            // Agent Monitor: one button per action, disabled while pending; the first also carries Agent Monitor's `primary` class;
+                            // an answer in `ends` is a `danger` button that asks to confirm first
+                            d.actions.map((a, i) => {
+                              const ends = !!d.renderConfirm && !!d.ends?.includes(a);
+                              const cls = ["ui-dic__btn", i === 0 && "ui-dic__btn--primary primary", ends && "danger"].filter(Boolean).join(" ");
+                              return (
+                                <button
+                                  key={`${i}:${a}`}
+                                  type="button"
+                                  className={cls}
+                                  dir="auto"
+                                  disabled={!!s.pending}
+                                  onClick={() => (ends ? patch(d.id, { confirming: a, error: undefined }) : decide(d, a))}
+                                >
+                                  {a}
+                                </button>
+                              );
+                            })
                           )}
                           {d.footer}
                         </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getUsageStats, respond } from './api.js';
 import { useLayout, useRunDetails, useThrottledTick } from './hooks.js';
 import { Ago } from './Ago.jsx';
+import { EndConfirm } from './EndConfirm.jsx';
 import { Fleet } from './Fleet.jsx';
 import { formatCost, formatTokens } from './lib/format.js';
 import { runHref } from './lib/route.js';
@@ -168,6 +169,8 @@ function Inbox({ waiting, onDone }) {
         </>
       ),
       actions: (run.actions || []).map((a) => a.label),
+      ends: (run.actions || []).filter((a) => a.ends).map((a) => a.label),
+      renderConfirm: (p) => <EndConfirm {...p} />,
       extra: run.textField
         ? ({ disabled }) => (
             <textarea
@@ -246,6 +249,25 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
 
   const working = agentsWorking([...waiting, ...active], detailOf);
   const cache = cacheShare(today);
+  // The inbox (the question that needs the user) comes before the summary numbers while something is waiting. The inbox
+  // always sits first inside .monitor-body, so an answered question's confirmation is not remounted when the last
+  // waiting run leaves and the numbers move back above it.
+  const statsFirst = !view && waiting.length === 0;
+  const statsInBody = !view && waiting.length > 0;
+  const stats = (
+    <section className="stat-strip" aria-label="Today">
+      <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
+      <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
+      <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
+      <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
+    </section>
+  );
+  const inboxPane = (
+    <aside className="inbox-pane" aria-label="Decision inbox">
+      <Inbox waiting={waiting} onDone={onDone} />
+      {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
+    </aside>
+  );
 
   return (
     <>
@@ -283,21 +305,10 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
         <Fleet waiting={waiting} active={active} detailOf={detailOf} query={q} view={view} empty={total === 0} emptyText={view ? empty : null} onDone={onDone} />
       ) : (
         <>
-          {!view && (
-            <section className="stat-strip" aria-label="Today">
-              <Stat label="Running" dot="dot-active" value={active.length} sub={working != null ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : null} />
-              <Stat label="Needs you" dot="dot-waiting" value={waiting.length} sub={oldest ? <>oldest <Ago at={oldest} /></> : null} />
-              <Stat label="Spend today" value={today ? formatCost(today.cost) : DASH} sub="API-equivalent estimate" />
-              <Stat label="Tokens today" value={today ? formatTokens(today.total) : DASH} sub={cache != null ? `${cache}% cache reads` : null} />
-            </section>
-          )}
+          {statsFirst && stats}
           <div className={inboxOnly ? 'monitor-body inbox-only' : 'monitor-body'}>
-            {(!view || inboxOnly) && (
-              <aside className="inbox-pane" aria-label="Decision inbox">
-                <Inbox waiting={waiting} onDone={onDone} />
-                {waiting.length > 0 && <p className="inbox-note">Answered questions confirm, then fold away.</p>}
-              </aside>
-            )}
+            {(!view || inboxOnly) && inboxPane}
+            {statsInBody && stats}
             {!inboxOnly && (
               <section className="run-list" aria-label="Runs">
                 {empty && <p className="muted empty">{empty}</p>}

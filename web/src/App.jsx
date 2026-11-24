@@ -63,6 +63,7 @@ export default function App() {
     <div className="shell">
       <Sidebar
         current={current}
+        routeName={route.name}
         openCount={waiting.length + live.length}
         counts={{ waiting: waiting.length, active: live.length, finished: finished.length }}
         query={query}

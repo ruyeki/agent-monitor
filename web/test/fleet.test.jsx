@@ -163,6 +163,30 @@ describe('Fleet (C2)', () => {
     await waitFor(() => expect(answers.every((b) => !b.disabled)).toBe(true));
   });
 
+  it('a quick answer that ends the run (ends: true) asks to confirm first; Cancel sends nothing, Confirm sends; other answers stay one click', async () => {
+    const run = waitingRun('w1', 10, { actions: [{ label: 'Accept' }, { label: 'Request changes' }, { label: 'Stop run', ends: true }] });
+    const { onDone } = mount({ waiting: [run], active: [], finished: [] });
+    const c = card('w1');
+    const stop = within(c).getByRole('button', { name: 'Stop run' });
+    expect(stop.classList.contains('danger')).toBe(true);
+    expect(within(c).getByRole('button', { name: 'Accept' }).classList.contains('danger')).toBe(false);
+    fireEvent.click(stop);
+    expect(post).not.toHaveBeenCalled();
+    const group = within(c).getByRole('group', { name: 'Confirm stop' });
+    expect(group.textContent).toContain("Stop the run? This can't be undone.");
+    expect(within(c).queryByRole('button', { name: 'Accept' })).toBeNull();
+    fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }));
+    expect(post).not.toHaveBeenCalled();
+    expect(within(c).getByRole('button', { name: 'Accept' })).toBeTruthy();
+    fireEvent.click(within(c).getByRole('button', { name: 'Stop run' }));
+    fireEvent.click(within(within(c).getByRole('group', { name: 'Confirm stop' })).getByRole('button', { name: 'Confirm' }));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith('/api/runs/w1/respond', { action: 'Stop run', text: '' });
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(c).getByRole('button', { name: 'Request changes' })); // not an ending answer: one click
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
   it('a failed quick answer shows the error inline and re-enables the buttons', async () => {
     post = vi.fn(() => res({ error: 'Run is not waiting.' }, false));
     const { onDone } = mount({ waiting: [waitingRun('w1', 10)], active: [], finished: [] });

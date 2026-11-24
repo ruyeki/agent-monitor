@@ -203,7 +203,7 @@ describe('Thinking pill', () => {
     expect(pills(li)).toHaveLength(1);
     expect(pills(li)[0].textContent).toContain('Bash');
     expect(li.textContent).toContain('npm test');
-    expect(li.textContent).toMatch(/idle/);
+    expect(li.textContent).not.toMatch(/idle/); // active 1 s ago: no "idle 1s" on a working agent
   });
 
   it('with no open call but activity under 2 minutes ago, the pill is labelled with the stage', () => {

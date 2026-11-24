@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Elapsed } from '../Ago.jsx';
 import { getAgentActivity } from '../api.js';
 import { useNow, useThrottledTick } from '../hooks.js';
-import { agentCall, agentName, contextPct, crewTree, modelLabel } from '../lib/crew.js';
-import { formatCost, formatTokens } from '../lib/format.js';
-import { pillLabel, toolCalls } from '../lib/toolCalls.js';
-import { stageLabel } from '../RunList.jsx';
-import { AgentPill, Avatar, StatusPill } from '../RunBits.jsx';
+import { agentCall, agentLabel, contextPct, crewTree, modelLabel } from '../lib/crew.js';
+import { formatCost } from '../lib/format.js';
+import { toolCalls } from '../lib/toolCalls.js';
+import { AgentPill, Avatar } from '../RunBits.jsx';
 import { WaitingCard } from '../WaitingCards.jsx';
-import { ThinkingLoader } from '../vendor/affectui/thinking-loader.tsx';
-import { ToolCallList } from './RunSide.jsx';
+import { ToolCallList, Totals } from './RunSide.jsx';
 
 const MAX_CALLS = 10;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -19,6 +17,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // Wide cards lay the second row out in columns; narrow ones stack it (container query in styles.css).
 function AgentCard({ node, view }) {
   const { detail, now, selectedId, onSelect } = view;
+  const crew = detail.agents;
   const a = node.agent;
   const selected = selectedId === a.id;
   const pct = contextPct(a);
@@ -32,7 +31,7 @@ function AgentCard({ node, view }) {
           <Avatar agent={a} />
           <span className="agwho">
             <button type="button" className="ag-hit nm" aria-pressed={selected} onClick={() => onSelect(a.id)}>
-              {agentName(a)}
+              {agentLabel(a, crew)}
             </button>
             <span className="md">
               {modelLabel(a.model)}
@@ -87,66 +86,6 @@ function Tree({ nodes, view, depth = 0 }) {
   );
 }
 
-function NowCard({ detail, now }) {
-  const { run, agents = [] } = detail;
-  const running = agents.filter((a) => a.status === 'running');
-  return (
-    <section className="card side-card" aria-label="Now">
-      <div className="cardhead">
-        <h3>Now</h3>
-        <StatusPill status={run.status} />
-      </div>
-      <div className="pad">
-        {running.length ? (
-          <ul className="now-list">
-            {running.map((a) => {
-              const label = pillLabel(detail, a, now, stageLabel(run));
-              const call = agentCall(detail, a, now);
-              return (
-                <li key={a.id} className="now-item">
-                  <span className="now-who">
-                    <Avatar agent={a} />
-                    <strong>{agentName(a)}</strong>
-                  </span>
-                  {call && <span className="mono muted small now-call">{call}</span>}
-                  {label && <ThinkingLoader size="sm" phases={[label]} />}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="muted">No agent is running.</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Totals({ detail }) {
-  const t = detail.tokens?.total || {};
-  return (
-    <section className="card side-card" aria-label="Totals">
-      <div className="cardhead">
-        <h3>Totals</h3>
-        <span className="muted small">API-equivalent estimate</span>
-      </div>
-      <div className="pad totals-grid">
-        <div>
-          <div className="muted small">Tokens</div>
-          <strong className="big">{formatTokens(t.total)}</strong>
-        </div>
-        <div>
-          <div className="muted small">Cost</div>
-          <strong className="big">{formatCost(t.cost)}</strong>
-        </div>
-        <p className="muted small totals-split">
-          Input {formatTokens(t.input)} · Output {formatTokens(t.output)} · Cache write {formatTokens(t.cacheWrite)} · Cache read {formatTokens(t.cacheRead)}
-        </p>
-      </div>
-    </section>
-  );
-}
-
 // The Crew tab (contract C7): the agent tree, and a rail with what is happening now, the tool calls and the totals.
 export function CrewTab({ detail, onChanged }) {
   const { run } = detail;
@@ -179,7 +118,13 @@ export function CrewTab({ detail, onChanged }) {
   const chosen = tree.nodes.find((n) => n.id === selected)?.agent;
   const running = tree.nodes.filter((n) => n.agent.status === 'running').length;
   const total = tree.nodes.length;
-  const view = { detail, now, selectedId: selected, onSelect: (id) => setPicked((cur) => (cur === id ? null : id)) };
+  const callsRef = useRef(null);
+  // On a phone the rail sits far below the tree, so picking an agent brings its tool calls into view.
+  const onSelect = (id) => {
+    setPicked((cur) => (cur === id ? null : id));
+    if (id !== selected && window.matchMedia?.('(max-width: 768px)').matches) callsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  };
+  const view = { detail, now, selectedId: selected, onSelect };
 
   return (
     <div className="run-body crew-body" role="tabpanel" id="panel-crew" aria-labelledby="tab-crew">
@@ -207,20 +152,19 @@ export function CrewTab({ detail, onChanged }) {
       </section>
       <aside className="run-side" aria-label="Run details">
         {run.status === 'waiting' && <WaitingCard run={run} onDone={onChanged} />}
-        <NowCard detail={detail} now={now} />
-        <section className="card side-card" aria-label="Tool calls">
+        <section className="card side-card" aria-label="Tool calls" ref={callsRef}>
           <div className="cardhead">
             <h3>Tool calls</h3>
             {chosen ? (
               <button type="button" className="sm" onClick={() => setPicked(null)}>
-                Clear filter ({agentName(chosen)})
+                Clear filter ({agentLabel(chosen, detail.agents)})
               </button>
             ) : (
               <span className="faint small">newest first</span>
             )}
           </div>
           <div className="pad">
-            <ToolCallList calls={calls} empty={chosen ? 'No tool calls from this agent yet.' : 'No tool calls yet.'} />
+            <ToolCallList calls={calls} agents={detail.agents} hideAgent={!!chosen} empty={chosen ? 'No tool calls from this agent yet.' : 'No tool calls yet.'} />
           </div>
         </section>
         <Totals detail={detail} />

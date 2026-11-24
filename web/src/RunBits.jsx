@@ -1,5 +1,5 @@
 // Small pieces shared by the Monitor rows, the Fleet cards and the run header.
-import { agentName, avatarOf, sortCrew } from './lib/crew.js';
+import { agentLabel, avatarOf, sortCrew } from './lib/crew.js';
 import { stageSteps } from './lib/stepper.js';
 
 const MAX_AVATARS = 5;
@@ -9,7 +9,7 @@ export function Avatars({ agents }) {
   const crew = sortCrew(agents);
   if (!crew.length) return null;
   const shown = crew.slice(0, MAX_AVATARS);
-  const names = crew.map(agentName);
+  const names = crew.map((a) => agentLabel(a, crew));
   return (
     <span className="avs" role="img" aria-label={`${crew.length} ${crew.length === 1 ? 'agent' : 'agents'}: ${names.join(', ')}`}>
       {shown.map((a, i) => {

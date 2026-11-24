@@ -30,8 +30,8 @@ describe('RunSide today', () => {
     expect(lis).toHaveLength(1);
     expect(lis[0].textContent).toContain('worker');
     expect(lis[0].textContent).toContain('build it');
-    expect(lis[0].textContent).toContain('sonnet');
-    expect(lis[0].textContent).toMatch(/idle 7s/);
+    expect(lis[0].textContent).toContain('Sonnet'); // modelLabel, not the raw model id
+    expect(lis[0].textContent).not.toMatch(/idle/); // an agent active 7 s ago is not called idle (no-activity text only after a minute)
     expect(lis[0].textContent).toContain('Bash');
     expect(lis[0].textContent).toContain('npm test');
   });
@@ -61,7 +61,7 @@ describe('RunSide today', () => {
   it('Status, Totals and Timeline sections are present', () => {
     render(<RunSide detail={detail()} onChanged={() => {}} />);
     expect(screen.getByText(/At: VERIFY/)).toBeTruthy();
-    expect(screen.getByText(/Duration:/)).toBeTruthy();
+    expect(screen.getByText('Duration')).toBeTruthy(); // the shared Totals card
     expect(screen.getByText('hello')).toBeTruthy();
   });
 });

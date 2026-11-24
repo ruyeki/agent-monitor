@@ -2,7 +2,10 @@
 // clock is passed in.
 import { pillLabel, toolCalls } from './toolCalls.js';
 
-// Description words first: the verifier and the white-hat run as `sonnet-engineer`, so the type alone would hide them.
+// A specific type (lead / verifier / white-hat / reviewer in its name) decides the role by itself: a fable-lead whose
+// description says "reviews the work" is still the lead. Description words only decide for generic types
+// (`sonnet-engineer`, `general-purpose`, `worker`): the verifier and the white-hat run as `sonnet-engineer`, so the type
+// alone would hide them.
 // The word that comes first wins: "Lead: plan; review each piece" is a lead, "Verifier for the lead's plan" a verifier.
 const DESC_ROLES = [
   [/\bverif/i, 'verifier'],
@@ -18,9 +21,12 @@ const TYPE_ROLES = [
   [/engineer|worker/, 'engineer'],
 ];
 
+const SPECIFIC_TYPE = /lead|verif|white|review/;
+
 export function roleOf(agent) {
   const type = String(agent?.type ?? '').toLowerCase();
   if (type === 'main' || String(agent?.id ?? '').startsWith('main:')) return 'main';
+  if (SPECIFIC_TYPE.test(type)) return TYPE_ROLES.find(([re]) => re.test(type))[1];
   const desc = String(agent?.description ?? '');
   const hits = DESC_ROLES.map(([re, role]) => [desc.search(re), role]).filter(([at]) => at >= 0);
   if (hits.length) return hits.sort((x, y) => x[0] - y[0])[0][1];
@@ -47,6 +53,23 @@ export function agentName(agent) {
   const word = { verifier: 'verif', 'white-hat': 'white', reviewer: 'review', lead: 'lead' }[role];
   if (word && !type.toLowerCase().includes(word)) return role;
   return type || 'agent';
+}
+
+// The name shown wherever an agent is named (card, Now, tool-call rail, filter button). One rule: a name that more than
+// one agent of the run shows gets its number among them, in the run's order ("sonnet-engineer 2"); a unique name stays
+// plain. `crew` is the run's agents; without it the plain name is returned.
+export function agentLabel(agent, crew) {
+  const name = agentName(agent);
+  const same = (Array.isArray(crew) ? crew : []).filter((a) => a && typeof a === 'object' && agentName(a) === name);
+  if (same.length < 2) return name;
+  const at = same.findIndex((a) => a === agent || (a.id != null && a.id === agent?.id));
+  return at < 0 ? name : `${name} ${at + 1}`;
+}
+
+// agentId -> agentLabel for every agent of the run.
+export function agentLabels(agents) {
+  const list = Array.isArray(agents) ? agents : [];
+  return new Map(list.filter((a) => a && a.id != null).map((a) => [a.id, agentLabel(a, list)]));
 }
 
 // Agents in avatar order: main, lead, engineers, verifier, white-hat, the rest; ties keep their order.
@@ -83,7 +106,7 @@ export function nowWorking(detail, nowMs) {
   const ordered = call ? [agents.find((a) => a.id === call.agentId)] : [...agents].sort((a, b) => (Date.parse(b.lastActivityAt) || 0) - (Date.parse(a.lastActivityAt) || 0));
   for (const a of ordered) {
     const text = agentCall(detail, a, nowMs);
-    if (text) return { agent: a, name: agentName(a), call: text };
+    if (text) return { agent: a, name: agentLabel(a, detail.agents), call: text };
   }
   return null;
 }

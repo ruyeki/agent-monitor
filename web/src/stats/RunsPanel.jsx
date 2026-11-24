@@ -10,9 +10,9 @@ const H = 150;
 const M = { l: 30, r: 6, t: 8, b: 22 };
 const PLOT_H = H - M.t - M.b;
 const OUTCOMES = [
-  ['finished', 'Finished', 'var(--ok)'],
-  ['stopped', 'Stopped', 'var(--danger)'],
-  ['open', 'Open', 'var(--run-run)'],
+  ['finished', 'Done', 'var(--ok)'],
+  ['stopped', 'Stopped', 'var(--run-idle)'], // a stop the user asked for is not a failure
+  ['open', 'Running or waiting', 'var(--run-run)'],
 ];
 
 const runsLabel = (d) => `${dayLabel(d.day)} · ${d.count} ${d.count === 1 ? 'run' : 'runs'}`;

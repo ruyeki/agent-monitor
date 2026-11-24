@@ -594,11 +594,11 @@ describe('runs', () => {
     await screen.findByRole('region', { name: 'Runs' });
     expect(within(panel()).getByRole('heading', { name: 'Runs' })).toBeTruthy();
     const count = (k) => panel().querySelector(`[data-outcome="${k}"]`).textContent;
-    expect(count('finished')).toContain('Finished');
+    expect(count('finished')).toContain('Done');
     expect(count('finished')).toContain('2');
     expect(count('stopped')).toContain('Stopped');
     expect(count('stopped')).toContain('1');
-    expect(count('open')).toContain('Open');
+    expect(count('open')).toContain('Running or waiting');
     expect(count('open')).toContain('2');
     expect(panel().textContent).toContain('Median duration');
     expect(panel().textContent).toContain('2h 0m'); // 1 h and 3 h

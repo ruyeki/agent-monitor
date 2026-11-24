@@ -1,6 +1,6 @@
 // Contract C10 (roles and avatars) plus the model label and "who is working" helpers of web/src/lib/crew.js.
 import { describe, expect, it } from 'vitest';
-import { agentCall, agentName, avatarOf, contextPct, crewTree, modelLabel, nowWorking, roleOf, sortCrew } from '../src/lib/crew.js';
+import { agentCall, agentLabel, agentLabels, agentName, avatarOf, contextPct, crewTree, modelLabel, nowWorking, roleOf, sortCrew } from '../src/lib/crew.js';
 
 const NOW = Date.parse('2026-11-22T12:00:00Z');
 const iso = (ms) => new Date(ms).toISOString();
@@ -15,6 +15,15 @@ describe('roleOf / avatarOf', () => {
     expect(roleOf(ag('a', 'sonnet-engineer', { description: "Verifier for the lead's plan" }))).toBe('verifier');
     expect(roleOf(ag('a', 'fable-lead', { description: 'Lead: steer the build; review each piece' }))).toBe('lead'); // the first role word wins
     expect(roleOf(ag('a', 'sonnet-engineer', { description: 'Implement the Fleet layout' }))).toBe('engineer');
+  });
+
+  it('a specific type wins over description words: the fable-lead is the lead, not a reviewer', () => {
+    expect(roleOf(ag('a', 'fable-lead', { description: 'Plans, delegates and reviews the crew-ledger work' }))).toBe('lead');
+    expect(avatarOf(ag('a', 'fable-lead', { description: 'Plans, delegates and reviews the crew-ledger work' })).letter).toBe('L');
+    expect(roleOf(ag('a', 'code-reviewer', { description: 'Lead the way' }))).toBe('reviewer');
+    expect(roleOf(ag('a', 'white-hat', { description: 'Verifier of nothing' }))).toBe('white-hat');
+    expect(roleOf(ag('a', 'general-purpose', { description: 'Verifier: baseline tests' }))).toBe('verifier'); // generic type: the description decides
+    expect(agentName(ag('a', 'fable-lead', { description: 'Plans, delegates and reviews the work' }))).toBe('fable-lead');
   });
 
   it('falls back to the type: main, fable-lead, *-engineer, worker, codex, anything else', () => {
@@ -37,6 +46,31 @@ describe('roleOf / avatarOf', () => {
     expect(av(ag('a', 'sonnet-engineer', { description: 'white-hat' }))).toEqual(['W', 'wh']);
     expect(av(ag('a', 'Explore'))).toEqual(['E', 'other']);
     expect(av(ag('a', ''))).toEqual(['?', 'other']);
+  });
+});
+
+describe('agentLabel / agentLabels', () => {
+  const crew = [ag('main:s', 'main'), ag('lead', 'fable-lead'), ag('e1', 'sonnet-engineer'), ag('e2', 'sonnet-engineer', { description: 'Build it' }), ag('v', 'sonnet-engineer', { description: 'Verifier: tests' }), ag('e3', 'sonnet-engineer')];
+  it('a name shared by several agents gets its number among them, in the run order', () => {
+    expect(agentLabel(crew[2], crew)).toBe('sonnet-engineer 1');
+    expect(agentLabel(crew[3], crew)).toBe('sonnet-engineer 2');
+    expect(agentLabel(crew[5], crew)).toBe('sonnet-engineer 3');
+  });
+  it('a unique name stays plain, also without a crew', () => {
+    expect(agentLabel(crew[1], crew)).toBe('fable-lead');
+    expect(agentLabel(crew[4], crew)).toBe('verifier');
+    expect(agentLabel(crew[0], crew)).toBe('Main session');
+    expect(agentLabel(crew[2])).toBe('sonnet-engineer');
+    expect(agentLabel(crew[2], [])).toBe('sonnet-engineer');
+  });
+  it('agentLabels maps every agent id to its label', () => {
+    const m = agentLabels(crew);
+    expect([...m.entries()]).toEqual([['main:s', 'Main session'], ['lead', 'fable-lead'], ['e1', 'sonnet-engineer 1'], ['e2', 'sonnet-engineer 2'], ['v', 'verifier'], ['e3', 'sonnet-engineer 3']]);
+    expect(agentLabels(null).size).toBe(0);
+  });
+  it('nowWorking names the working agent by its label', () => {
+    const detail = { run: { id: 'r', status: 'active' }, agents: [crew[2], crew[3]], activity: [{ id: 1, at: iso(NOW - 1000), agentId: 'e2', event: 'tool', tool: 'Edit', summary: 'a.js', toolUseId: 'u1', endedAt: null, outcome: null }] };
+    expect(nowWorking(detail, NOW)?.name).toBe('sonnet-engineer 2');
   });
 });
 

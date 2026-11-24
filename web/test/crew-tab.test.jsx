@@ -168,13 +168,10 @@ describe('Crew tab', () => {
     expect(shown()).toBe(3);
   });
 
-  it('rail: Now lists running agents with their call, Totals shows tokens, cost and the four counts', async () => {
+  it('rail: no Now card (the tree shows who works), Totals shows tokens, cost and the four counts', async () => {
     render(<RunView id="r1" tab="crew" />);
     await crewCard();
-    const now = screen.getByRole('region', { name: 'Now' });
-    expect(now.textContent).toContain('sonnet-engineer');
-    expect(now.textContent).toContain('Edit web/src/Monitor.jsx');
-    expect(now.textContent).not.toContain('Main session'); // idle
+    expect(screen.queryByRole('region', { name: 'Now' })).toBeNull();
     const tot = screen.getByRole('region', { name: 'Totals' });
     expect(tot.textContent).toContain('3.1M');
     expect(tot.textContent).toContain('$1.86');
@@ -201,7 +198,6 @@ describe('Crew tab', () => {
     render(<RunView id="r1" tab="crew" />);
     await crewCard();
     expect(screen.getByText('No agents yet.')).toBeTruthy();
-    expect(screen.getByText('No agent is running.')).toBeTruthy();
     expect(screen.getByText('No tool calls yet.')).toBeTruthy();
   });
 

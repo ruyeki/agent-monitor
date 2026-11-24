@@ -118,7 +118,7 @@ export function DailyChart({ daily, range, metric, slots, firstDay, ready = true
               <tr key={c.day}>
                 <td>{c.day}</td>
                 {series.map((s) => (
-                  <td key={s.key}>{metric === 'cost' ? formatCost(c.values[s.key]) : c.values[s.key]}</td>
+                  <td key={s.key}>{metric === 'cost' ? formatCost(c.values[s.key] ?? 0) : c.values[s.key]}</td>
                 ))}
                 <td>{metric === 'cost' ? formatCost(c.total) : c.total}</td>
               </tr>

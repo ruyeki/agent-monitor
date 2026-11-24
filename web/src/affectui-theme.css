@@ -36,6 +36,9 @@
   --aui-shadow-card: var(--elev-1);
 }
 
+/* ---- Tool-call rail: the agent label needs room to tell same-named agents apart ---- */
+:root .run-side .ui-tclc__agent { flex: none; max-width: 60%; font-size: 12px; } /* the number must stay visible: the summary gives way, not the label */
+
 /* ---- Decision inbox ---- */
 :root .ui-dic {
   --ui-dic-card: var(--surface);

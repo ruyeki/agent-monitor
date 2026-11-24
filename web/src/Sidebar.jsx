@@ -40,7 +40,9 @@ export const VIEWS = [
   ['finished', 'Finished', 'dot-finished'],
 ];
 
-export function Sidebar({ current, openCount, counts, query, onQuery, searchRef, view, onView, connection, theme, onTheme }) {
+// `routeName` is the page's own route (a run page has current 'monitor' but is not the Monitor): the Views filter shows as
+// pressed only on the Monitor itself.
+export function Sidebar({ current, routeName = current, openCount, counts, query, onQuery, searchRef, view, onView, connection, theme, onTheme }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -80,7 +82,7 @@ export function Sidebar({ current, openCount, counts, query, onQuery, searchRef,
       <nav className="side-nav views" aria-label="Views">
         <h2 className="nav-head">Views</h2>
         {VIEWS.map(([id, label, dot]) => (
-          <button key={id} type="button" aria-pressed={view === id} onClick={() => onView(id)}>
+          <button key={id} type="button" aria-pressed={routeName === 'monitor' && view === id} onClick={() => onView(id)}>
             <span className={`dot ${dot}`} aria-hidden="true" />
             <span className="nav-label">{label}</span>
             <span className="nav-count">{counts[id]}</span>

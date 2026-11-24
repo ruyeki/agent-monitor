@@ -89,13 +89,13 @@ describe('RunView', () => {
     const agents = within(await screen.findByRole('region', { name: 'Active agents' }));
     expect(agents.getByText('worker')).toBeTruthy();
     expect(agents.getByText('build it')).toBeTruthy();
-    expect(agents.getByText(/idle 7s/)).toBeTruthy();
+    expect(agents.queryByText(/idle/)).toBeNull(); // active 7 s ago: not called idle
     expect(agents.getByText('npm test')).toBeTruthy();
     expect(agents.queryByText('lead')).toBeNull();
     expect(within(screen.getByRole('region', { name: 'Tool calls' })).getAllByText('npm test').length).toBeGreaterThan(0);
     const totals = screen.getByRole('region', { name: 'Totals' }).textContent;
-    expect(totals).toContain('Tokens: 6.3k'); // the run total from detail.tokens
-    expect(totals).toContain('Duration: 1m 5s');
+    expect(totals).toContain('Tokens6.3k'); // the run total from detail.tokens (label + figure of the shared Totals card)
+    expect(totals).toContain('Duration1m 5s');
     expect(within(screen.getByRole('region', { name: 'Timeline' })).getByText('hello')).toBeTruthy();
   });
 
@@ -111,7 +111,8 @@ describe('RunView', () => {
     expect(totals).toContain('Output 1.4M');
     expect(totals).toContain('Main session (not on any stage): 100k');
     expect(totals).not.toContain('Unattributed');
-    expect(totals).toContain('≈ $12.50 API-equivalent (estimate)');
+    expect(totals).toContain('Cost$12.50');
+    expect(totals).toContain('API-equivalent estimate');
     unmount();
     current = detail({ tokens: { nodes: t(1, 0, 0, 0), main: t(0, 0, 0, 0), unattributed: t(3000, 0, 0, 0), total: t(3001, 0, 0, 0) } });
     render(<RunView id="my-run" />);

@@ -90,6 +90,34 @@ describe('Decision inbox on the Monitor', () => {
     expect(within(a).queryByRole('textbox')).toBeNull();
   });
 
+  it('an answer that ends the run (ends: true) is a danger button; the first click only asks, Cancel keeps the reply, Confirm sends it', async () => {
+    post = vi.fn(() => res({}));
+    renderMonitor([mk('w1', { actions: [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }] }), mk('w2')]);
+    const w1 = item('Run w1');
+    expect(within(w1).getByRole('button', { name: 'Stop run' }).classList.contains('danger')).toBe(true);
+    expect(within(w1).getByRole('button', { name: 'Agree spec' }).classList.contains('danger')).toBe(false);
+    expect(within(item('Run w2')).getByRole('button', { name: 'Stop run' }).classList.contains('danger')).toBe(false); // no flag: unchanged
+    fireEvent.change(within(w1).getByRole('textbox'), { target: { value: 'because' } });
+    fireEvent.click(within(w1).getByRole('button', { name: 'Stop run' }));
+    expect(post).not.toHaveBeenCalled();
+    const group = within(w1).getByRole('group', { name: 'Confirm stop' });
+    expect(group.textContent).toContain("Stop the run? This can't be undone.");
+    fireEvent.click(within(group).getByRole('button', { name: 'Cancel' }));
+    expect(post).not.toHaveBeenCalled();
+    expect(within(w1).getByRole('textbox').value).toBe('because');
+    fireEvent.click(within(w1).getByRole('button', { name: 'Stop run' }));
+    await act(async () => fireEvent.click(within(within(w1).getByRole('group', { name: 'Confirm stop' })).getByRole('button', { name: 'Confirm' })));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith('/api/runs/w1/respond', { action: 'Stop run', text: 'because' });
+  });
+
+  it('a non-ending answer ("Agree spec") is still one click', async () => {
+    post = vi.fn(() => res({}));
+    renderMonitor([mk('w1', { actions: [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }] })]);
+    await act(async () => fireEvent.click(within(item('Run w1')).getByRole('button', { name: 'Agree spec' })));
+    expect(post).toHaveBeenCalledWith('/api/runs/w1/respond', { action: 'Agree spec', text: '' });
+  });
+
   it('sends the typed reply with the chosen action; while pending only that item is disabled', async () => {
     const d = deferred();
     post = vi.fn(() => d.promise);
