@@ -298,13 +298,17 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
 .crew-main .cardhead h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .tree { padding: 16px 16px 18px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .tree-sub { margin: 0 0 8px; font-weight: 500; text-transform: none; }
-.tn-list { --ind: 24px; --elbow: 23px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.tn-list .tn-list { margin: 8px 0 0 var(--ind); }
-.tn-list.d4 { --ind: 12px; }
+.tn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Indent per level: 24px (12px at depth 4, 16px / 12px on narrow screens). Written out per selector, not as custom properties:
+   the theme-sync check treats every custom property as a theme token. The elbow sits 23px down the child's card. */
+.tn-list .tn-list { margin: 8px 0 0 24px; }
+.tn-list .tn-list.d4 { margin-left: 12px; }
 .tn-item { position: relative; min-width: 0; }
 /* Trunk: a line down the parent's side runs past every child except the last; the elbow joins the child's card. */
-.tn-list .tn-list > .tn-item:not(:last-child)::after { content: ''; position: absolute; left: calc(var(--ind) / -2); top: var(--elbow); bottom: 0; border-left: 1.5px solid var(--edge); pointer-events: none; }
-.tn-link { position: absolute; left: calc(var(--ind) / -2); top: -8px; width: calc(var(--ind) / 2); height: calc(var(--elbow) + 8px); box-sizing: border-box; border-left: 1.5px solid var(--edge); border-bottom: 1.5px solid var(--edge); border-bottom-left-radius: 8px; pointer-events: none; }
+.tn-list .tn-list > .tn-item:not(:last-child)::after { content: ''; position: absolute; left: -12px; top: 23px; bottom: 0; border-left: 1.5px solid var(--edge); pointer-events: none; }
+.tn-list .tn-list.d4 > .tn-item:not(:last-child)::after { left: -6px; }
+.tn-link { position: absolute; left: -12px; top: -8px; width: 12px; height: 31px; box-sizing: border-box; border-left: 1.5px solid var(--edge); border-bottom: 1.5px solid var(--edge); border-bottom-left-radius: 8px; pointer-events: none; }
+.tn-list.d4 > .tn-item > .tn-link { left: -6px; width: 6px; }
 .tn-link.live { border-color: var(--link); }
 .tn-card { container-type: inline-size; min-width: 0; }
 .ag { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer; min-width: 0; }
@@ -614,8 +618,12 @@ svg .dot { stroke: var(--surface); stroke-width: 2; }
   .fleet { grid-template-columns: minmax(0, 1fr); }
   .crew-strip { padding: 14px; }
   .tree { padding: 12px 10px 14px; }
-  .tn-list { --ind: 16px; }
-  .tn-list.d3, .tn-list.d4 { --ind: 12px; }
+  .tn-list .tn-list { margin-left: 16px; }
+  .tn-list .tn-list.d3, .tn-list .tn-list.d4 { margin-left: 12px; }
+  .tn-list .tn-list > .tn-item:not(:last-child)::after { left: -8px; }
+  .tn-list > .tn-item > .tn-link { left: -8px; width: 8px; }
+  .tn-list .tn-list.d3 > .tn-item:not(:last-child)::after, .tn-list .tn-list.d4 > .tn-item:not(:last-child)::after { left: -6px; }
+  .tn-list.d3 > .tn-item > .tn-link, .tn-list.d4 > .tn-item > .tn-link { left: -6px; width: 6px; }
   .run-body { display: flex; flex-direction: column; }
   .run-graph-wrap { height: 60vh; flex: none; }
   /* the workflow editor: palette, canvas and settings stack, and the page scrolls (it used to clip at the right edge) */
