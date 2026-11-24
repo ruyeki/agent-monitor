@@ -69,6 +69,7 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
   const openChanges = new Set(); // tool_use_ids that got a ledger row: only those get a result built and masked
   const pending = new Map(); // tool_use_id -> {sid, agentId, tool, key}
   const lastRead = new Map(); // agent id -> ms of the last transcript read
+  const orphans = new Map(); // meta toolUseId -> child agent id whose parent is not known yet (the spawning call's Post names it)
   const guessed = new Set(); // subagents whose parent came from the pending-call fallback (meta.json may still correct it)
   const modes = new Map(); // session id -> last permission mode written (skips repeat writes)
   const headlessDeny = (runId, sessionId) => {
@@ -78,8 +79,16 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
 
   // The parent from the subagent's meta.json toolUseId (the most reliable source), else null. Never the agent itself.
   function parentFromMeta(a, meta) {
-    const parent = store.agentOfToolUse(a.run_id, str(meta?.toolUseId));
-    return parent && parent !== a.agent_id ? parent : null;
+    const known = (id) => (id && id !== a.agent_id && store.getAgent(id) ? id : null);
+    const useId = str(meta?.toolUseId);
+    // The spawning call's row, else a depth-2+ meta's parentAgentId, else a depth-1 child's main session.
+    const parent = known(store.agentOfToolUse(a.run_id, useId)) ?? known(str(meta?.parentAgentId))
+      ?? (meta?.spawnDepth === 1 ? known(`main:${a.session_id}`) : null);
+    if (!parent && useId) {
+      if (orphans.size >= MAX_PENDING) orphans.delete(orphans.keys().next().value);
+      orphans.set(useId, a.agent_id);
+    }
+    return parent;
   }
   function setParent(a, parent, viaFallback) {
     if (!parent || parent === a.agent_id) return;
@@ -176,6 +185,14 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     if (tool === 'complete_stage' && stage && !failed) store.reportNode(aid, stage.slice(0, 80));
   }
 
+  // The run an event belongs to right now, without creating anything.
+  function runOf(p, provider) {
+    const aid = str(p.agent_id);
+    const bound = (aid && store.getAgent(aid)) || (provider === 'codex' && !aid && store.getAgent(`codex:${p.session_id}`));
+    if (bound) return bound.run_id;
+    return store.sessionRun(p.session_id, { adoptStopped: provider === 'codex' || Boolean(aid) })?.id ?? null;
+  }
+
   const commandOf = (input) => (Array.isArray(input?.command) ? input.command.join(' ') : String(input?.command ?? ''));
   const handedOver = (runId) => { const r = runId && store.getRun(runId); return r && r.provider === 'codex' && !ENDED.includes(r.status); };
 
@@ -207,6 +224,8 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
       store.noteMode(p.session_id, p.permission_mode); // a headless fork keeps the mode the stopped session had
     }
     if (!codex && ev === 'UserPromptSubmit' && !str(p.agent_id) && typeof p.session_id === 'string') store.releaseSession(p.session_id);
+    // An agent-monitor tool whose link() moves this event onto a run it was not on before (start_run) is the linking call: not counted.
+    const before = tool ? runOf(p, provider) : null;
     if (tool && ev === 'PostToolUse') link(p, provider);
     const who = resolve(p, provider);
     if (!who) {
@@ -221,6 +240,15 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
     if (!codex && typeof p.cwd === 'string' && (run.provider ?? 'claude') === 'claude') store.noteCwd(run.id, p.cwd);
     const act = (event, tool, summary, toolUseId) => store.addActivity(run.id, agentId, event, tool, summary, toolUseId);
     const agent = () => store.getAgent(agentId);
+    // One tool call: agent counters, the 'tool' activity row and (for a change candidate) the Ledger row. True when a Ledger row was added.
+    const recordCall = () => {
+      const summary = summarize(p.tool_input);
+      store.updateAgent(agentId, { last_tool: text(p.tool_name, 80), last_summary: summary, tool_calls: agent().tool_calls + 1, last_activity_at: new Date().toISOString(), waiting_permission: 0 });
+      act('tool', text(p.tool_name, 80), summary, p.tool_use_id);
+      if (!isChangeCandidate(p.tool_name, p.tool_input)) return false;
+      store.addChange(run.id, agentId, text(p.tool_name, 80), p.tool_use_id, ledgerText(changeInput(p.tool_name, p.tool_input), MAX_CHANGE_INPUT));
+      return true;
+    };
 
     switch (ev) {
       case 'PreToolUse': {
@@ -231,15 +259,9 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
         if ((codex || str(p.agent_id)) && run.status === 'stopped' && !tool) {
           return deny(`Agent Monitor: run ${run.id} was stopped by Ryan. Stop work and report back.`);
         }
-        const summary = summarize(p.tool_input);
-        store.updateAgent(agentId, { last_tool: text(p.tool_name, 80), last_summary: summary, tool_calls: agent().tool_calls + 1, last_activity_at: new Date().toISOString(), waiting_permission: 0 });
-        act('tool', text(p.tool_name, 80), summary, p.tool_use_id);
-        if (isChangeCandidate(p.tool_name, p.tool_input)) {
-          store.addChange(run.id, agentId, text(p.tool_name, 80), p.tool_use_id, ledgerText(changeInput(p.tool_name, p.tool_input), MAX_CHANGE_INPUT));
-          if (str(p.tool_use_id)) {
-            if (openChanges.size >= MAX_OPEN_CHANGES) openChanges.delete(openChanges.values().next().value);
-            openChanges.add(p.tool_use_id);
-          }
+        if (recordCall() && str(p.tool_use_id)) {
+          if (openChanges.size >= MAX_OPEN_CHANGES) openChanges.delete(openChanges.values().next().value);
+          openChanges.add(p.tool_use_id);
         }
         if (p.tool_use_id) {
           if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value);
@@ -249,18 +271,29 @@ export function createHooks(store, { projectsDir, port, defer = setImmediate, cl
       }
       case 'PostToolUse':
       case 'PostToolUseFailure': {
+        const useId = str(p.tool_use_id);
+        // Without PreToolUse this is the only event of the call: record it now (not the call that just linked this run).
+        const fresh = Boolean(useId) && !pending.has(useId) && !store.hasToolCall(run.id, useId) && (!tool || before === run.id);
         pending.delete(p.tool_use_id);
+        const candidate = fresh && recordCall();
         const fields = { waiting_permission: 0, last_activity_at: new Date().toISOString() };
         if (ev === 'PostToolUseFailure') {
           Object.assign(fields, { errors: agent().errors + 1, last_error: text(p.error, 200) });
           act('error', text(p.tool_name, 80), text(p.error, 120), p.tool_use_id);
         }
         store.endActivity(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error');
-        if (openChanges.delete(p.tool_use_id)) {
+        if (openChanges.delete(p.tool_use_id) || candidate) {
           store.endChange(run.id, p.tool_use_id, ev === 'PostToolUse' ? 'ok' : 'error',
             ledgerResult(changeResult(p.tool_name, p.tool_response, ev === 'PostToolUse' ? null : p.error), MAX_CHANGE_RESULT));
         }
         store.updateAgent(agentId, fields);
+        // The spawning call's Post names the parent of a child whose meta.json only had a toolUseId.
+        const child = SPAWN_TOOLS.has(p.tool_name) && useId ? orphans.get(useId) : null;
+        if (child) {
+          orphans.delete(useId);
+          const c = store.getAgent(child);
+          if (c) setParent(c, agentId, false);
+        }
         if (clock() - (lastRead.get(agentId) ?? 0) >= TOKEN_READ_EVERY_MS) {
           lastRead.set(agentId, clock());
           defer(() => { try { readTokens(agentId); } catch { /* tokens are best effort */ } });

@@ -60,13 +60,13 @@ test('no tool_use_id, an unknown one or a non-string one never throws and marks 
   assert.deepEqual(t.send('PostToolUse', { tool_name: 'Bash' }), {});
   assert.deepEqual(t.send('PostToolUse', { tool_name: 'Bash', tool_use_id: 'nope' }), {});
   assert.deepEqual(t.send('PostToolUseFailure', { tool_name: 'Bash', error: 'e', tool_use_id: 42 }), {});
-  const [row] = t.tools();
+  const row = t.tools().find((r) => r.toolUseId === null); // the unseen 'nope' now records its own row
   assert.equal(row.toolUseId, null);
   assert.equal(row.endedAt, null);
   assert.equal(row.outcome, null);
   t.store.endActivity(t.id, undefined, 'ok');
   t.store.endActivity('no-such-run', 'a', 'ok');
-  assert.equal(t.tools()[0].outcome, null);
+  assert.equal(t.tools().find((r) => r.toolUseId === null).outcome, null);
 });
 
 test('a Codex payload without tool_use_id keeps working', () => {

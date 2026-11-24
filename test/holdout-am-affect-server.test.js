@@ -65,7 +65,7 @@ test('an unknown id marks nothing; a second end does not overwrite the first; ot
   const t = setup();
   pre(t, 'a'); pre(t, 'b'); pre(t, 'c');
   t.ev('PostToolUse', { tool_name: 'Bash', tool_use_id: 'zzz' });
-  assert.ok(t.tools().every((r) => !r.endedAt));
+  assert.ok(['a', 'b', 'c'].every((id) => !rowOf(t, id).endedAt)); // the unseen 'zzz' records its own ended row
   t.ev('PostToolUse', { tool_name: 'Bash', tool_use_id: 'b' });
   const first = rowOf(t, 'b').endedAt;
   assert.ok(first, 'b ended');

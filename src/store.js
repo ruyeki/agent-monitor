@@ -464,6 +464,12 @@ export function openStore(dataDir) {
   const agentOfToolUse = (runId, toolUseId) => (typeof toolUseId === 'string' && toolUseId
     ? q("SELECT agent_id FROM activity WHERE run_id = ? AND tool_use_id = ? AND event = 'tool' AND tool IN ('Agent', 'Task') ORDER BY id LIMIT 1")
       .get(runId, toolUseId.slice(0, 200))?.agent_id ?? null : null);
+  // True when a 'tool' row with this tool_use_id already exists in the run (Post-only recording must not double count).
+  const hasToolCall = (runId, toolUseId) => typeof toolUseId === 'string' && toolUseId !== ''
+    && Boolean(q("SELECT 1 FROM activity WHERE run_id = ? AND tool_use_id = ? AND event = 'tool' LIMIT 1").get(runId, toolUseId.slice(0, 200)));
+  // One agent's activity rows (every event), newest first; limit clamped to 1..200.
+  const agentActivity = (runId, agentId, limit = 50) => q('SELECT id, at, agent_id AS agentId, event, tool, summary, tool_use_id AS toolUseId, ended_at AS endedAt, outcome FROM activity WHERE run_id = ? AND agent_id = ? ORDER BY id DESC LIMIT ?')
+    .all(runId, String(agentId), Math.min(200, Math.max(1, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 50)));
   const activityCount = (runId) => q('SELECT COUNT(*) AS n FROM activity WHERE run_id = ?').get(runId).n;
   // Everything token attribution needs for one run (pure input for attributeRun), or null.
   function attributionInput(id) {
@@ -531,6 +537,6 @@ export function openStore(dataDir) {
     getRun, summary, listRuns, startRun, completeStage, respond, stopRun, logRun, detail, attributionInput, finishedRuns,
     noteCwd, markLimit, handOver, setCodexThread, escalate, releaseSession,
     runAccount, resumeOnAccount, setClaudeSession, latestMainSession, noteMode, sessionMode, headlessRun,
-    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, addChange, endChange, changesOf, toolActivity, agentOfToolUse, activityCount,
+    linkSession, touchSession, sessionRun, getAgent, createAgent, updateAgent, reportNode, addActivity, endActivity, addChange, endChange, changesOf, toolActivity, agentOfToolUse, hasToolCall, agentActivity, activityCount,
   };
 }

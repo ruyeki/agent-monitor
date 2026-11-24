@@ -148,6 +148,13 @@ export async function startServer({
       }
       return send(res, 200, classifyChanges(rows));
     }
+    if (method === 'GET' && (g = m(/^\/api\/runs\/([^/]+)\/activity$/))) {
+      const id = decodeURIComponent(g[1]);
+      if (!store.getRun(id)) return send(res, 404, { error: 'No such run.' });
+      const agent = url.searchParams.get('agent');
+      if (!agent) return send(res, 400, { error: 'agent is required.' });
+      return send(res, 200, store.agentActivity(id, agent, url.searchParams.get('limit') ?? 50));
+    }
     if (method === 'POST' && (g = m(/^\/api\/runs\/([^/]+)\/respond$/))) {
       const b = await body();
       const r = store.respond(decodeURIComponent(g[1]), { action: b.action, text: typeof b.text === 'string' ? b.text : '' });

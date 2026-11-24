@@ -47,11 +47,13 @@ test('SQL metacharacters and LIKE wildcards in tool_use_id are data, not query t
   const w = world();
   w.send('victim', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'a' }, tool_use_id: 'toolu_A' });
   w.send('victim', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'b' }, tool_use_id: 'toolu_B' });
-  for (const inj of ["' OR '1'='1", "x' OR 1=1 --", '%', '_', "toolu_A'; UPDATE activity SET outcome='ok'; --"]) {
-    w.send('victim', 'PostToolUse', { tool_name: 'Bash', tool_use_id: inj });
-  }
-  for (const r of w.tools(w.a.id)) assert.equal(r.outcome, null, `row ${r.toolUseId} ended by an injected id`);
-  assert.equal(w.store.detail(w.a.id).activity.length, 2);
+  const injected = ["' OR '1'='1", "x' OR 1=1 --", '%', '_', "toolu_A'; UPDATE activity SET outcome='ok'; --"];
+  for (const inj of injected) w.send('victim', 'PostToolUse', { tool_name: 'Bash', tool_use_id: inj });
+  // The original rows stay open; each injected id only gets its own new row, stored literally.
+  const rows = w.tools(w.a.id);
+  for (const id of ['toolu_A', 'toolu_B']) assert.equal(rows.find((r) => r.toolUseId === id).outcome, null, `row ${id} ended by an injected id`);
+  for (const inj of injected) assert.equal(rows.filter((r) => r.toolUseId === inj).length, 1, `${inj} not stored literally once`);
+  assert.equal(rows.length, 2 + injected.length);
 });
 
 test('an oversized tool_use_id is capped on write and still matches its own end; it cannot end a different row', () => {
