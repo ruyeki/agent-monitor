@@ -129,7 +129,7 @@ test('REST: a waiting gate offers actions and textField in the summary', async (
   const id = runIdOf((await M.call('start_run', { title: 'rest gate' })).text);
   await M.call('complete_stage', { run: id, stage: 'frame', outcome: 'done' });
   const r = (await S.api('GET', `/api/runs/${id}`)).json.run;
-  assert.deepEqual(r.actions, [{ label: 'Agree spec' }, { label: 'Stop run' }]);
+  assert.deepEqual(r.actions, [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }]);
   assert.equal(r.textField, true);
   assert.deepEqual(r.active.map((a) => a.id), ['gate1']);
 });

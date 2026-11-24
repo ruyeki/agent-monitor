@@ -67,9 +67,9 @@ test('v1 DB: opens, publishes the seed graph as v2, and every v1 run still resol
   assert.deepEqual([at('r-impl').stage, at('r-impl').status], ['implement', 'active']);
   assert.deepEqual(at('r-impl').active.map((a) => a.id), ['implement']);
   assert.deepEqual([at('r-gate').stage, at('r-gate').status, at('r-gate').ask], ['gate1', 'waiting', "What's your solution?"]);
-  assert.deepEqual(at('r-gate').actions, [{ label: 'Agree spec' }, { label: 'Stop run' }]);
+  assert.deepEqual(at('r-gate').actions, [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }]);
   assert.deepEqual([at('r-dec').stage, at('r-dec').ask], ['decision', 'cannot reach db']);
-  assert.deepEqual(at('r-dec').actions, [{ label: 'Resume' }, { label: 'Stop run' }]);
+  assert.deepEqual(at('r-dec').actions, [{ label: 'Resume' }, { label: 'Stop run', ends: true }]);
   assert.deepEqual([at('r-fix').stage, at('r-fix').round], ['fix', 2]);
   assert.deepEqual([at('r-done').stage, at('r-done').status], ['done', 'done']);
   assert.deepEqual([at('r-stop').stage, at('r-stop').status], ['stopped', 'stopped']);

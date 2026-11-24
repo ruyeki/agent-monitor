@@ -69,7 +69,7 @@ test('a waiting gate shows its ask, actions and textField through the summary', 
   assert.equal(r.stage, 'gate1');
   assert.deepEqual(r.active.map((a) => a.id), ['gate1']);
   assert.equal(r.ask, "What's your solution?");
-  assert.deepEqual(r.actions, [{ label: 'Agree spec' }, { label: 'Stop run' }]);
+  assert.deepEqual(r.actions, [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }]);
   assert.equal(r.textField, true);
 });
 
@@ -126,7 +126,7 @@ test('fix loop at the store: round counts, limit goes to decision, Resume resets
   assert.equal(d.stage, 'decision');
   assert.equal(d.status, 'waiting');
   assert.equal(d.ask, 'again (fix round limit 5 reached)');
-  assert.deepEqual(d.actions, [{ label: 'Resume' }, { label: 'Stop run' }]);
+  assert.deepEqual(d.actions, [{ label: 'Resume' }, { label: 'Stop run', ends: true }]);
   const r = s.respond(id, { action: 'Resume', text: '' }).run;
   assert.equal(r.round, 0);
   assert.equal(r.stage, 'plan');

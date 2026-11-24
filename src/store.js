@@ -197,6 +197,9 @@ export function openStore(dataDir) {
 
   const runAccount = (runId) => q('SELECT * FROM run_accounts WHERE run_id = ?').get(String(runId)) ?? null;
 
+  // True when answering `label` at this gate follows an edge into an End node (the answer ends the run).
+  const endsRun = (wf, gate, label) => wf.edges.some((e) => e.from === gate.id && e.on === label && nodeOf(wf, e.to)?.type === 'end');
+
   function summary(r) {
     const wf = version(r.workflow_version);
     const { active } = stateOf(r);
@@ -206,7 +209,7 @@ export function openStore(dataDir) {
       stage: r.stage, stageName: nodeOf(wf, r.stage)?.name ?? r.stage,
       active: active.map((id) => ({ id, name: nodeOf(wf, id)?.name ?? id, type: nodeOf(wf, id)?.type ?? null })),
       round: r.round, maxRounds: wf.loop.maxRounds, status: r.status, verdict: r.verdict, ask: r.ask,
-      actions: gate ? gate.actions.map(({ label }) => ({ label })) : [], textField: !!gate?.textField,
+      actions: gate ? gate.actions.map(({ label }) => (endsRun(wf, gate, label) ? { label, ends: true } : { label })) : [], textField: !!gate?.textField,
       note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, endedAt: r.ended_at,
       provider: r.provider ?? 'claude', codexThreadId: r.codex_thread_id, limitAt: r.limit_at, resetsAt: r.resets_at, limitSource: r.limit_source,
       claudeAccount: runAccount(r.id)?.account ?? null,

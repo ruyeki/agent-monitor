@@ -54,7 +54,7 @@ test('start_run moves through the engine and records a timeline', () => {
   assert.equal(bad.error, "Stage 'verify' is not active. Active: frame.");
   s.completeStage('a', { stage: 'frame', outcome: 'pass' });
   const waiting = s.summary(s.getRun('a'));
-  assert.deepEqual(waiting.actions, [{ label: 'Agree spec' }, { label: 'Stop run' }]);
+  assert.deepEqual(waiting.actions, [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }]);
   assert.equal(waiting.textField, true);
   assert.equal(waiting.ask, "What's your solution?");
   assert.match(s.completeStage('a', { stage: 'gate1', outcome: 'pass' }).error, /use respond/);
@@ -205,7 +205,7 @@ test('fix loop: round counts up to the limit, then a decision; Resume restarts a
   }
   const d = s.completeStage('a', { stage: 'verify', outcome: 'fail', note: 'red' }).run;
   assert.deepEqual([d.stage, d.status, d.ask], ['decision', 'waiting', 'red (fix round limit 5 reached)']);
-  assert.deepEqual(d.actions, [{ label: 'Resume' }, { label: 'Stop run' }]);
+  assert.deepEqual(d.actions, [{ label: 'Resume' }, { label: 'Stop run', ends: true }]);
   const back = s.respond('a', { action: 'Resume' }).run;
   assert.deepEqual([back.stage, back.round, back.status], ['plan', 0, 'active']);
 });
@@ -376,4 +376,13 @@ test('migration: runs once, adds the new agent columns, and survives a reopen', 
   const db = new DatabaseSync(path.join(dir, 'agent-monitor.db'));
   assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
   db.close();
+});
+
+test('a waiting gate action whose edge leads to an End node is marked ends: true', () => {
+  const s = open();
+  s.startRun({ title: 'A' });
+  s.completeStage('a', { stage: 'frame', outcome: 'pass' });
+  const gate = s.summary(s.getRun('a'));
+  assert.deepEqual(gate.actions, [{ label: 'Agree spec' }, { label: 'Stop run', ends: true }]);
+  assert.equal('ends' in gate.actions[0], false);
 });
