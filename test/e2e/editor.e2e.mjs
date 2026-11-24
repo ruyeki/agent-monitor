@@ -114,8 +114,10 @@ await check('run view: read-only graph (no dragging, no connecting)', async () =
 await check('run view: side panel shows the ask, totals and timeline; responding moves the highlight live', async () => {
   const side = page.getByRole('complementary', { name: 'Run details' });
   ok(/solution/i.test(await side.innerText()), 'ask is not shown');
-  ok(/Tokens:/.test(await side.getByRole('region', { name: 'Totals' }).innerText()), 'no token total');
-  ok(/Duration:/.test(await side.getByRole('region', { name: 'Totals' }).innerText()), 'no duration');
+  const totals = await side.getByRole('region', { name: 'Totals' }).innerText();
+  ok(/Tokens/.test(totals), 'no token total');
+  ok(/Cost/.test(totals) && /API-equivalent estimate/.test(totals), 'no cost / estimate label');
+  ok(/Duration/.test(totals), 'no duration');
   ok(await side.getByRole('region', { name: 'Timeline' }).getByRole('listitem').count() > 0, 'empty timeline');
   await side.getByRole('button', { name: /agree spec/i }).click();
   ok(await until(async () => (await get(`/api/runs/${viewed}`)).run.stage === 'plan', 5000), 'run did not move to plan');

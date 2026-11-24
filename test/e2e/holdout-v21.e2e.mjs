@@ -254,10 +254,10 @@ await check('AC4 editor: each node line equals the /api/stats/versions per-node 
 // ---- AC5 run states
 await check('AC5 run view: finished run RA is mostly green; verify is passed with "1 fail"; end node done passed, stopped idle', async () => {
   const s = await runState(RA);
-  ok(s.verify.state === 'passed' && /^✓/.test(s.verify.status), `verify ${JSON.stringify(s.verify)}`);
+  ok(s.verify.state === 'passed' && /^(pass|done)$/.test(s.verify.status), `verify ${JSON.stringify(s.verify)}`);
   ok(s.verify.fails === '1 fail', `verify fails badge "${s.verify.fails}"`);
-  ok(s.gate1.state === 'passed' && s.gate1.status === '✓ Agree spec', `gate1 ${JSON.stringify(s.gate1)}`);
-  ok(s.gate2.status === '✓ Accept', `gate2 ${JSON.stringify(s.gate2)}`);
+  ok(s.gate1.state === 'passed' && s.gate1.status === 'Agree spec', `gate1 ${JSON.stringify(s.gate1)}`);
+  ok(s.gate2.status === 'Accept', `gate2 ${JSON.stringify(s.gate2)}`);
   ok(s.done.state === 'passed', `done ${JSON.stringify(s.done)}`);
   ok(s.stopped.state === 'idle', `stopped ${JSON.stringify(s.stopped)}`);
   ok(s.decision.state === 'idle' && s.decision.status === null, `decision ${JSON.stringify(s.decision)}`);
@@ -270,26 +270,26 @@ await check('AC5 run view: finished run RA is mostly green; verify is passed wit
 });
 await check('AC5 run view: waiting run RB is amber at gate1 with text; frame is green', async () => {
   const s = await runState(RB);
-  ok(s.gate1.state === 'waiting' && s.gate1.status === '⏸ waiting on Ryan', `gate1 ${JSON.stringify(s.gate1)}`);
+  ok(s.gate1.state === 'waiting' && s.gate1.status === 'waiting on you', `gate1 ${JSON.stringify(s.gate1)}`);
   ok(s.frame.state === 'passed', `frame ${JSON.stringify(s.frame)}`);
   ok(s.plan.state === 'idle', `plan ${JSON.stringify(s.plan)}`);
 });
 await check('AC5 run view: decision run RC is red "decision needed"; verify failed with regression text', async () => {
   const s = await runState(RC);
-  ok(s.decision.state === 'decision' && s.decision.status === '✕ decision needed', `decision ${JSON.stringify(s.decision)}`);
-  ok(s.verify.state === 'failed' && s.verify.status === '✕ regression', `verify ${JSON.stringify(s.verify)}`);
+  ok(s.decision.state === 'decision' && s.decision.status === 'decision needed', `decision ${JSON.stringify(s.decision)}`);
+  ok(s.verify.state === 'failed' && s.verify.status === 'regression', `verify ${JSON.stringify(s.verify)}`);
   ok(s.implement.state === 'passed' || s.implement.state === 'halted', `implement ${JSON.stringify(s.implement)}`);
 });
 await check('AC5 run view: running run RD shows verify running with "1 fail"; fix passed', async () => {
   const s = await runState(RD);
-  ok(s.verify.state === 'running' && s.verify.status === '▶ running', `verify ${JSON.stringify(s.verify)}`);
+  ok(s.verify.state === 'running' && s.verify.status === 'running', `verify ${JSON.stringify(s.verify)}`);
   ok(s.verify.fails === '1 fail', `fails "${s.verify.fails}"`);
   ok(s.fix.state === 'passed', `fix ${JSON.stringify(s.fix)}`);
   ok(s.pr.state === 'idle', `pr ${JSON.stringify(s.pr)}`);
 });
 await check('AC5 run view: stopped run RE is halted, not red or green', async () => {
   const s = await runState(RE);
-  ok(s.gate1.state === 'halted' && /^– stopped/.test(s.gate1.status), `gate1 ${JSON.stringify(s.gate1)}`);
+  ok(s.gate1.state === 'halted' && /^stopped/.test(s.gate1.status), `gate1 ${JSON.stringify(s.gate1)}`);
   ok(s.frame.state === 'passed', `frame ${JSON.stringify(s.frame)}`);
 });
 await check('AC5: legend explains every colour with an icon or text, and the run view is at >= 12 px names', async () => {
@@ -300,7 +300,7 @@ await check('AC5: legend explains every colour with an icon or text, and the run
   ok(await lg.getAttribute('role') === 'group', 'legend is not role=group');
   ok(await page.getByRole('group', { name: 'Run graph' }).locator('.run-legend').count() === 0, 'legend is still inside the Run graph group');
   const txt = await lg.innerText();
-  for (const w of [/passed/i, /failed|decision/i, /waiting on ryan/i, /running/i, /not reached|stopped/i, /✓/, /✕/, /⏸/, /▶/]) ok(w.test(txt), `legend lacks ${w}: ${txt}`);
+  for (const w of [/passed/i, /failed|decision/i, /waiting on you/i, /running/i, /not reached|stopped/i]) ok(w.test(txt), `legend lacks ${w}: ${txt}`);
   const r = await effectiveNameSizes();
   ok(Math.min(...r.sizes) >= 11.95, `run view names ${Math.min(...r.sizes).toFixed(2)} px effective (zoom ${r.scale.toFixed(2)})`);
 });

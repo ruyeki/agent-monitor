@@ -220,13 +220,14 @@ await check('monitor: page-head h1 "Monitor" with "Updated <time>"; Live status 
 });
 
 const tileText = async (p, label) => (await p.locator('section.stat-strip[aria-label="Today"] .stat', { hasText: label }).first().innerText()).replace(/\s+/g, ' ');
-await check('stat strip: 4 tiles with the exact labels; values match runs and usage stats', async () => {
-  ok(await pd.locator('section.stat-strip[aria-label="Today"] .stat').count() === 4, 'need 4 tiles');
+await check('stat strip: 3 tiles while something waits (4 with the Needs you tile when nothing does), exact labels; values match runs and usage stats', async () => {
   const all = await runs();
   const act = all.filter((r) => r.status === 'active').length, wt = all.filter((r) => r.status === 'waiting').length;
-  for (const l of ['Running', 'Needs you', 'Tokens today', 'Spend today']) ok(await pd.locator('section.stat-strip .stat', { hasText: l }).count() >= 1, `label ${l}`);
+  ok(await pd.locator('section.stat-strip[aria-label="Today"] .stat').count() === (wt > 0 ? 3 : 4), `tile count (waiting ${wt})`);
+  for (const l of wt > 0 ? ['Running', 'Tokens today', 'Spend today'] : ['Running', 'Needs you', 'Tokens today', 'Spend today']) ok(await pd.locator('section.stat-strip .stat', { hasText: l }).count() >= 1, `label ${l}`);
   ok(new RegExp(`Running\\s*${act}\\b`).test(await tileText(pd, 'Running')), `Running tile: ${await tileText(pd, 'Running')} want ${act}`);
-  ok(new RegExp(`Needs you\\s*${wt}\\b`).test(await tileText(pd, 'Needs you')), `Needs you tile: ${await tileText(pd, 'Needs you')} want ${wt}`);
+  if (wt > 0) ok(await pd.locator('section.stat-strip .stat', { hasText: 'Needs you' }).count() === 0, 'the Needs you tile shows while the inbox carries the count');
+  else ok(new RegExp(`Needs you\\s*${wt}\\b`).test(await tileText(pd, 'Needs you')), `Needs you tile: ${await tileText(pd, 'Needs you')} want ${wt}`);
   ok(/Tokens today\s*123k/.test(await tileText(pd, 'Tokens today')), `Tokens tile: ${await tileText(pd, 'Tokens today')}`);
   ok(/Spend today\s*\$\d/.test(await tileText(pd, 'Spend today')), `Spend tile: ${await tileText(pd, 'Spend today')}`);
 });
@@ -260,8 +261,11 @@ await check('rows: status icon aria-label, mono id, stage pill, rounds n/max, ag
     const id = ids[keyOf(title)];
     ok(info.tag === tag && info.icon === label, `${title}: ${JSON.stringify(info)}`);
     ok(info.mono === id, `${title}: mono id ${info.mono}`);
-    ok(info.pill && info.pill.length > 0, `${title}: stage pill`);
-    ok(/\b\d+\/\d+\b/.test(info.txt), `${title}: rounds in "${info.txt.replace(/\s+/g, ' ')}"`);
+    // an ended row drops its stage pill when it only repeats the end state (a Stopped run's stage is "Stopped")
+    if (label === 'Stopped') ok(!info.pill || info.pill.toLowerCase() !== 'stopped', `${title}: stage pill repeats the end state (${info.pill})`);
+    else ok(info.pill && info.pill.length > 0, `${title}: stage pill`);
+    const ru = (await runs()).find((r) => r.id === id);
+    if (!(ru && ru.status !== 'active' && !(Number(ru.round) > 0))) ok(/\b\d+\/\d+\b/.test(info.txt), `${title}: rounds in "${info.txt.replace(/\s+/g, ' ')}"`);
     ok(/(\bnow\b|\bago\b|\d+\s?(s|m|h|d)\b)/i.test(info.txt), `${title}: age in "${info.txt.replace(/\s+/g, ' ')}"`);
     ok(info.href === `#/runs/${id}/${label === 'Running' ? 'crew' : 'ledger'}`, `href ${info.href}`); // live rows open Crew, finished rows the Ledger
   }

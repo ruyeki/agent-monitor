@@ -230,6 +230,7 @@ await check('answering from the inbox confirms, folds the item away, opens the n
 await check('empty state after everything is answered', async () => {
   const card = itemOf('Escalated long ask');
   await card.getByRole('button', { name: /stop run/i }).click().catch(() => {});
+  await card.getByRole('button', { name: 'Confirm' }).click().catch(() => {}); // Stop run ends the run, so it asks to confirm
   ok(await until(async () => (await pane().getByText('Nothing is waiting on you.').count()) === 1, 6000), 'empty text missing');
   ok((await waitingCount()) === '0', 'count not zero');
 });

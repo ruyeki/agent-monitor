@@ -38,7 +38,7 @@ test('git push: permanent, Can\'t undo, code; force push too; the summary counts
   assert.equal(r.items.length, 2);
   for (const it of r.items) {
     assert.equal(it.tag, 'permanent');
-    assert.match(it.tagLabel, /Can.t undo/i);
+    assert.match(it.tagLabel, /Can.t be undone/i);
     assert.equal(it.category, 'code');
     assert.equal(typeof it.title, 'string');
     assert.ok(Array.isArray(it.chips));

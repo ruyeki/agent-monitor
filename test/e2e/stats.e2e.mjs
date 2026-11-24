@@ -184,7 +184,8 @@ await check('run view: the side panel shows run tokens with a separate main-sess
   const text = await bodyText();
   ok(/main session/i.test(text), 'no "main session" figure');
   ok(/4,?500|4\.5\s?[kK]/.test(text), 'the main session total 4500 is not shown');
-  ok(/≈\s*\$/.test(text) && /estimate/i.test(text), 'no estimate line');
+  const totals = await page.getByRole('region', { name: 'Totals' }).first().innerText();
+  ok(/Tokens/.test(totals) && /Cost/.test(totals) && /API-equivalent estimate/.test(totals), `Totals card lacks tokens, cost or the estimate label: ${totals.replace(/\n/g, ' | ')}`);
   ok(!/unattributed/i.test(text), 'unattributed is shown although it is 0');
   await page.screenshot({ path: path.join(SHOTS, 'run-tokens.png'), fullPage: true });
 });

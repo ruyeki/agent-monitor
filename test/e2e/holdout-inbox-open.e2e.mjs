@@ -97,7 +97,7 @@ await check('1440px: the inbox is full width above the run list; the run list is
   const strip = await p1.locator('section.stat-strip').boundingBox();
   const ib = await pane(p1).boundingBox();
   const lb = await p1.locator('section.run-list').boundingBox();
-  ok(ib.y >= strip.y + strip.height - 1, 'inbox is not under the KPI strip');
+  ok(ib.y + ib.height <= strip.y + 1, 'the inbox is not above the KPI strip (a waiting question comes first)');
   ok(ib.y + ib.height <= lb.y + 1, `inbox (bottom ${Math.round(ib.y + ib.height)}) is not above the run list (top ${Math.round(lb.y)})`);
   ok(ib.width >= strip.width * 0.93, `inbox ${Math.round(ib.width)}px is not full width (strip ${Math.round(strip.width)}px)`);
   ok(lb.width >= strip.width * 0.93, `run list ${Math.round(lb.width)}px is not full width (strip ${Math.round(strip.width)}px)`);
@@ -153,6 +153,7 @@ await check('answering the FIRST card folds only it; the others stay open and cl
   await first.locator('textarea').first().fill('keep this? no, answered').catch(() => {});
   await cards(p1).nth(2).locator('textarea').first().fill('third reply kept').catch(() => {});
   await first.locator('.ui-dic__actions button').last().click();
+  await first.getByRole('button', { name: 'Confirm' }).click(); // the last action is "Stop run": it ends the run, so it asks to confirm first
   await first.locator('.ui-dic__done').waitFor({ timeout: 4000 });
   ok((await pane(p1).locator('h2').innerText()).trim() === '2 need your input', 'count did not drop to 2');
   await p1.waitForTimeout(2600);
@@ -175,6 +176,7 @@ await check('answering the remaining cards ends in the compact All caught up sta
     for (let i = 0; i < await cards(p1).count(); i++) { const x = cards(p1).nth(i); if (await x.isVisible() && await x.locator('.ui-dic__actions button').count() && !(await x.locator('.ui-dic__done').count())) { c = x; break; } }
     ok(c, 'no open card to answer');
     await c.locator('.ui-dic__actions button').last().click();
+    await c.getByRole('button', { name: 'Confirm' }).click(); // Stop run asks to confirm
     await c.locator('.ui-dic__done').waitFor({ timeout: 4000 });
     await p1.waitForTimeout(1900);
   }
@@ -224,17 +226,22 @@ await check('1440px: answering the LAST card keeps it in its grid cell while the
   await p.goto(`${app3.url.replace(/\/$/, '')}/#/`);
   await until(async () => (await cards(p).count()) === 2, 6000);
   await cards(p).first().locator('.ui-dic__actions button').last().click();
+  await cards(p).first().getByRole('button', { name: 'Confirm' }).click(); // Stop run asks to confirm
   await cards(p).first().locator('.ui-dic__done').waitFor({ timeout: 4000 });
   await p.waitForTimeout(2200);
   let left = null;
   for (let i = 0; i < await cards(p).count(); i++) { const c = cards(p).nth(i); if (await c.isVisible()) left = c; }
   ok(left, 'no visible card left after the first fold');
   const before = await left.boundingBox();
+  const paneBefore = await pane(p).boundingBox();
   await left.locator('.ui-dic__actions button').last().click();
+  await left.getByRole('button', { name: 'Confirm' }).click(); // Stop run asks to confirm
   await left.locator('.ui-dic__done').waitFor({ timeout: 4000 });
   await p.waitForTimeout(300);
   const mid = await left.boundingBox();
-  ok(mid && near(mid.x, before.x, 2) && near(mid.y, before.y, 2), `last card moved while confirming: ${JSON.stringify({ before, mid })}`);
+  const paneMid = await pane(p).boundingBox();
+  // once nothing waits the KPI strip moves back above the inbox, so the whole aside shifts down: the card must stay put inside the aside
+  ok(mid && near(mid.x, before.x, 2) && near(mid.y - paneMid.y, before.y - paneBefore.y, 2), `last card moved while confirming: ${JSON.stringify({ before, mid, paneBefore, paneMid })}`);
   ok(mid.height > 40, `last card collapsed while confirming (${Math.round(mid.height)}px)`);
   await p.waitForTimeout(2200);
   await until(async () => /All caught up/.test(await pane(p).locator('h2').innerText()), 4000);

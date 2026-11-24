@@ -237,7 +237,7 @@ for (const theme of ['light', 'dark']) {
     ok(['7px', '8px'].includes(r.rad), `button radius ${r.rad}`); // the vendored inbox buttons use the theme radius (8px) minus 1px
     ok(parseInt(r.fw, 10) >= 500, `button weight ${r.fw}`);
   });
-  await check(`[${theme}] monitor: stat strip (4 tiles, 22px/600 values, 12px muted labels), run rows as a list, stage pill`, async () => {
+  await check(`[${theme}] monitor: stat strip (3 tiles while something waits, 22px/600 values, 12px muted labels), run rows as a list, stage pill`, async () => {
     await go(p, '#/', 'monitor');
     const r = await p.evaluate(() => {
       const t = document.querySelector('.stat-strip'); const v = t && t.querySelector('.stat-value'); const l = t && t.querySelector('.stat-label');
@@ -245,7 +245,7 @@ for (const theme of ['light', 'dark']) {
       return t && { n: t.querySelectorAll('.stat').length, vfs: getComputedStyle(v).fontSize, vfw: getComputedStyle(v).fontWeight, lfs: getComputedStyle(l).fontSize, ls: rows && getComputedStyle(rows).listStyleType, prad: pill && getComputedStyle(pill).borderTopLeftRadius, tables: document.querySelectorAll('table').length };
     });
     ok(r, 'no stat strip');
-    ok(r.n === 4, `stat tiles ${r.n}`);
+    ok(r.n === 3, `stat tiles ${r.n}`); // the Needs you tile is hidden while the inbox shows (4 when nothing waits)
     ok(r.vfs === '22px' && r.vfw === '600', `stat value ${r.vfs}/${r.vfw}`);
     ok(r.lfs === '12px', `stat label size ${r.lfs}`);
     ok(r.ls === 'none', `run list style ${r.ls}`);
@@ -265,17 +265,15 @@ for (const theme of ['light', 'dark']) {
     ok(JSON.stringify(bg.slice(0, 3)) !== JSON.stringify(acc.slice(0, 3)), 'codex badge is a solid accent fill');
     ok(/^1[12](\.5)?px$/.test(r.fs), `badge font ${r.fs}`);
   });
-  await check(`[${theme}] waiting cards (run view; frameless in the answer pane): radius 10px, 3px warn left edge, padding 16px, full width`, async () => {
+  await check(`[${theme}] waiting cards (run view; frameless in the answer pane): radius 10px, full warn tint + ring (no left stripe), padding 16px, full width`, async () => {
     await go(p, `#/runs/${RB}`, 'run-waiting');
-    const r = await p.evaluate(() => { const c = document.querySelector('.run-side .waiting-card'); const cs = getComputedStyle(c); return { rad: cs.borderTopLeftRadius, lw: cs.borderLeftWidth, lc: cs.borderLeftColor, warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(), pad: cs.paddingTop, tw: c.getBoundingClientRect().width, pw: (() => { const pe = c.parentElement, pcs = getComputedStyle(pe); return pe.clientWidth - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight); })(), shadow: cs.boxShadow }; });
+    const r = await p.evaluate(() => { const c = document.querySelector('.run-side .waiting-card'); const cs = getComputedStyle(c); return { rad: cs.borderTopLeftRadius, lw: cs.borderLeftWidth, lc: cs.borderLeftColor, warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(), pad: cs.paddingTop, bg: cs.backgroundColor, tw: c.getBoundingClientRect().width, pw: (() => { const pe = c.parentElement, pcs = getComputedStyle(pe); return pe.clientWidth - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight); })(), shadow: cs.boxShadow }; });
     ok(r.rad === '10px', `card radius ${r.rad}`); // affectUI card radius
-    ok(r.lw === '3px', `left edge ${r.lw}`);
+    ok(r.lw === '0px', `left edge ${r.lw} (no stripe)`);
+    ok(!/rgba\(0, ?0, ?0, ?0\)|transparent/.test(r.bg), `card has no tint: ${r.bg}`);
     ok(r.pad === '16px', `padding ${r.pad}`);
     ok(Math.abs(r.tw - r.pw) < 2, 'card not full width');
-    await p.evaluate(helpers);
-    const [lc, w] = await p.evaluate(({ a, b }) => [window.__rgba(a), window.__rgba(b)], { a: r.lc, b: r.warn });
-    ok(JSON.stringify(lc.slice(0, 3)) === JSON.stringify(w.slice(0, 3)), `left edge colour ${r.lc} != --warn ${r.warn}`);
-    ok(r.shadow && r.shadow !== 'none', 'no elevation on card');
+    ok(r.shadow && r.shadow !== 'none' && /inset/.test(r.shadow), `no warn ring on the card: ${r.shadow}`);
     await p.screenshot({ path: path.join(SHOTS, `waiting-card-${theme}.png`) });
   });
   await check(`[${theme}] inputs: radius 8px, 1px --border-strong, focus = --focus border + ring`, async () => {

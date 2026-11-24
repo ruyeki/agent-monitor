@@ -35,7 +35,7 @@ await check('Ledger tab: heading, rows with data-tag and tag label, summary and 
   ok((await p.getByRole('tab', { name: 'Ledger' }).getAttribute('aria-selected')) === 'true', 'Ledger tab selected');
   ok((await p.locator('[data-tag="permanent"]').count()) >= 1, 'a permanent row');
   const body = await p.locator('body').textContent();
-  ok(/Can.t undo/i.test(body) && /Backup kept/i.test(body) && /Can change back/i.test(body) && /Ran once/i.test(body), 'tag labels shown');
+  ok(/Can.t be undone/i.test(body) && /Backup kept/i.test(body) && /Can change back/i.test(body) && /Ran once/i.test(body), 'tag labels shown');
   ok(/Can.t be undone/i.test(body), 'summary card');
   ok(!body.includes('hunter2hunter2'), 'secret on the page');
   ok((await p.getByRole('button', { name: /undo|revert|roll ?back|restore/i }).count()) === 0, 'no undo controls');

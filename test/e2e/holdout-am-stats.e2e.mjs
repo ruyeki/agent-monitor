@@ -278,9 +278,9 @@ await check('Runs panel: per-day line chart, outcome counts, median duration, av
   ok(await sec.locator('rect[data-run-hit]').evaluateAll((e) => e.filter((x) => !/ · 0 runs$/.test(x.getAttribute('aria-label'))).length) === 1, 'days with runs'); // all three runs started today
   ok(await sec.getByRole('table', { name: 'Runs per day table' }).count() === 1, 'no sr-only table');
   const o = async (k) => (await sec.locator(`[data-outcome="${k}"]`).innerText());
-  ok(/finished/i.test(await o('finished')) && /1/.test(await o('finished')), `finished: ${await o('finished')}`);
+  ok(/Done/i.test(await o('finished')) && /1/.test(await o('finished')), `finished: ${await o('finished')}`);
   ok(/stopped/i.test(await o('stopped')) && /1/.test(await o('stopped')), `stopped: ${await o('stopped')}`);
-  ok(/open/i.test(await o('open')) && /1/.test(await o('open')), `open: ${await o('open')}`);
+  ok(/Running or waiting/i.test(await o('open')) && /1/.test(await o('open')), `open: ${await o('open')}`);
   const t = await sec.innerText();
   ok(/Median duration/.test(t) && /Avg fix rounds/.test(t), 'labels missing');
   ok(/Avg fix rounds\s*\n?\s*0\.0/.test(t), `avg fix rounds is not 0.0: ${t.replace(/\n/g, ' | ')}`);
