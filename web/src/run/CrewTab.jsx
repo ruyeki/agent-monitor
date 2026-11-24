@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Elapsed } from '../Ago.jsx';
-import { useNow } from '../hooks.js';
-import { barSpan } from '../lib/connectors.js';
+import { getAgentActivity } from '../api.js';
+import { useNow, useThrottledTick } from '../hooks.js';
 import { agentCall, agentName, contextPct, crewTree, modelLabel } from '../lib/crew.js';
 import { formatCost, formatTokens } from '../lib/format.js';
 import { pillLabel, toolCalls } from '../lib/toolCalls.js';
@@ -15,7 +15,8 @@ const MAX_CALLS = 10;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // One agent: who, task, what it is doing now, how full its context is, what it cost. The card is selectable
-// (aria-pressed on its name button, also by clicking anywhere on the card) to filter the tool calls.
+// (aria-pressed on its name button, also by clicking anywhere on the card) to show that agent's tool calls.
+// Wide cards lay the second row out in columns; narrow ones stack it (container query in styles.css).
 function AgentCard({ node, view }) {
   const { detail, now, selectedId, onSelect } = view;
   const a = node.agent;
@@ -25,92 +26,64 @@ function AgentCard({ node, view }) {
   const own = (e) => !e.target.closest?.('button, a');
   const nCalls = Number(a.toolCalls) || 0; // the server's per-agent count (the activity list holds only the last 100 rows)
   return (
-    <article className={selected ? 'card ag sel' : 'card ag'} data-agent-id={a.id} onClick={(e) => own(e) && onSelect(a.id)}>
-      <div className="aghead">
-        <Avatar agent={a} />
-        <span className="agwho">
-          <button type="button" className="ag-hit nm" aria-pressed={selected} onClick={() => onSelect(a.id)}>
-            {agentName(a)}
-          </button>
-          <span className="md">
-            {modelLabel(a.model)}
-            {a.provider === 'codex' && <span className="badge codex">Codex</span>}
+    <div className="tn-card">
+      <article className={selected ? 'card ag sel' : 'card ag'} data-agent-id={a.id} onClick={(e) => own(e) && onSelect(a.id)}>
+        <div className="aghead">
+          <Avatar agent={a} />
+          <span className="agwho">
+            <button type="button" className="ag-hit nm" aria-pressed={selected} onClick={() => onSelect(a.id)}>
+              {agentName(a)}
+            </button>
+            <span className="md">
+              {modelLabel(a.model)}
+              {a.provider === 'codex' && <span className="badge codex">Codex</span>}
+            </span>
           </span>
-        </span>
-        <AgentPill agent={a} />
-      </div>
-      {a.description && <p className="agtask">{a.description}</p>}
-      {call && (
-        <div className="act">
-          <span className="ring" aria-hidden="true" />
-          <span className="act-text mono">{call}</span>
+          <AgentPill agent={a} />
         </div>
-      )}
-      {pct !== null && (
-        <div className="ctx">
-          <span>Context</span>
-          <span className="bar" role="progressbar" aria-label="Context" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-            <b style={{ width: `${pct}%` }} />
-          </span>
-          <span>{pct}%</span>
+        <div className="agbody">
+          {a.description && <p className="agtask">{a.description}</p>}
+          {call && (
+            <div className="act">
+              <span className="ring" aria-hidden="true" />
+              <span className="act-text mono">{call}</span>
+            </div>
+          )}
+          {pct !== null && (
+            <div className="ctx">
+              <span>Context</span>
+              <span className="bar" role="progressbar" aria-label="Context" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                <b style={{ width: `${pct}%` }} />
+              </span>
+              <span>{pct}%</span>
+            </div>
+          )}
+          <div className="agfoot">
+            <span>
+              {formatCost(a.tokens?.cost)} · <Elapsed from={a.startedAt} to={a.status === 'running' ? null : a.finishedAt || a.lastActivityAt} />
+            </span>
+            <span>{node.children.length ? plural(node.children.length, 'helper', 'helpers') : nCalls ? plural(nCalls, 'tool call', 'tool calls') : '–'}</span>
+          </div>
         </div>
-      )}
-      <div className="agfoot">
-        <span>
-          {formatCost(a.tokens?.cost)} · <Elapsed from={a.startedAt} to={a.status === 'running' ? null : a.finishedAt || a.lastActivityAt} />
-        </span>
-        <span>{node.children.length ? plural(node.children.length, 'helper', 'helpers') : nCalls ? plural(nCalls, 'tool call', 'tool calls') : '–'}</span>
-      </div>
-    </article>
+      </article>
+    </div>
   );
 }
 
-// The children of a node (or the roots), side by side. A child with a recorded parent gets a stub (`data-edge`); one
-// bar from the parent's centre to the farthest such child joins the parent's stub to them. A child without a recorded
-// parent gets no stub and lies outside the bar. Positions are measured, because they depend on the cards' widths.
-const countNodes = (n) => 1 + n.children.reduce((s, c) => s + countNodes(c), 0);
-
-function Kids({ nodes, view, roots }) {
-  const ref = useRef(null);
-  const [span, setSpan] = useState(null);
-  const hasLinked = nodes.some((n) => n.edge != null);
-  const measure = () => {
-    const el = ref.current;
-    if (roots || !el || !hasLinked) return setSpan(null);
-    const box = el.getBoundingClientRect();
-    const kids = [...el.querySelectorAll(':scope > .tn-kid')].map((k, i) => {
-      const r = k.getBoundingClientRect();
-      return { x: r.left - box.left + r.width / 2, linked: nodes[i]?.edge != null };
-    });
-    const next = barSpan(box.width / 2, kids);
-    setSpan((cur) => (cur && next && cur.left === next.left && cur.right === next.right ? cur : next));
-  };
-  const latest = useRef(measure);
-  latest.current = measure;
-  // Re-measure when the tree's shape changes (who is here, who has a recorded parent, how many below).
-  const shape = nodes.map((n) => `${n.id}:${n.edge ?? ''}:${countNodes(n)}`).join('|');
-  useLayoutEffect(() => latest.current(), [shape, roots]);
-  // One observer for this level's life; it also catches size changes (text wrapping, window width).
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || roots || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => latest.current());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [roots]);
+// A list of nodes, each with its children stacked below it and indented. A child's connector (`data-edge`, drawn in CSS:
+// a trunk down the parent's side and an elbow into the child) exists only when its parent is recorded; it is the live
+// colour when the child is running. `depth` only caps the indent at narrow widths (styles.css).
+function Tree({ nodes, view, depth = 0 }) {
   return (
-    <div ref={ref} className={roots ? 'tn-kids tn-roots' : 'tn-kids'}>
-      {!roots && hasLinked && <span className="tn-bar" data-bar="" aria-hidden="true" style={span ? { left: span.left, width: span.right - span.left } : { display: 'none' }} />}
+    <ul className={`tn-list d${Math.min(depth, 4)}`}>
       {nodes.map((n) => (
-        <div key={n.id} className="tn-kid">
-          {n.edge != null && <span className="edge" data-edge={`${n.edge}->${n.id}`} aria-hidden="true" />}
-          <div className="tn">
-            <AgentCard node={n} view={view} />
-            {n.children.length > 0 && <Kids nodes={n.children} view={view} />}
-          </div>
-        </div>
+        <li key={n.id} className="tn-item">
+          {n.edge != null && <span className={n.agent.status === 'running' ? 'tn-link live' : 'tn-link'} data-edge={`${n.edge}->${n.id}`} aria-hidden="true" />}
+          <AgentCard node={n} view={view} />
+          {n.children.length > 0 && <Tree nodes={n.children} view={view} depth={depth + 1} />}
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
@@ -182,8 +155,27 @@ export function CrewTab({ detail, onChanged }) {
   const tree = crewTree(detail.agents);
   const selected = tree.nodes.some((n) => n.id === picked) ? picked : null;
 
-  const all = toolCalls(detail, now, Infinity);
-  const calls = (selected ? all.filter((c) => c.agentId === selected) : all).slice(0, MAX_CALLS);
+  // The selected agent's own calls come from the server (detail.activity holds only the run's last 100 rows); until
+  // they land, or if the fetch fails, the calls found in detail.activity are shown, never an empty list.
+  const t = useThrottledTick(`${run.updatedAt}|${detail.activity?.[0]?.id}|${(detail.agents || []).reduce((n, a) => n + (Number(a.toolCalls) || 0), 0)}`, 3000);
+  const [fetched, setFetched] = useState(null);
+  useEffect(() => {
+    if (!selected) return undefined;
+    let stale = false;
+    getAgentActivity(run.id, selected).then(
+      (rows) => !stale && Array.isArray(rows) && setFetched({ agentId: selected, rows }),
+      () => {}, // keep what is on screen
+    );
+    return () => {
+      stale = true;
+    };
+  }, [run.id, selected, t]);
+  const own = selected && fetched?.agentId === selected ? fetched.rows : null;
+  const calls = !selected
+    ? toolCalls(detail, now, MAX_CALLS)
+    : own
+      ? toolCalls({ ...detail, activity: own }, now, MAX_CALLS)
+      : toolCalls(detail, now, Infinity).filter((c) => c.agentId === selected).slice(0, MAX_CALLS);
   const chosen = tree.nodes.find((n) => n.id === selected)?.agent;
   const running = tree.nodes.filter((n) => n.agent.status === 'running').length;
   const total = tree.nodes.length;
@@ -199,15 +191,19 @@ export function CrewTab({ detail, onChanged }) {
           </span>
         </div>
         {total ? (
-          <div className="tree-scroll">
-            <div className="tree">
-              <Kids nodes={tree.roots} view={view} roots />
-            </div>
+          <div className="tree">
+            {tree.roots.length > 0 && <Tree nodes={tree.roots} view={view} />}
+            {tree.unlinked.length > 0 && (
+              <div className="tree-unlinked">
+                <h3 className="tree-sub muted small">No recorded parent</h3>
+                <Tree nodes={tree.unlinked} view={view} />
+              </div>
+            )}
           </div>
         ) : (
           <p className="muted pad">No agents yet.</p>
         )}
-        <p className="muted small crew-hint">Select an agent to show only its tool calls. A line joins an agent to the one that started it; an agent without a line has no recorded parent.</p>
+        <p className="muted small crew-hint">Select an agent to show its own tool calls. A line joins an agent to the one that started it.</p>
       </section>
       <aside className="run-side" aria-label="Run details">
         {run.status === 'waiting' && <WaitingCard run={run} onDone={onChanged} />}

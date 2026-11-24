@@ -103,49 +103,61 @@ describe('crewTree', () => {
   const eng = (id, parentId) => ag(id, 'sonnet-engineer', { description: 'Build', parentId });
   const at = (t, id) => t.nodes.find((n) => n.id === id);
 
-  it('a known parent gives an edge and places the agent under it', () => {
+  it('follows recorded parents: a known parent gives an edge and places the agent under it', () => {
     const t = crewTree([main, lead, eng('e1', 'lead')]);
     expect(t.edges).toEqual([{ from: 'main:s1', to: 'lead' }, { from: 'lead', to: 'e1' }]);
     expect(t.roots.map((n) => n.id)).toEqual(['main:s1']);
+    expect(t.unlinked).toEqual([]);
     expect(t.levels.map((l) => l.map((n) => n.id))).toEqual([['main:s1'], ['lead'], ['e1']]);
     expect(at(t, 'e1')).toMatchObject({ parentId: 'lead', edge: 'lead', depth: 2 });
   });
 
-  it('an unknown parent (null, or an agent not in the run) goes under the lead with no edge', () => {
+  it('an unknown parent (null, or an agent not in the run) is an unlinked root, not placed under the lead', () => {
     const t = crewTree([main, lead, eng('e1', null), eng('e2', 'gone'), eng('e3', 'lead')]);
-    expect(at(t, 'e1')).toMatchObject({ parentId: 'lead', edge: null });
-    expect(at(t, 'e2')).toMatchObject({ parentId: 'lead', edge: null });
+    expect(at(t, 'e1')).toMatchObject({ parentId: null, edge: null, depth: 0 });
+    expect(at(t, 'e2')).toMatchObject({ parentId: null, edge: null });
+    expect(t.unlinked.map((n) => n.id)).toEqual(['e1', 'e2']);
     expect(t.edges.map((e) => e.to).sort()).toEqual(['e3', 'lead']);
-    expect(at(t, 'lead').children.map((n) => n.id)).toEqual(['e3', 'e1', 'e2']); // linked children first
+    expect(at(t, 'lead').children.map((n) => n.id)).toEqual(['e3']);
   });
 
-  it('with no lead an unknown parent goes under the main session; the lead itself goes under main without an edge', () => {
-    const t = crewTree([main, eng('e1', null)]);
-    expect(at(t, 'e1')).toMatchObject({ parentId: 'main:s1', edge: null });
+  it('an unlinked agent keeps its own linked subtree', () => {
+    const t = crewTree([main, eng('e1', null), eng('e2', 'e1')]);
+    expect(t.unlinked.map((n) => n.id)).toEqual(['e1']);
+    expect(at(t, 'e1').children.map((n) => n.id)).toEqual(['e2']);
+    expect(at(t, 'e2')).toMatchObject({ edge: 'e1', depth: 1 });
+    expect(t.edges).toEqual([{ from: 'e1', to: 'e2' }]);
+  });
+
+  it('a lead with no recorded parent is unlinked too (never guessed under main)', () => {
     const u = crewTree([main, ag('lead', 'fable-lead')]);
-    expect(at(u, 'lead')).toMatchObject({ parentId: 'main:s1', edge: null });
+    expect(u.roots.map((n) => n.id)).toEqual(['main:s1']);
+    expect(u.unlinked.map((n) => n.id)).toEqual(['lead']);
     expect(u.edges).toEqual([]);
   });
 
-  it('several main sessions are all roots; with no main or lead everyone is a root', () => {
+  it('several main sessions are all roots; with no main everyone without a parent is unlinked', () => {
     const t = crewTree([main, ag('main:s2', 'main'), eng('e1', 'main:s2')]);
     expect(t.roots.map((n) => n.id)).toEqual(['main:s1', 'main:s2']);
     expect(at(t, 'e1').parentId).toBe('main:s2');
     const alone = crewTree([eng('x', null), eng('y', null)]);
-    expect(alone.roots.map((n) => n.id)).toEqual(['x', 'y']);
+    expect(alone.roots).toEqual([]);
+    expect(alone.unlinked.map((n) => n.id)).toEqual(['x', 'y']);
     expect(alone.edges).toEqual([]);
   });
 
   it('a parent that is the agent itself, or a loop, never makes an edge to itself', () => {
     const self = crewTree([main, lead, eng('e1', 'e1')]);
-    expect(at(self, 'e1')).toMatchObject({ parentId: 'lead', edge: null });
+    expect(at(self, 'e1')).toMatchObject({ parentId: null, edge: null });
+    expect(self.unlinked.map((n) => n.id)).toEqual(['e1']);
     const loop = crewTree([eng('a', 'b'), eng('b', 'a')]);
     expect(loop.levels.flat()).toHaveLength(2);
-    expect(loop.edges.length).toBeLessThan(2);
+    expect(loop.edges).toHaveLength(1);
+    expect(loop.unlinked).toHaveLength(1);
   });
 
   it('copes with no agents, junk rows and many helpers', () => {
-    expect(crewTree(undefined)).toMatchObject({ roots: [], levels: [], edges: [], nodes: [] });
+    expect(crewTree(undefined)).toMatchObject({ roots: [], unlinked: [], levels: [], edges: [], nodes: [] });
     expect(crewTree([null, 3, main]).nodes).toHaveLength(1);
     const many = crewTree([main, lead, ...Array.from({ length: 30 }, (_, i) => eng(`e${i}`, 'lead'))]);
     expect(at(many, 'lead').children).toHaveLength(30);

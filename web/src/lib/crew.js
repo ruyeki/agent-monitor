@@ -88,47 +88,35 @@ export function nowWorking(detail, nowMs) {
   return null;
 }
 
-// The run's agents as a tree: main session -> lead -> helpers (contract C7). Pure.
-// A parent counts as known only when `parentId` names another agent of this run. An agent whose parent is unknown (or
-// would make a loop) is placed under the lead, or under the first main session when there is no lead (or the agent is
-// the lead); it gets no edge, so the picture never claims a link the server did not record.
-// Returns { roots, levels, edges, nodes }: node = { id, agent, parentId (where it sits), edge (the known parent, else
-// null), depth, children }; levels[n] = the nodes at depth n; edges = [{ from, to }] for known parents only.
+// The run's agents as a tree that follows RECORDED parents only (contract C7). Pure.
+// Main sessions are the roots. An agent sits under its recorded parent (`parentId` naming another agent of this run).
+// A non-main agent with no recorded parent, or whose parent chain loops back to it, is the root of an "unlinked"
+// group (with its own linked subtree), so the picture never claims a link the server did not record.
+// Returns { roots, unlinked, nodes, edges, levels }: node = { id, agent, parentId (the recorded parent, else null),
+// edge (same as parentId: the parent whose connector joins it, else null), depth, children }; levels[n] = the nodes at
+// depth n (roots and unlinked roots both start at 0); edges = [{ from, to }] for recorded parents only.
 export function crewTree(agents) {
   const crew = sortCrew(agents).filter((a) => a.id != null);
   const byId = new Map(crew.map((a) => [a.id, a]));
-  const lead = crew.find((a) => roleOf(a) === 'lead');
-  const main = crew.find((a) => roleOf(a) === 'main');
-  const known = (a) => (a.parentId != null && a.parentId !== a.id && byId.has(a.parentId) ? a.parentId : null);
-  const fallback = (a) => {
-    const role = roleOf(a);
-    if (role === 'main') return null;
-    if (lead && lead !== a) return lead.id;
-    return main && main !== a ? main.id : null;
-  };
-  const at = new Map(crew.map((a) => [a.id, known(a) ?? fallback(a)]));
-  const edge = new Map(crew.map((a) => [a.id, known(a)]));
-  // Break loops (a's parent chain comes back to a): that agent becomes a root with no edge.
+  const isMain = (a) => roleOf(a) === 'main';
+  const parent = new Map(crew.map((a) => [a.id, !isMain(a) && a.parentId != null && a.parentId !== a.id && byId.has(a.parentId) ? a.parentId : null]));
+  // Break loops (a's parent chain comes back to a): that agent loses its parent.
   for (const a of crew) {
     const seen = new Set([a.id]);
-    for (let p = at.get(a.id); p != null; p = at.get(p)) {
-      if (seen.has(p)) {
-        if (p === a.id) {
-          at.set(a.id, null);
-          edge.set(a.id, null);
-        }
-        break;
-      }
+    for (let p = parent.get(a.id); p != null; p = parent.get(p)) {
+      if (p === a.id) parent.set(a.id, null);
+      if (seen.has(p)) break;
       seen.add(p);
     }
   }
-  const nodes = crew.map((a) => ({ id: a.id, agent: a, parentId: at.get(a.id), edge: edge.get(a.id), depth: 0, children: [] }));
+  const nodes = crew.map((a) => ({ id: a.id, agent: a, parentId: parent.get(a.id), edge: parent.get(a.id), depth: 0, children: [] }));
   const node = new Map(nodes.map((n) => [n.id, n]));
   const roots = [];
-  for (const n of nodes) (n.parentId == null ? roots : node.get(n.parentId).children).push(n);
-  // Children with a recorded link come first, so the connector bar over them has no gaps.
-  const linked = (n) => (n.edge != null ? 0 : 1);
-  for (const n of [{ children: roots }, ...nodes]) n.children.sort((x, y) => linked(x) - linked(y)); // stable
+  const unlinked = [];
+  for (const n of nodes) {
+    if (n.parentId != null) node.get(n.parentId).children.push(n);
+    else (isMain(n.agent) ? roots : unlinked).push(n);
+  }
   const levels = [];
   const walk = (list, depth) => {
     for (const n of list) {
@@ -138,8 +126,9 @@ export function crewTree(agents) {
     }
   };
   walk(roots, 0);
+  walk(unlinked, 0);
   const edges = nodes.filter((n) => n.edge != null).map((n) => ({ from: n.edge, to: n.id }));
-  return { roots, levels, edges, nodes };
+  return { roots, unlinked, edges, levels, nodes };
 }
 
 // Context window use as a whole percent, or null when the server has no reading yet (never a made-up 0).

@@ -1,5 +1,7 @@
 // The Crew tab (contract C7): the tree on real parentId / context data, selection, rail, tab order and links.
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunList } from '../src/RunList.jsx';
 import { RunView } from '../src/run/RunView.jsx';
@@ -79,29 +81,41 @@ describe('Crew tab', () => {
     expect(crew.querySelector('.cardhead').textContent).toBe('Crew5 agents · 4 running · $1.86');
   });
 
-  it('a connector exists only for a known parent (data-edge), none for an unknown parent', async () => {
+  it('a connector exists only for a recorded parent (data-edge); an unknown-parent agent is listed apart under "No recorded parent"', async () => {
     render(<RunView id="r1" tab="crew" />);
     await crewCard();
     const edges = [...document.querySelectorAll('[data-edge]')].map((e) => e.getAttribute('data-edge')).sort();
     expect(edges).toEqual(['lead->e1', 'lead->v1', 'main:s1->lead']);
     expect(document.querySelector('[data-edge$="->w1"]')).toBeNull();
-    // the unknown-parent helper still sits in the lead's children
-    expect(card('lead').parentElement.querySelector('[data-agent-id="w1"]')).toBeTruthy();
+    expect(card('lead').closest('li').querySelector('[data-agent-id="w1"]')).toBeNull(); // not under the lead any more
+    const group = document.querySelector('.tree-unlinked');
+    expect(group.textContent).toContain('No recorded parent');
+    expect(group.querySelector('[data-agent-id="w1"]')).toBeTruthy();
+    expect(group.querySelector('[data-edge]')).toBeNull();
   });
 
-  it('one bar joins each group of children that has a known parent; none when no child has one; unknown-parent cards are outside it', async () => {
-    const { unmount } = render(<RunView id="r1" tab="crew" />);
-    await crewCard();
-    const bars = [...document.querySelectorAll('[data-bar]')];
-    expect(bars).toHaveLength(2); // main's kids (the lead) and the lead's kids (e1, v1; w1 has no line)
-    expect(bars.map((b) => b.parentElement.querySelectorAll(':scope > .tn-kid > [data-edge]').length).sort()).toEqual([1, 2]);
-    expect(bars.every((b) => b.getAttribute('aria-hidden') === 'true')).toBe(true);
-    unmount();
-    current = detail({ agents: current.agents.map((a) => (a.id === 'main:s1' ? a : { ...a, parentId: null })) });
+  it('children are stacked below their parent, a nested child has its own connector, a running child is the live colour', async () => {
+    current = detail({ agents: [...current.agents, agent('e2', 'sonnet-engineer', { parentId: 'e1', status: 'finished' })] });
     render(<RunView id="r1" tab="crew" />);
     await crewCard();
-    expect(document.querySelectorAll('[data-bar]')).toHaveLength(0);
-    expect(document.querySelectorAll('[data-edge]')).toHaveLength(0);
+    const nested = card('e1').closest('li').querySelector(':scope > ul [data-edge="e1->e2"]');
+    expect(nested).toBeTruthy();
+    expect(nested.classList.contains('live')).toBe(false);
+    expect(document.querySelector('[data-edge="lead->e1"]').classList.contains('live')).toBe(true);
+    expect(card('lead').closest('li').contains(card('e1'))).toBe(true);
+    expect(document.querySelectorAll('[data-edge]')).toHaveLength(4);
+    expect(document.querySelectorAll('[data-edge][aria-hidden="true"]')).toHaveLength(4);
+  });
+
+  it('nothing in the crew panel scrolls sideways, and the old side-by-side bar is gone', async () => {
+    render(<RunView id="r1" tab="crew" />);
+    const crew = await crewCard();
+    expect(document.querySelector('[data-bar], .tn-bar, .tn-kid, .tree-scroll')).toBeNull();
+    const css = readFileSync(resolve(__dirname, '../src/styles.css'), 'utf8');
+    const rules = css.match(/[^{}]*\{[^}]*\}/g).filter((r) => /overflow(-x)?:\s*(auto|scroll)/.test(r));
+    const sel = rules.flatMap((r) => r.slice(0, r.indexOf('{')).split(',')).map((x) => x.trim());
+    const hit = [crew, ...crew.querySelectorAll('*')].filter((el) => sel.some((x) => { try { return el.matches(x); } catch { return false; } }));
+    expect(hit).toEqual([]);
   });
 
   it('the card shows role, model, status, task, current call, context bar, cost and counts', async () => {
@@ -115,7 +129,7 @@ describe('Crew tab', () => {
     expect(card('e1').textContent).toContain('$0.50 · 10m');
     expect(card('e1').textContent).toContain('42 tool calls'); // the server's per-agent count, not the 1 row in the (last-100) activity list;
     expect(card('lead').textContent).toContain('Opus 5.5');
-    expect(card('lead').textContent).toContain('3 helpers');
+    expect(card('lead').textContent).toContain('2 helpers');
     expect(within(card('v1')).getByRole('button', { name: 'verifier' })).toBeTruthy();
   });
 
@@ -189,5 +203,54 @@ describe('Crew tab', () => {
     expect(screen.getByText('No agents yet.')).toBeTruthy();
     expect(screen.getByText('No agent is running.')).toBeTruthy();
     expect(screen.getByText('No tool calls yet.')).toBeTruthy();
+  });
+
+  describe("the selected agent's own tool calls", () => {
+    const rowsOf = (agentId) => [
+      { id: 90, at: iso(NOW - 500), agentId, event: 'tool', tool: 'Read', summary: 'OLDER-FILE-A', toolUseId: 'x90', endedAt: iso(NOW - 400), outcome: 'ok' },
+      { id: 80, at: iso(NOW - 800), agentId, event: 'tool', tool: 'Grep', summary: 'OLDER-FILE-B', toolUseId: 'x80', endedAt: iso(NOW - 700), outcome: 'ok' },
+    ];
+    const route = (activity) => vi.fn((url) => (String(url).includes('/activity?') ? activity(String(url)) : res(current)));
+    const pick = async (id) => {
+      render(<RunView id="r1" tab="crew" />);
+      await crewCard();
+      fireEvent.click(within(card(id)).getByRole('button'));
+    };
+
+    it("selecting a card fetches that agent's activity and shows rows that are not in detail.activity", async () => {
+      globalThis.fetch = route(() => res(rowsOf('lead')));
+      await pick('lead');
+      await waitFor(() => expect(callsCard().textContent).toContain('OLDER-FILE-A'));
+      expect(callsCard().textContent).toContain('OLDER-FILE-B');
+      expect(callsCard().textContent).not.toContain('git status'); // the fetched rows replace the detail.activity ones
+      expect(globalThis.fetch.mock.calls.map((c) => c[0])).toContain('/api/runs/r1/activity?agent=lead');
+    });
+
+    it('shows the calls from detail.activity until the fetch lands, and again when it fails', async () => {
+      let release;
+      globalThis.fetch = route(() => new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve(rowsOf('lead')) }); }));
+      await pick('lead');
+      expect(callsCard().textContent).toContain('git status'); // no empty flash while waiting
+      release();
+      await waitFor(() => expect(callsCard().textContent).toContain('OLDER-FILE-A'));
+      cleanup();
+      globalThis.fetch = route(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) }));
+      await pick('lead');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(callsCard().textContent).toContain('git status');
+      expect(callsCard().textContent).not.toContain('OLDER-FILE-A');
+    });
+
+    it("clearing the selection goes back to the run's calls; an unselected tab never asks for an agent's activity", async () => {
+      globalThis.fetch = route(() => res(rowsOf('lead')));
+      render(<RunView id="r1" tab="crew" />);
+      await crewCard();
+      expect(globalThis.fetch.mock.calls.some((c) => String(c[0]).includes('/activity?'))).toBe(false);
+      fireEvent.click(within(card('lead')).getByRole('button'));
+      await waitFor(() => expect(callsCard().textContent).toContain('OLDER-FILE-A'));
+      fireEvent.click(within(callsCard()).getByRole('button', { name: /Clear filter/ }));
+      expect(callsCard().textContent).toContain('Monitor.jsx');
+      expect(callsCard().textContent).not.toContain('OLDER-FILE-A');
+    });
   });
 });

@@ -37,3 +37,4 @@ export const getUsageStats = (days) => request(`/api/stats/usage?days=${days}`);
 export const getVersionStats = () => request('/api/stats/versions');
 export const getPrices = () => request('/api/prices');
 export const putPrices = (prices) => send('PUT', '/api/prices', { prices });
+export const getAgentActivity = (id, agentId) => request(`/api/runs/${encodeURIComponent(id)}/activity?agent=${encodeURIComponent(agentId)}`);
