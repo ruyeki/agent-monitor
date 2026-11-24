@@ -292,8 +292,8 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
 .tabs a:focus-visible { outline-offset: -2px; border-radius: var(--r-sm); }
 .run-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; flex: 1; min-height: 0; }
 /* Crew tab: the agent tree (cards stacked and indented, connectors drawn with CSS), then the rail (same shape as the Stages side panel). */
-.crew-body { align-items: start; }
-.crew-main { min-width: 0; display: flex; flex-direction: column; background: none; box-shadow: none; } /* the agent cards are the cards; the outer one is only a header row */
+/* The run page itself does not scroll (main.full), so each column scrolls on its own. */
+.crew-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; background: none; box-shadow: none; } /* the agent cards are the cards; the outer one is only a header row */
 .crew-main > .cardhead { padding-left: 0; padding-right: 0; }
 .crew-main .cardhead h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .tree { padding: 16px 16px 18px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
@@ -343,8 +343,7 @@ kbd { font-family: var(--font-sans); font-size: 11px; color: var(--faint); backg
 }
 .crew-hint { margin: 0; padding: 0 16px 14px; }
 /* Ledger tab: one row per change (icon, text, chips, tag), then the rail (summary, what cannot be undone). */
-.ledger-body { align-items: start; }
-.ledger-main { min-width: 0; }
+.ledger-main { min-width: 0; align-self: start; max-height: 100%; overflow-y: auto; } /* sized to its rows, scrolls once taller than the page */
 .ledger-main .cardhead h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .lg-list { list-style: none; margin: 0; padding: 0; }
 .lg { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--border); }
@@ -632,6 +631,7 @@ svg .dot { stroke: var(--surface); stroke-width: 2; }
   .canvas-wrap { height: 60vh; flex: none; }
   .palette, .settings { overflow: visible; }
   .run-side { overflow: visible; padding: 0; }
+  .crew-main, .ledger-main { min-height: auto; max-height: none; overflow: visible; } /* the page scrolls here, not the columns */
   .donut-wrap { flex-direction: column; align-items: stretch; }
   .donut { align-self: center; }
   .legend-other { text-align: left; flex-basis: 100%; }
