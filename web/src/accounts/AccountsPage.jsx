@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackButton } from '../BackButton.jsx';
 import { useNow, useThrottledTick } from '../hooks.js';
 import { relativeTime } from '../lib/time.js';
 import { addAccount, cancelSignIn, getAccounts, refreshUsage, sendCode, switchAccount } from './accountsApi.js';
@@ -413,6 +414,7 @@ export function AccountsPage({ tick, pollMs = POLL_MS }) {
     <div className="acct-page">
       <header className="page-head">
         <div className="hgroup">
+          <BackButton />
           <h1>Accounts</h1>
           {data && enabled && <span className="muted small">{plural(accounts.length, 'Claude login', 'Claude logins')}</span>}
         </div>

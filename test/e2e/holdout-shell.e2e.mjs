@@ -155,7 +155,7 @@ await check('views: 3 toggle buttons with counts; filter, clear on second click,
   ok(await itemOf(pd, T.w1).count() === 1, 'a view hid an inbox item');
   await goto(pd, '#/stats');
   await vb.nth(0).click(); await pd.waitForTimeout(300);
-  ok(/#\/$/.test(pd.url()), `url ${pd.url()}`);
+  ok(/#\/\?view=waiting$/.test(pd.url()), `url ${pd.url()}`);
   ok(await pd.locator('.run-list').count() === 0 && await itemOf(pd, T.w1).count() === 1, 'Waiting view should show the inbox only');
   await vb.nth(0).click(); await pd.waitForTimeout(200);
   await vb.nth(2).click(); await pd.waitForTimeout(250);
@@ -357,7 +357,7 @@ await check('run view / workflow / stats: one page-head h1 inside main; run head
   }
   await goto(pd, `#/runs/${ids.act}`);
   const rv = await pd.locator('main header.page-head').first().innerText();
-  ok(/^Monitor\b/.test(rv) && rv.includes(ids.act), `run header: ${rv.replace(/\s+/g, ' ')}`);
+  ok(/^Back\s+Monitor\b/.test(rv) && rv.includes(ids.act), `run header: ${rv.replace(/\s+/g, ' ')}`);
   ok(await pd.locator('main header.page-head nav[aria-label="Breadcrumb"] a[href="#/"]').count() === 1, 'no Monitor breadcrumb link');
   await goto(pd, '#/workflow');
   ok(await pd.getByRole('button', { name: /Publish/ }).count() >= 1, 'Publish button missing on Workflow');

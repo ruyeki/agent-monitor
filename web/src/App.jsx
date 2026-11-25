@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRuns } from './api.js';
 import { useLive, useTheme } from './hooks.js';
 import { splitRuns } from './lib/format.js';
-import { useRoute } from './lib/route.js';
+import { goBack, monitorHref, navigate, useRoute } from './lib/route.js';
+import { BackContext } from './BackButton.jsx';
 import { AccountsPage } from './accounts/AccountsPage.jsx';
 import { WorkflowEditor } from './editor/WorkflowEditor.jsx';
 import { StatsPage } from './stats/StatsPage.jsx';
@@ -18,7 +19,6 @@ export default function App() {
   const [theme, cycleTheme] = useTheme();
   const [tick, setTick] = useState(0);
   const [query, setQuery] = useState('');
-  const [view, setView] = useState(null); // null | 'waiting' | 'active' | 'finished'
   const searchRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -54,10 +54,21 @@ export default function App() {
   }, []);
 
   const { waiting, live, finished } = splitRuns(runs);
+  const view = route.view ?? null; // null | 'waiting' | 'active' | 'finished', from the URL
   const current = route.name === 'run' ? 'monitor' : route.name;
   const goMonitor = () => {
-    if (route.name !== 'monitor') window.location.hash = '#/';
+    if (route.name !== 'monitor') navigate('#/');
   };
+  // Back is hidden on the plain Monitor (no view, no search); on a view or search it returns to the plain Monitor.
+  const back =
+    route.name === 'monitor' && !view && !query
+      ? null
+      : () => {
+          if (route.name === 'monitor') {
+            setQuery('');
+            if (view) navigate('#/');
+          } else goBack();
+        };
 
   return (
     <div className="shell">
@@ -74,30 +85,31 @@ export default function App() {
         searchRef={searchRef}
         view={view}
         onView={(v) => {
-          setView((prev) => (prev === v ? null : v));
-          goMonitor();
+          navigate(route.name === 'monitor' && view === v ? '#/' : monitorHref(v));
         }}
         connection={connection}
         theme={theme}
         onTheme={cycleTheme}
       />
-      <main className={route.name === 'workflow' ? 'full' : route.name === 'run' ? 'full run-main' : ''}>
-        {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
-        {route.name === 'stats' && <StatsPage tick={tick} />}
-        {route.name === 'accounts' && <AccountsPage tick={tick} />}
-        {route.name === 'run' && <RunView key={route.id} id={route.id} tab={route.tab} tick={tick} />}
-        {route.name === 'monitor' && (
-          <Monitor
-            groups={{ waiting, active: live, finished }}
-            query={query}
-            view={view}
-            loadError={loadError}
-            updatedAt={updatedAt}
-            tick={tick}
-            onDone={refreshAll}
-          />
-        )}
-      </main>
+      <BackContext.Provider value={back}>
+        <main className={route.name === 'workflow' ? 'full' : route.name === 'run' ? 'full run-main' : ''}>
+          {route.name === 'workflow' && <WorkflowEditor tick={tick} />}
+          {route.name === 'stats' && <StatsPage tick={tick} />}
+          {route.name === 'accounts' && <AccountsPage tick={tick} />}
+          {route.name === 'run' && <RunView key={route.id} id={route.id} tab={route.tab} tick={tick} />}
+          {route.name === 'monitor' && (
+            <Monitor
+              groups={{ waiting, active: live, finished }}
+              query={query}
+              view={view}
+              loadError={loadError}
+              updatedAt={updatedAt}
+              tick={tick}
+              onDone={refreshAll}
+            />
+          )}
+        </main>
+      </BackContext.Provider>
     </div>
   );
 }

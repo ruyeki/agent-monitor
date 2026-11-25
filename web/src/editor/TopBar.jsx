@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BackButton } from '../BackButton.jsx';
 import { formatDuration, formatTokens } from '../lib/format.js';
 
 const STATUS_TEXT = { saved: 'Draft — saved', unsaved: 'Draft — unsaved', saving: 'Draft — saving…', error: 'Draft — save failed' };
@@ -8,6 +9,7 @@ export function TopBar({ published, status, versions, onPublish, onDiscard, onLo
   const [open, setOpen] = useState(false);
   return (
     <header className="page-head topbar">
+      <BackButton />
       <h1>Workflow</h1>
       <strong className="pill idle">{published ? `Published v${published.version}` : 'Not published'}</strong>
       <span role="status" className={`pill ${STATUS_PILL[status] ?? 'idle'}`}>

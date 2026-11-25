@@ -639,3 +639,7 @@ svg .dot { stroke: var(--surface); stroke-width: 2; }
   .panel { padding: 12px; }
   .runs-figures { flex-basis: 100%; }
 }
+
+/* ---- Back button (top-left of every page head except the plain Monitor) ---- */
+.back-btn { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.run-head > .back-btn { align-self: flex-start; }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPrices, getRuns, getUsageStats, getVersionStats } from '../api.js';
+import { BackButton } from '../BackButton.jsx';
 import { useThrottledTick } from '../hooks.js';
 import { DailyChart } from './DailyChart.jsx';
 import { KpiStrip } from './KpiStrip.jsx';
@@ -57,6 +58,7 @@ export function StatsPage({ tick = 0 }) {
   return (
     <>
       <header className="page-head">
+        <BackButton />
         <h1>Stats</h1>
         <Toggle label="Range" value={rangeText} onChange={setRange} options={[['7', '7 days'], ['30', '30 days'], ['90', '90 days']]} />
         <Toggle label="Metric" value={metric} onChange={setMetric} options={[['cost', 'Cost'], ['tokens', 'Tokens']]} />

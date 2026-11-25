@@ -1,4 +1,5 @@
 import { Elapsed } from '../Ago.jsx';
+import { BackButton } from '../BackButton.jsx';
 import { costOfUsage, isEnded, roundsLabel } from '../lib/format.js';
 import { runHref } from '../lib/route.js';
 import { CodexTag, stageLabel } from '../RunList.jsx';
@@ -30,6 +31,7 @@ export function RunHeader({ detail, tab = 'stages', error, onChanged }) {
   const agents = Array.isArray(detail.agents) ? detail.agents.length : 0;
   return (
     <header className="page-head run-head">
+      <BackButton />
       <nav className="crumb" aria-label="Breadcrumb">
         <a href="#/">Monitor</a>
         <span aria-hidden="true">/</span>

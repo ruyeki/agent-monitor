@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getUsageStats, respond } from './api.js';
 import { useLayout, useRunDetails, useThrottledTick } from './hooks.js';
 import { Ago } from './Ago.jsx';
+import { BackButton } from './BackButton.jsx';
 import { EndConfirm } from './EndConfirm.jsx';
 import { Fleet } from './Fleet.jsx';
 import { formatCost, formatTokens } from './lib/format.js';
@@ -289,6 +290,7 @@ export function Monitor({ groups, query, view, loadError, updatedAt, tick, onDon
     <>
       <header className="page-head">
         <div className="hgroup">
+          <BackButton />
           <h1>{view ? VIEWS.find(([id]) => id === view)?.[1] : 'Monitor'}</h1>
           {view !== 'finished' && <LayoutToggle layout={layout} onChange={setLayout} />}
         </div>
