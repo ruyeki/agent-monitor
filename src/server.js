@@ -11,6 +11,7 @@ import { openUsage } from './usage.js';
 import { usageStats, versionStats, runAttribution, sum } from './stats.js';
 import { createCodex } from './codex.js';
 import { createClaudeResume } from './claude-resume.js';
+import { createChatWake } from './chat-wake.js';
 import { toTokens, emptyAcc } from './attribution.js';
 import { contextOf } from './context.js';
 import { classifyChanges, redact } from './ledger.js';
@@ -77,6 +78,11 @@ export async function startServer({
     store, projectsDir, manager, onRunLimit: (id, info) => onRunLimit(id, info), command: accounts.command, args: accounts.args, spawn: accounts.spawn,
     killTree: accounts.killTree, env: accounts.env, onChange: () => store.bus.emit('change', { type: 'usage' }),
   }) : null;
+  // Wakes a stopped plain chat in place; on only when the caller passes accounts.sessionsDir (the real server does).
+  const chatWake = manager && accounts.sessionsDir ? createChatWake({
+    sessionsDir: accounts.sessionsDir, command: accounts.command, args: accounts.args, spawn: accounts.spawn, killTree: accounts.killTree,
+    env: accounts.env, modeOf: (sid) => store.sessionMode(sid), cwd: path.join(dataDir, 'chat-wake'),
+  }) : null;
   async function onRunLimit(runId, info) {
     if (!manager) return launcher.trigger(runId, info);
     const ra = store.runAccount(runId);
@@ -97,13 +103,21 @@ export async function startServer({
     }
     await launcher.trigger(runId, info, { marked: true });
   }
-  // A limit in a chat that is not a tracked run: switch the login and tell Ryan which chat to continue.
+  // A limit in a chat that is not a tracked run: switch the login, then wake the chat (or tell Ryan which chat to continue).
   async function onChatLimit(info) {
-    if (!manager?.hasAccounts()) return;
+    if (!manager?.hasAccounts() || chatWake?.isHelper(info.sessionId)) return; // a wake helper's own hook events never start another wake
     const d = await manager.handleLimit({ runAccount: null, at: info.at, resetsAt: info.resetsAt, source: info.source });
-    if (d?.error) notify('Claude account switch failed', d.error);
-    else if (d?.switched) notify('Claude account switched', `Now on ${d.next} (${d.hitAccount} hit its usage limit). Type "continue" in the chat that stopped.`);
-    else if (!d?.next && !d?.duplicate) notify('Claude accounts all out', 'Every Claude account is at its usage limit.');
+    if (d?.error) return notify('Claude account switch failed', d.error);
+    if (!d?.next) return d?.duplicate ? undefined : notify('Claude accounts all out', 'Every Claude account is at its usage limit.');
+    const switched = Boolean(d.switched);
+    const now = `Now on ${d.next} (${d.hitAccount} hit its usage limit).`;
+    if (!chatWake) return switched ? notify('Claude account switched', `${now} Type "continue" in the chat that stopped.`) : undefined;
+    const r = await chatWake.wake(info.sessionId, { account: d.next });
+    if (r.quiet) return; // a repeat or joined wake: one forged event must not mean one notification
+    const q = r.name ? `"${r.name}"` : 'the chat that stopped';
+    if (r.ok) notify(switched ? 'Claude account switched' : 'Claude chat continues', switched ? `${now} ${q} continues by itself.` : `${q} continues on ${d.next}.`);
+    else if (switched) notify('Claude account switched', `${now} Type "continue" in ${q}.`);
+    else if (r.found) notify('Claude chat stopped', `Type "continue" in ${q}.`);
   }
   // Ryan answered a gate: a Codex run continues on its thread, a run on another Claude account in its headless session,
   // a stopped one loses its child.
@@ -331,6 +345,7 @@ export async function startServer({
     close: () => new Promise((resolve) => {
       launcher.close();
       claudeResume?.close();
+      chatWake?.close();
       accountsApi.close();
       try { manager?.close?.(); } catch { /* closing is best effort */ }
       for (const s of streams) s.end();

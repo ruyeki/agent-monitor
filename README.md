@@ -83,7 +83,8 @@ State: non-secret JSON in `~/.claude/agent-monitor/accounts/` (registry and per-
 Runs vs chats:
 
 - A tracked run that hits a limit is resumed headless on the next account with `claude --resume <session> --fork-session -p`; the switch is logged on the run timeline.
-- An interactive chat gets the login switched (the current login is saved back first) and a desktop notification; type "continue" in the chat.
+- An interactive chat gets the login switched (the current login is saved back first). Agent Monitor then wakes the stopped chat in place: a tiny headless `claude -p` helper (Haiku, hooks off, SendMessage only) sends it a notice, found by its name in `~/.claude/sessions`. The chat must be idle, have a known permission mode and a unique name.
+- When the wake cannot be done (chat not found or busy, name not unique, message held or not delivered, helper failed) you get a desktop notification naming the chat; type "continue" in it.
 
 Gate 2 (manual, once):
 

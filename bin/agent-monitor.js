@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // agent-monitor serve | wait <run> | hook codex [--port n] | accounts <add|list|use|remove|refresh> | statusline-record [--quiet]
 
+import path from 'node:path';
+
 const [cmd, arg] = process.argv.slice(2);
 const port = Number(process.env.AGENT_MONITOR_PORT) || 4747;
 
@@ -28,7 +30,7 @@ async function serve() {
       const o = await accountsOptions();
       const manager = createAccounts({ dataDir: o.dataDir, home: o.home, claudeJson: o.claudeJson, vault: o.vault, claude: o.claude });
       manager.startSync();
-      accounts = { manager, command: o.claude, notify: desktopNotify };
+      accounts = { manager, command: o.claude, notify: desktopNotify, sessionsDir: path.join(o.home, 'sessions') };
     } catch (e) {
       console.error(`Account rotation off: ${e.message}`);
     }
