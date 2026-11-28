@@ -38,7 +38,7 @@ test('base refreshLogin: rotates, keeps the account; another account is refused'
   const { oauth } = await refreshLogin(A, { claude, env: envOf({}) });
   assert.equal(oauth.refreshToken, `${A.refreshToken}-rotated`);
   assert.equal(oauth.accountUuid, 'u-a');
-  await assert.rejects(() => refreshLogin(A, { claude, env: envOf({ write: 'other' }) }), /did not return a login for this account/);
+  await assert.rejects(() => refreshLogin(A, { claude, env: envOf({ write: 'other' }) }), /The saved login no longer works/);
 });
 
 test('base add --current saves the live login; the same login under another name is refused', async (t) => {

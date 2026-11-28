@@ -90,7 +90,7 @@ export async function loadAccounts() {
 }
 
 // ---- a world: temp home + data dir + test vault + manager ----
-export async function world(t, { clock: clockFn, claudeSpawn, stubEnv = {}, accounts = [], active } = {}) {
+export async function world(t, { clock: clockFn, claudeSpawn, stubEnv = { STUB_ROTATE: '1' }, accounts = [], active } = {}) {
   const prefix = newPrefix();
   const home = tmp('amv-home-'); const dataDir = tmp('amv-data-'); const stubDir = tmp('amv-stub-');
   const state = { now: NOW };

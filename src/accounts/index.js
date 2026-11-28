@@ -5,13 +5,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import cp from 'node:child_process';
 import { NAME, loadRegistry, saveRegistry, readUsage, writeUsage, removeUsage, withLock } from './state.js';
-import { readCredsText, parseCreds, liveIdentity, parseOauth, validOauth, applySwap, credsPath } from './creds.js';
+import { readCredsText, parseCreds, liveOauth, hasTokens, readOauthAccount, liveIdentity, parseOauth, validOauth, applySwap, credsPath } from './creds.js';
 import { usageLeft, windowPct, limitedUntil, isAvailable, pickBest as best, attribute, toSecs, toMs, fromRateLimitInfo } from './usage.js';
 import { recordWindows } from './record.js';
 import { refreshLogin, signIn, liveReading } from './refresh.js';
 import { startSignIn as beginSignIn } from './signin.js';
 
 const DUPLICATE_MS = 120_000;
+const CHECK_RETRY_MS = 600_000;
 const MAX_LIMIT_S = 7 * 86400; // a recorded reset is at most a week after the hit (a forged far-future one cannot park an account)
 const LIMIT_WAIT_MS = 150_000; // longer than a refresh (120 s) holds the lock, so a limit during one waits instead of going to Codex
 const REFRESH_AHEAD_MS = 7 * 86400_000;
@@ -28,6 +29,7 @@ function checkName(name) {
 }
 
 export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.claude.json'), vault, claude = null, spawn = cp.spawn, clock = Date.now, env = process.env, limitWaitMs = LIMIT_WAIT_MS } = {}) {
+  const checkFailed = new Map(); // name -> {at, error}: a pre-switch check that failed without a dead login; skipped for CHECK_RETRY_MS
   const saved = new Map(); // name -> hash of the login last written to or read from the vault (sync-back skips equal ones)
   let timers = [];
   let watcher = null;
@@ -142,7 +144,7 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
         if (writes[key(from)]) { await vault.setMany(writes); markSaved(reg, from, curOauth); saveRegistry(dataDir, reg); }
         return { from, to: name, switched: false };
       }
-      const target = parseOauth(got[key(name)]);
+      const target = entry.savedAt ? parseOauth(got[key(name)]) : null; // a login marked dead stays out of use
       if (!target) {
         entry.savedAt = null;
         saveRegistry(dataDir, reg);
@@ -158,7 +160,9 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
       }
       applySwap(home, curText, target);
       saved.set(name, hash(target));
-      reg.lastSwitch = { from, to: name, at: iso(clock()), reason };
+      const at = iso(clock());
+      reg.lastSwitch = { from, to: name, at, reason };
+      reg.live = { accountUuid: target.accountUuid, oauthAccount: readOauthAccount(claudeJson)?.accountUuid ?? null, organizationUuid: target.organizationUuid ?? null, at };
       saveRegistry(dataDir, reg);
       return { from, to: name, switched: true };
     }
@@ -238,31 +242,72 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
       const now = clock();
       const accounts = accountsOf(registry());
       const avail = (n) => isAvailable(accounts.find((a) => a.name === n), now);
-      const next = duplicate && active && avail(active) ? active : best(accounts, now, hit ? [hit] : []);
-      if (!next) return { hitAccount: hit, next: null, switched: false, duplicate };
-      if (next === active) return { hitAccount: hit, next, switched: false, duplicate };
-      const r = await use(next, { reason: `${source} limit${hit ? ` on ${hit}` : ''}`, waitMs: limitWaitMs });
-      return { hitAccount: hit, next, switched: r.switched, duplicate };
+      const exclude = hit ? [hit] : [];
+      let next = duplicate && active && avail(active) ? active : best(accounts, now, exclude);
+      if (next && next !== active) {
+        const id = identity(reg);
+        // Refreshing an account that may be the live one would kill the live token.
+        if (id.reason) throw new Error(`cannot tell which account the live login is: ${id.reason}; not switching`);
+      }
+      const failed = [];
+      while (next) {
+        if (next === active) return { hitAccount: hit, next, switched: false, duplicate };
+        let ok = false;
+        const recent = checkFailed.get(next);
+        if (recent && clock() - recent.at < CHECK_RETRY_MS) failed.push(`${next}: ${recent.error}`); // failed lately: do not spawn again
+        else try { // check the saved login first: a dead one is marked by refresh() and the next best is tried
+          await refresh(next, { waitMs: limitWaitMs });
+          ok = isAvailable(accountsOf(registry()).find((a) => a.name === next), clock());
+        } catch (e) {
+          failed.push(`${next}: ${e.message}`);
+          if (e.code !== 'LOGIN_DEAD') checkFailed.set(next, { at: clock(), error: e.message }); // dead logins are marked in the registry
+        }
+        if (ok) {
+          const r = await use(next, { reason: `${source} limit${hit ? ` on ${hit}` : ''}`, waitMs: limitWaitMs });
+          return { hitAccount: hit, next, switched: r.switched, duplicate };
+        }
+        const live = activeName();
+        if (live !== active) { // a concurrent limit hit switched the login while this one waited: do not switch twice
+          if (live) return { hitAccount: hit, next: live, switched: false, duplicate };
+          throw new Error(`the live login changed during the check and is no longer a known account: ${liveReason() ?? 'unknown'}; not switching`);
+        }
+        exclude.push(next);
+        next = best(accountsOf(registry()), clock(), exclude);
+      }
+      return { hitAccount: hit, next: null, switched: false, duplicate, ...(failed.length ? { error: `no saved login could be used (${failed.join('; ')})` } : {}) };
     } catch (e) {
       return { hitAccount: hit, next: null, switched: false, duplicate, error: e.message };
     }
   }
 
   // Refreshes a non-active account's saved login through Claude Code, holding the lock so no swap reads a stale token.
-  async function refresh(name) {
+  async function refresh(name, { waitMs } = {}) {
     return withLock(dataDir, async () => {
       const reg = registry();
       need(reg, name);
-      if (activeOf(reg) === name) throw new Error(`"${name}" is the live login; Claude Code refreshes it itself`);
+      const id = identity(reg);
+      if (id.reason) throw new Error(`cannot tell which account the live login is: ${id.reason}; not refreshing`);
+      if (nameFor(reg, id.accountUuid) === name) throw new Error(`"${name}" is the live login; Claude Code refreshes it itself`);
       const login = parseOauth(await vault.get(key(name)));
       if (!login) throw new Error(`no saved login for "${name}"`);
-      const { oauth } = await refreshLogin(login, { claude, spawn, env, onRateLimit: (info) => recordRateLimit(name, info) });
+      let oauth;
+      try {
+        ({ oauth } = await refreshLogin(login, { claude, spawn, env, onRateLimit: (info) => recordRateLimit(name, info) }));
+      } catch (e) {
+        if (e.code === 'LOGIN_DEAD') { // not available again until it is re-added or saved back
+          const dead = registry();
+          const a = dead.accounts[name];
+          if (a) { a.savedAt = null; a.refreshExpiresAt = null; saved.delete(name); saveRegistry(dataDir, dead); }
+        }
+        throw e;
+      }
       await vault.set(key(name), JSON.stringify(oauth));
+      checkFailed.delete(name);
       const fresh = registry();
       markSaved(fresh, name, oauth);
       saveRegistry(dataDir, fresh);
       return { name, refreshExpiresAt: fresh.accounts[name]?.refreshExpiresAt ?? null };
-    });
+    }, waitMs == null ? {} : { waitMs });
   }
 
   // A fresh reading for the live login's account without touching its tokens (refresh.js liveReading). Recorded only
@@ -295,12 +340,24 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
   // -> true saved, false nothing to save, null failed (retried on the next check).
   let syncing = null;
   // Checked once without the lock (cheap), then again under it: a swap in between may have changed the file.
+  // Work due: a login to save, and/or a new carried identity (reg.live) to record. null when neither.
   const pending = () => {
     const reg = registry();
-    const oauth = identity(reg).oauth;
-    if (!oauth) return null;
-    const name = nameFor(reg, oauth.accountUuid);
-    return name && saved.get(name) !== hash(oauth) ? { reg, name, oauth } : null;
+    const id = identity(reg);
+    const raw = liveOauth(home);
+    const oa = readOauthAccount(claudeJson);
+    const oaUuid = oa?.accountUuid ?? null;
+    const carried = reg.live;
+    let live = null;
+    if (hasTokens(raw) && raw.accountUuid && (carried?.accountUuid !== raw.accountUuid || (carried.oauthAccount ?? null) !== oaUuid)) {
+      const org = raw.organizationUuid ?? (oaUuid === raw.accountUuid ? oa.organizationUuid : null);
+      live = { accountUuid: raw.accountUuid, oauthAccount: oaUuid, organizationUuid: org ?? null, at: iso(clock()) };
+    } else if (hasTokens(raw) && !raw.accountUuid && id.oauth && carried?.accountUuid === id.accountUuid && oaUuid === carried.accountUuid && carried.oauthAccount !== oaUuid) {
+      live = { ...carried, oauthAccount: oaUuid }; // .claude.json caught up: confirmed
+    }
+    const name = id.oauth ? nameFor(reg, id.oauth.accountUuid) : null;
+    const save = name && saved.get(name) !== hash(id.oauth);
+    return save || live ? { reg, name: save ? name : null, oauth: id.oauth, live } : null;
   };
   async function doSync() {
     try {
@@ -308,10 +365,13 @@ export function createAccounts({ dataDir, home, claudeJson = path.join(home, '.c
       return await withLock(dataDir, async () => {
         const p = pending();
         if (!p) return false;
-        await vault.set(key(p.name), JSON.stringify(p.oauth));
-        markSaved(p.reg, p.name, p.oauth);
+        if (p.name) {
+          await vault.set(key(p.name), JSON.stringify(p.oauth));
+          markSaved(p.reg, p.name, p.oauth);
+        }
+        if (p.live) p.reg.live = p.live;
         saveRegistry(dataDir, p.reg);
-        return true;
+        return Boolean(p.name);
       }, { waitMs: 5000 });
     } catch { return null; }
   }

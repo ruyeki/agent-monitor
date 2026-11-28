@@ -7,6 +7,8 @@ import { memoryVault } from '../src/accounts/vault.js';
 import { saveRegistry, writeUsage } from '../src/accounts/state.js';
 
 export const STUB = path.join(import.meta.dirname, 'fixtures', 'claude-login-stub.mjs');
+// The default claude: refreshes (rotates) whatever login it is given; a limit switch checks the target first.
+const ROTATE = { command: process.execPath, args: [STUB] };
 export const NOW = Date.parse('2026-11-18T12:00:00Z');
 export const DAY = 86400_000;
 
@@ -28,7 +30,7 @@ export const MCP = { 'srv|1a2b': { serverName: 'srv', serverUrl: 'https://mcp.ex
 export const credsText = (o, org = o?.organizationUuid) => JSON.stringify({ mcpOAuth: MCP, claudeAiOauth: o, organizationUuid: org });
 
 // A temp home + data dir + memory vault + manager. accounts: {name: oauth}; live: the oauth in .credentials.json.
-export function world(t, { accounts = {}, live = null, usage = {}, vault = memoryVault(), clock, ...opts } = {}) {
+export function world(t, { accounts = {}, live = null, usage = {}, vault = memoryVault(), clock, claude = ROTATE, ...opts } = {}) {
   const home = tmp(t, 'am-home-');
   const dataDir = tmp(t, 'am-data-');
   const at = new Date(NOW - DAY).toISOString();
@@ -42,7 +44,7 @@ export function world(t, { accounts = {}, live = null, usage = {}, vault = memor
   const file = path.join(home, '.credentials.json');
   if (live) fs.writeFileSync(file, credsText(live));
   const time = { now: NOW };
-  const m = createAccounts({ dataDir, home, vault, clock: clock ?? (() => time.now), ...opts });
+  const m = createAccounts({ dataDir, home, vault, claude, clock: clock ?? (() => time.now), ...opts });
   t.after(() => m.close());
   return { home, dataDir, vault, m, time, file, live: () => fs.readFileSync(file, 'utf8') };
 }

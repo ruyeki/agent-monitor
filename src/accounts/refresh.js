@@ -15,6 +15,7 @@ const DROP_ENV = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUT
 const REFRESH_ARGS = ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--max-turns', '1', '--strict-mcp-config'];
 // In the live profile: no transcript, no tools, no MCP servers, no hooks (settings hooks seen skipped on 2.1.292 and 2.1.301).
 export const LIVE_ARGS = [...REFRESH_ARGS, '--no-session-persistence', '--tools', '', '--settings', '{"disableAllHooks":true}'];
+export const DEAD_LOGIN = 'The saved login no longer works: sign in again (Add account, same name).';
 const PROMPT = 'Reply with the single word OK.';
 
 // claude: an absolute path, or {command, args} (tests pass process.execPath + a stub).
@@ -118,7 +119,7 @@ export async function refreshLogin(saved, { claude, spawn = cp.spawn, env = proc
     // Claude Code 2.1.287 drops accountUuid on a refresh. A uuid that is there must match; none -> the saved one
     // (the temp profile held only this login).
     if (!hasTokens(back) || (back.accountUuid && back.accountUuid !== saved.accountUuid) || (acct && acct.accountUuid !== saved.accountUuid)) {
-      throw new Error(`Claude Code did not return a login for this account (${why(r)})`);
+      throw Object.assign(new Error(DEAD_LOGIN), { code: 'LOGIN_DEAD' }); // Claude Code left no login: the refresh token is dead
     }
     if (!(Number(back.expiresAt) > 0)) throw new Error(`Claude Code did not refresh the login (${why(r)})`);
     const org = back.organizationUuid ?? saved.organizationUuid ?? acct?.organizationUuid;

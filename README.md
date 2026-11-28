@@ -80,6 +80,9 @@ How usage is recorded: the statusline recorder (`npm run integrate` prefixes it 
 
 State: non-secret JSON in `~/.claude/agent-monitor/accounts/` (registry and per-account usage). The logins themselves are encrypted in Windows Credential Manager as `agent-monitor/claude/*`. Saved logins are refreshed by Claude Code itself in a temp `CLAUDE_CONFIG_DIR`, so refresh tokens stay valid.
 
+Which account is live: Agent Monitor carries it in the registry (`live`). Claude Code drops the account id from the login on every renewal. So the carried account holds while `.claude.json` names it, or has not changed since it was recorded. A swap updates it. So does a manual `/login` that writes the account id (the real ones so far do). If `.claude.json` changes to another account, or becomes unreadable, the account is "uncertain". Nothing is saved, switched or refreshed until you `/login` again.
+Before a limit switch, the target's saved login is refreshed in a temp profile. A dead one is marked "No saved login" and skipped; re-add it with `accounts add <name>`. Any other failure skips that account for 10 minutes.
+
 Runs vs chats:
 
 - A tracked run that hits a limit is resumed headless on the next account with `claude --resume <session> --fork-session -p`; the switch is logged on the run timeline.
