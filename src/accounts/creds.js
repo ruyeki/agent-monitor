@@ -53,14 +53,30 @@ export const readOauthEmail = (claudeJson) => str(rawAccount(claudeJson)?.emailA
 const NO_LOGIN = { oauth: null, accountUuid: null, email: null, reason: null };
 
 // Who the live login is -> {oauth, accountUuid, email, reason}. oauth carries an accountUuid when known.
-// No tokens: all null (no live login). Uncertain: oauth null and reason set. The creds' own accountUuid is trusted;
-// else .claude.json's oauthAccount, unless Agent Monitor switched last (a refresh drops accountUuid but oauthAccount
-// keeps the previous account), then only when it names the account switched to.
+// No tokens: all null (no live login). Uncertain: oauth null and reason set. The creds' own accountUuid is trusted.
+// Without one (a renewal drops it) the carried reg.live account holds as long as .claude.json's oauthAccount names it
+// or is unchanged since it was recorded (it lags after a swap; absent counts only if it was absent when recorded);
+// a changed one naming another account, or a missing or unreadable one that was there, is uncertain.
+// A registry without live uses the older rule: oauthAccount, unless Agent Monitor switched last and it names another account.
 export function liveIdentity({ home, claudeJson, reg }) {
   const live = liveOauth(home);
   if (!hasTokens(live)) return NO_LOGIN;
   if (str(live.accountUuid)) return { oauth: live, accountUuid: live.accountUuid, email: null, reason: null };
   const oa = readOauthAccount(claudeJson);
+  const carried = reg?.live;
+  if (str(carried?.accountUuid)) {
+    const c = carried.accountUuid;
+    // An absent oauthAccount only counts as unchanged when it was absent when recorded (a missing or half-written file is uncertain).
+    const oaUuid = oa?.accountUuid ?? null;
+    if (oaUuid === c || oaUuid === (carried.oauthAccount ?? null)) {
+      const org = carried.organizationUuid ?? live.organizationUuid ?? (oa?.accountUuid === c ? oa.organizationUuid : null);
+      return { oauth: { ...live, accountUuid: c, ...(org ? { organizationUuid: org } : {}) }, accountUuid: c, email: oa?.accountUuid === c ? oa.email : null, reason: null };
+    }
+    const name = Object.keys(reg.accounts ?? {}).find((n) => reg.accounts[n].accountUuid === c);
+    const reason = `the live login carries no account id, and Claude Code's .claude.json now ${oa ? `names ${oa.email ?? 'another account'}` : 'names no account (missing or unreadable)'}`
+      + `, but Agent Monitor last knew the live login as ${name ? `"${name}"` : 'another account'}; sign in to Claude Code (/login) as the account you want`;
+    return { oauth: null, accountUuid: null, email: null, reason };
+  }
   const to = reg?.lastSwitch?.to;
   const wanted = to ? reg.accounts?.[to]?.accountUuid : null;
   if (oa && (!reg?.lastSwitch || oa.accountUuid === wanted)) {

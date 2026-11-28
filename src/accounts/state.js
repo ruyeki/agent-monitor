@@ -37,9 +37,9 @@ const readJson = (file) => {
 // A missing registry is empty; a corrupt one throws (nothing may overwrite it blindly).
 export function loadRegistry(dataDir) {
   const r = readJson(registryFile(dataDir));
-  if (r === undefined) return { accounts: {}, lastSwitch: null };
+  if (r === undefined) return { accounts: {}, lastSwitch: null, live: null };
   if (!r || typeof r !== 'object' || !r.accounts || typeof r.accounts !== 'object') throw new Error('accounts registry is corrupt');
-  return { accounts: r.accounts, lastSwitch: r.lastSwitch ?? null };
+  return { accounts: r.accounts, lastSwitch: r.lastSwitch ?? null, live: r.live ?? null };
 }
 
 export const saveRegistry = (dataDir, reg) => writeAtomic(registryFile(dataDir), `${JSON.stringify(reg, null, 2)}\n`);

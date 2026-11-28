@@ -62,7 +62,7 @@ test('refresh: the active account is refused; failures keep the saved login and 
   assert.equal(fs.existsSync(w.calls()[0].configDir), false);
 
   const other = stubWorld(t, { write: 'other' });
-  await assert.rejects(other.m.refresh('lab'), /did not return a login for this account/);
+  await assert.rejects(other.m.refresh('lab'), /The saved login no longer works/);
   assert.equal(other.vault.entries.get('account/lab'), JSON.stringify(LAB));
   assert.equal(fs.existsSync(other.calls()[0].configDir), false);
   await assert.rejects(other.m.refresh('nobody'), /no account named/);

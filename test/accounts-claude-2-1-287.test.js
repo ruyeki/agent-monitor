@@ -81,7 +81,7 @@ test('refresh: a refresh that drops accountUuid is saved with it (oauthAccount a
 
 test('refresh: oauthAccount for another account is refused and nothing is saved', async (t) => {
   const w = stubWorld(t, { oauthAccount: acct('uuid-ryan', 'ryan@example.com') }, { accounts: { ryan: RYAN, lab: LAB }, live: RYAN });
-  await assert.rejects(w.m.refresh('lab'), /did not return a login for this account/);
+  await assert.rejects(w.m.refresh('lab'), /The saved login no longer works/);
   assert.equal(w.vault.entries.get('account/lab'), JSON.stringify(LAB));
 });
 

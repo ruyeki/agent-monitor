@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { applySwap, credsPath } from '../src/accounts/creds.js';
-import { loadRegistry, readUsage, writeUsage } from '../src/accounts/state.js';
+import { loadRegistry, saveRegistry, readUsage, writeUsage } from '../src/accounts/state.js';
 import { memoryVault } from '../src/accounts/vault.js';
 import { world, oauth, credsText, MCP, tmp } from './accounts-helpers.js';
 
@@ -66,6 +66,9 @@ test('use: failures before the write leave .credentials.json byte-identical', as
   assert.equal(w.live(), before);
   assert.equal(loadRegistry(w.dataDir).accounts.orders.savedAt, null, 'pickBest stops choosing it');
 
+  const marked = loadRegistry(w.dataDir); // the missing login marked orders unsaved; mark it saved again for the checks below
+  marked.accounts.orders.savedAt = new Date().toISOString();
+  saveRegistry(w.dataDir, marked);
   w.vault.entries.set('account/orders', JSON.stringify(oauth('uuid-someone-else')));
   await assert.rejects(w.m.use('orders'), /belongs to another account/);
   w.vault.entries.set('account/orders', JSON.stringify({ ...ORDERS, refreshToken: '' }));

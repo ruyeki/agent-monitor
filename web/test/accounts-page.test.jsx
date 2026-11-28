@@ -174,6 +174,17 @@ describe('Accounts page', () => {
     expect(await within(card('ryan')).findByText('Usage refreshed.')).toBeTruthy();
   });
 
+  it('Refresh usage: a dead saved login shows the sign-in-again sentence on its card', async () => {
+    const dead = 'The saved login no longer works: sign in again (Add account, same name).';
+    server.post['/api/accounts/refresh'] = () => {
+      server.state = { ...server.state, refresh: { running: false, at: iso(Date.now()), results: [{ name: 'lab', ok: false, error: dead }] } };
+      return [202, { refresh: { running: false, at: iso(Date.now()), results: [{ name: 'lab', ok: false, error: dead }] } }];
+    };
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh usage' }));
+    expect(await within(card('lab')).findByText(`Refresh failed: ${dead}`)).toBeTruthy();
+  });
+
   it('auto refresh: not when readings are fresh, and not for missing readings alone', async () => {
     const v = await open();
     await sleep(60);

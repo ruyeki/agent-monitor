@@ -47,8 +47,9 @@ test('refresh() that comes back as a different account (or fails) does not overw
   await rejects(() => w.mgr.refresh('bob'));
   const call = w.stubCalls()[0];
   if (call) assert.ok(!fs.existsSync(call.env.CLAUDE_CONFIG_DIR), 'temp dir removed even on failure');
-  await w.mgr.use('bob');
-  assert.equal(readCred(w.home).claudeAiOauth.refreshToken, cred('bob').claudeAiOauth.refreshToken, 'original saved login kept');
+  // a login that comes back as another account is a dead one: marked unsaved (not used), never overwritten
+  await assert.rejects(() => w.mgr.use('bob'), /no saved login/);
+  assert.equal(JSON.parse(await w.vault.get('account/bob')).refreshToken, cred('bob').claudeAiOauth.refreshToken, 'original saved login kept');
 });
 
 test('refresh() when claude is missing or crashes fails cleanly and leaves no temp dir', async (t) => {
